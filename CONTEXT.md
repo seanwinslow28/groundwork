@@ -33,3 +33,20 @@ _Avoid_: strict mode, completeness check
 
 **Depth doctrine**:
 "Depth is earned by acting, not by planning to act" — the interview steers the first run to 3–5 acted-on activities; the cap is doctrine, not a validator rule.
+
+### Owner's Card (field tiers — ticket #6)
+
+**Card spine**:
+The human-owned accountability fields every Owner's Card requires regardless of action class: owner, backup owner, job-in-one-sentence, the three action-class lines (allowed / proposed-only / forbidden), and the death conditions.
+_Avoid_: core fields, minimal card
+
+**Track-2 trio**:
+Evidence required, sources-it-must-not-use, and review sample — required exactly when the skill's action class is external-side-effect or high-risk (review track 2); a visible warning below that.
+
+**Death conditions**:
+An Owner's Card's pause condition and retirement condition. Always human-answered — "some agents should die" only means something if a human named the trigger.
+_Avoid_: shutdown criteria, sunset (sunset dates belong to rules)
+
+**Generator refusal**:
+The doctrine that the generator never invents an owner, a forbidden action, or a death condition — it drafts only what it can observe from the ontology and the skill it wrote; the refused fields come solely from a human's interview answers.
+_Avoid_: manual fields, human override
