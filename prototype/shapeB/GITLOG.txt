@@ -1,0 +1,9 @@
+# Shape B checkpoint evidence — captured from the throwaway repo
+
+## git log (confirmed layers = commits, the approval trail)
+6a4c620  interview(cs-renewal): confirmed — renewal-prep steps, Motion=assist
+acae6a8  interview(scope): confirmed — functions + top pain
+
+## git status (dirty _working.md = the in-flight, provisional turn)
+ A interview/_working.md
+?? GITLOG.txt
