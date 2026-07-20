@@ -21,6 +21,7 @@ An open-source, harness-agnostic Company OS — ontology-first generation + comp
 6. **Resolve = comment + close + map index line** (gist + link in Decisions-so-far). New tickets and graduated fog get charted before the session ends.
 7. **No product scaffolding** while tickets remain. Charting artifacts (docs/, research/) are fine; `interview/`, `ontologies/`, `skills/`, `governance/` etc. are build-phase.
 8. **Honesty rules:** claims match what research verified, including prior-art concessions (brief §2). Overclaiming is trust debt.
+9. **Explain before asking Sean to decide.** Sean is new to building this kind of system. Before each decision question, explain in plain terms: what the decision is about, what the options are, why you recommend what you recommend, and the honest counter-argument to your own recommendation. Never accept "I'll go with your recommendation" as a substitute for understanding — the goal is that Sean could re-explain the decision to someone else. Applies to grilling tickets now and carries into build sessions (also saved in agent memory so it survives this file's replacement).
 
 ## Process notes
 
