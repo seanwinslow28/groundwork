@@ -50,3 +50,25 @@ _Avoid_: shutdown criteria, sunset (sunset dates belong to rules)
 **Generator refusal**:
 The doctrine that the generator never invents an owner, a forbidden action, or a death condition — it drafts only what it can observe from the ontology and the skill it wrote; the refused fields come solely from a human's interview answers.
 _Avoid_: manual fields, human override
+
+### Improvement proposals (three-bucket routing — ticket #17)
+
+**Improvement proposal**:
+An agent-authored proposed change to a skill or a constitution rule — the only two artifact kinds the three buckets route. Memory records, Owner's Cards, and ontology worksheets keep their own governance; a memory enters this routing only at the moment it graduates into a proposed rule/skill change.
+_Avoid_: suggestion, self-improvement (the ungated kind is banned)
+
+**Blast-radius boundary**:
+The auto-apply test: a proposal auto-applies exactly when a bad version's worst case is bounded — a body-only edit to a track-1 (read-only / reversible-write) skill. Anything touching the description, governance frontmatter, or Owner's Card, or any change to a track-2 skill or a rule, escalates.
+_Avoid_: low-risk (undefined on its own), trivial change
+
+**Proposal schema**:
+The completeness checklist a proposal must carry — diff, reason, evidence links, blast-radius declaration. Mechanically splits needs-sign-off (complete → draft PR; the PR is the review file) from needs-more-context (incomplete).
+_Avoid_: confidence threshold
+
+**Proposal demotion**:
+Routing an incomplete proposal back down the promotion path to an org-memory working note with its gaps named; it re-enters as a proposal when the gaps fill, inheriting the memory schema's `review_by` anti-rot.
+_Avoid_: rejection (a verdict), pending queue
+
+**Governance changelog**:
+The central append-only index of auto-applied changes — one line per entry pointing at its commit (index, not store) — scanned in the maintainer's reconciliation pass. The accountability half of "auto-apply with changelog."
+_Avoid_: audit log (implies an engine), "git history is the changelog"
