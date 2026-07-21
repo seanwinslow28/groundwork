@@ -72,3 +72,29 @@ _Avoid_: rejection (a verdict), pending queue
 **Governance changelog**:
 The central append-only index of auto-applied changes — one line per entry pointing at its commit (index, not store) — scanned in the maintainer's reconciliation pass. The accountability half of "auto-apply with changelog."
 _Avoid_: audit log (implies an engine), "git history is the changelog"
+
+### Version skew (engine-vs-content pin — ticket #21)
+
+**Schema version**:
+The single coarse integer the engine carries, bumped **only** on a breaking schema change. The unit skew is measured in — never commits or days. The content's pin records the `schema_version` it was generated against; skew = engine's minus content's.
+_Avoid_: version number (ambiguous with the groundwork commit/release), semver
+
+**Pull promise**:
+The guarantee that `git pull` on the engine never ERRORs content for merely being old. A new requirement WARNs ("new since your pin"); a sharper-eyes check keeps its severity; a breaking change becomes one migration gate. Keeps pulling upstream safe, which the two-repo model depends on.
+_Avoid_: backward compatibility, forward compatibility
+
+**Sharper-eyes check**:
+A check whose schema is unchanged but which now catches a problem that was *always* invalid (e.g. a looping supersession chain). Keeps its declared severity, including ERROR, on old content — the content was genuinely broken all along, so surfacing it is honest, not a new requirement.
+_Avoid_: stricter check, new rule (conflates with new-requirement)
+
+**New-requirement demotion**:
+The rule that a check asserting a field/shape introduced *after* the pin cannot ERROR pre-pin content — it WARNs, labeled "new since your pin." The mechanism is each check carrying a `since:` schema-version compared against the pin.
+_Avoid_: grandfathering, soft-fail
+
+**Migration gate**:
+What the validator emits at skew ≥ 1 — a single migration-boundary ERROR ("content is v3, engine is v4; see MIGRATIONS for v3→v4") instead of scattered field errors. **Max skew is one breaking version.** The V1 contract is a guaranteed `MIGRATIONS.md` note plus precise validator finger-pointing; a transform script is a bonus, and full re-interview is V3.
+_Avoid_: upgrade wall, hard block
+
+**Version pin**:
+The dedicated company-repo-root file (independent of `interview/`) recording `schema_version` (what skew compares) and `generated_by_commit` (provenance only — never used for skew math). The one piece of data the whole skew policy reads.
+_Avoid_: lockfile, manifest (that is #9's interview manifest)
