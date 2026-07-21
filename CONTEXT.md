@@ -138,3 +138,21 @@ _Avoid_: full verification, guaranteed-synthetic
 **Layered secret check**:
 The concrete form of §10's validator "secrets" check under #11's zero-dep bar: an always-on floor of hand-rolled high-signal secret regexes in `validate.py` (stdlib `re` — AWS `AKIA…`, private-key headers, `ghp_`/`xox…`/`sk-…` prefixes, entropy heuristic), labeled **high-signal, not exhaustive**, plus Gitleaks documented as the optional CI/pre-commit backstop for the real guarantee. Runs **globally** (both repos, ERROR) — a leaked credential is dangerous everywhere, unlike the demo-only synthetic rule.
 _Avoid_: secret scanner (implies a bundled engine — Gitleaks is external and optional), "validate proves no secrets" (the floor is high-signal only)
+
+### Positioning (competitor comparison — ticket #15)
+
+**Same-category concession**:
+The move that keeps an honest README from either overclaiming or punching down: when a competitor shipped a shape groundwork also uses, concede it *by name and in the same breath* as the contrast — never imply groundwork originated it. Sylph shipped the self-improving-company-brain-as-git-repo shape first (May 2026); clawcompany shipped compressed context-budget memory. Conceding shared ground is what makes the one real contrast (governance) land as credible rather than defensive. Applies to *competitors*; crediting *inspirations* is the sibling move (ticket #14).
+_Avoid_: differentiator (before checking it isn't shared), "we invented / first to"
+
+**Punch-down line**:
+The rule that decides which unflattering facts may enter a comparison. Contrast on **capability** freely (a real thing groundwork does that a rival lacks — governance, reviewed rule-changes). State a **status fact** (scale, staleness, wind-down) *only* when it is both **adopter-relevant and self-reported** — clawcompany's own "maintenance-slowed for a paid sibling" qualifies (it changes a foundation choice); a solo scaffold's commit count does not. Everything else is a dig.
+_Avoid_: "abandoned", commit-count / star-count digs, "hobby project"
+
+**Governance lane**:
+The single contrast groundwork fully owns against both active same-category projects: typed rules + owners + appeals + a validator, and — vs Sylph specifically — review of the *rule change itself*, not just the output it produced. Every other axis (files-in-git, harness-agnostic, self-improving loop, compressed memory, "company OS" naming) is shared or conceded territory.
+_Avoid_: "self-improving" as a groundwork-unique claim (the loop is shared; only its *governance* is ours)
+
+**Category line (vs a runtime)**:
+The honest frame for clawcompany: it is a fat runtime you adopt (its own app / UI / server, multi-*provider*), whereas groundwork is files any agent already reads. State it as a category difference, **never** as "we support more harnesses" — clawcompany is multi-provider, not multi-harness, so that contrast misreads its architecture and is dishonest.
+_Avoid_: "we're more portable / more harnesses" (miscategorizes a runtime as a harness-agnostic peer)
