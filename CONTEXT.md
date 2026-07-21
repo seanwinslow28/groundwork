@@ -120,3 +120,21 @@ _Avoid_: validator enforcement (the validator is a tripwire, not the teeth), bra
 **Blast-radius match check**:
 The validator `--diff` tripwire #18 adds: an escalating change (rule / track-2 skill / description / governance frontmatter / Owner's Card, per #17's boundary) must trace to an approved proposal whose *declared* blast-radius matches what the diff *actually* touches — mismatch or missing-proposal is an ERROR. Stops an agent smuggling a rule edit inside a proposal labelled "track-1 body-only." Cannot verify a human *truthfully* reviewed — that is the commit bit's job.
 _Avoid_: consent check (overstates what a stateless validator can prove)
+
+### Synthetic-demo verification (demo data conventions — ticket #16)
+
+**Demo canon**:
+The single `demo/` file that declares the fictional company's world — company / product / subsidiary / people names and the reserved email domain(s) it uses. It is simultaneously human documentation of the fake world and the validator's positive **allowlist**: any structured identifier in `demo/` must trace to the canon or to a reserved-for-fiction namespace. One source of truth, both read by people and enforced by machine (the #9-manifest / #18-proposal-file pattern).
+_Avoid_: fixtures, seed data, per-file `synthetic:` marker (rejected — re-asserts rather than verifies)
+
+**Synthetic-identifier check**:
+The validator ERROR, scoped to **`demo/` only**, that every email / domain / phone / IP resolves to the demo canon or an RFC-reserved fiction namespace (`example.com` / `.test` / `.invalid` / `.example`; `555-01xx` phones; TEST-NET `192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`). Positive verification of the structured surface — the part of "all synthetic" that *can* be proven mechanically. Explicitly **not** applied to `your-company/`, whose real identifiers are legitimate by design.
+_Avoid_: PII scan, name detection (the prose layer is the un-checkable ceiling)
+
+**Synthetic ceiling**:
+The honest limit: a real entity named in free prose looks identical to a fictional one, so no mechanical check can prove "no real company / person / customer is referenced." Verification stops at the structured surface + secrets; the prose layer rests on the fixed canon + maintainer review, and the residual is a documented **Known Limitation** (not papered over — the #18/#8 posture). Full-guarantee deterministic generation was rejected as too heavy for afternoon-adoptable V1.
+_Avoid_: full verification, guaranteed-synthetic
+
+**Layered secret check**:
+The concrete form of §10's validator "secrets" check under #11's zero-dep bar: an always-on floor of hand-rolled high-signal secret regexes in `validate.py` (stdlib `re` — AWS `AKIA…`, private-key headers, `ghp_`/`xox…`/`sk-…` prefixes, entropy heuristic), labeled **high-signal, not exhaustive**, plus Gitleaks documented as the optional CI/pre-commit backstop for the real guarantee. Runs **globally** (both repos, ERROR) — a leaked credential is dangerous everywhere, unlike the demo-only synthetic rule.
+_Avoid_: secret scanner (implies a bundled engine — Gitleaks is external and optional), "validate proves no secrets" (the floor is high-signal only)
