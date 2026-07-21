@@ -156,3 +156,21 @@ _Avoid_: "self-improving" as a groundwork-unique claim (the loop is shared; only
 **Category line (vs a runtime)**:
 The honest frame for clawcompany: it is a fat runtime you adopt (its own app / UI / server, multi-*provider*), whereas groundwork is files any agent already reads. State it as a category difference, **never** as "we support more harnesses" — clawcompany is multi-provider, not multi-harness, so that contrast misreads its architecture and is dishonest.
 _Avoid_: "we're more portable / more harnesses" (miscategorizes a runtime as a harness-agnostic peer)
+
+### Attribution (crediting inspirations — ticket #14)
+
+**Prior-art block**:
+The single honest credit surface — a `## Prior art & inspiration` section at the **bottom** of the README, in **prose bullets**. Sibling to Positioning (#15): #15 handles *competitors* in §2 (who we beat), this handles *inspirations* at the bottom (who we learned from) — two surfaces, two jobs. "Prominent" (the brief's word) means **specificity + generosity**, not top-of-page — top placement reads as "reskin of X." Not a separate `PRIOR-ART.md` (credit's value is being *seen*); not `NOTICE` (that's an Apache-2.0 term-of-art for redistribution attributions — #3).
+_Avoid_: top-of-README credit, a comparison **table** (reframes gratitude as competitive scoring), `NOTICE` for inspiration-credit
+
+**Generosity-through-linking (paid-content posture, A−)**:
+How groundwork credits a pattern drawn from someone's *paid* work (Aakash's Team OS, Nate's newsletter) without free-riding or reproducing it: **name the source, link the paywalled original, send the traffic, say "the idea is theirs / this open implementation is ours"** — but **no "worth buying" endorsement**. The generous act is the *link itself*, not an adjective vouching for a product groundwork doesn't control. Legally clean because ideas aren't copyrightable (only expression is) and naming a coined concept is nominative use.
+_Avoid_: "a free alternative to X" / "everything in their kit, open" (frames groundwork as a replacement for their income); "worth buying" (try-hard PR); reproducing paid *expression* (text/diagrams/worksheet wording)
+
+**Load-bearing roster**:
+Credit the five sources groundwork genuinely builds on — **JZ/Jiaona Zhang/Laurel, Aakash Gupta + Hannah Stulberg, Nate B. Jones, dswh/company-os** — each with what-we-took / how-we-differ / free-or-paid. The thin tail (Workflowsio, gbrain, beevibe, skill libraries) stays as *landscape* in §2, **not** repeated in credits. Over-crediting reads as anxiety, not generosity; a wall of barely-used names is a tell.
+_Avoid_: name-dropping for reflected credibility, an exhaustive "also surveyed" list, crediting Aakash for Team OS without naming **Hannah Stulberg** (its real DoorDash origin)
+
+**Verified-mechanic rule**:
+In the credit section, describe the **verified underlying mechanic**, never an **unverified coined phrase**. First-party search could not confirm "Shared Discipline" / "Classify→Consent→Enforce" (Aakash) or "constitution machinery" (Nate) in any primary source — so credit the rule ("share only on positive evidence; no leak-by-default") not the slogan. And state free/paid straight: **Nate's Open Skills is *paid*; his open artifact is Open Brain/OB1** — getting the credit section's own facts wrong is the exact trust-debt this ticket prevents.
+_Avoid_: quoting an unsourced slogan as someone's coinage, implying an "open Open Skills repo" exists (it doesn't)
