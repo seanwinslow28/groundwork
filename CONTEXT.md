@@ -98,3 +98,25 @@ _Avoid_: upgrade wall, hard block
 **Version pin**:
 The dedicated company-repo-root file (independent of `interview/`) recording `schema_version` (what skew compares) and `generated_by_commit` (provenance only — never used for skew math). The one piece of data the whole skew policy reads.
 _Avoid_: lockfile, manifest (that is #9's interview manifest)
+
+### Consent gate (per-harness proposal mechanics — ticket #18)
+
+**Consent gate**:
+The harness-independent invariant behind governed self-improvement: an *escalating* change reaches the main line only via a reviewable proposal artifact plus a distinct human affirmative act, leaving a git record. The "rung-5, human-owned decision" made mechanical. A GitHub draft PR is one *rendering* of it, never the gate itself.
+_Avoid_: draft PR (a rendering, not the gate), approval workflow (implies an engine)
+
+**Consent ladder**:
+The graceful degradation of *how* the proposal file is reviewed-and-applied, richest to floor: GitHub **draft PR** → `proposal/*` **branch-merge** (Cursor / GitLab / Bitbucket / local git) → self-attested **`approved_by` field** on the committed file (the branchless floor, weakest rung). The proposal *file* is canonical; every rung is a way of looking at it.
+_Avoid_: PR fallback, review options
+
+**Proposal file**:
+The canonical gate artifact — a file in `proposals/` carrying #17's proposal schema (diff, reason, evidence links, blast-radius declaration). It *is* the review file. Anchoring on the file (not the PR) follows from "groundwork is files": PR metadata evaporates if you leave GitHub; the file and its consent commit do not. `proposals/` is **pending-only** (mirrors #7's live-records-only doctrine); on apply the file evaporates into the git consent-commit.
+_Avoid_: pull request, review file (that framing was #17's GitHub-specific shorthand)
+
+**Commit-bit teeth**:
+The real enforcement layer: only the git-capable maintainer can *land* a change on the main line; agents only *propose* (§4). This — not the validator — is what makes rule changes rung-5 "by construction." The gate's guarantee is a permissions convention, not a cryptographic proof; the honest limit is a documented Known Limitation.
+_Avoid_: validator enforcement (the validator is a tripwire, not the teeth), branch protection
+
+**Blast-radius match check**:
+The validator `--diff` tripwire #18 adds: an escalating change (rule / track-2 skill / description / governance frontmatter / Owner's Card, per #17's boundary) must trace to an approved proposal whose *declared* blast-radius matches what the diff *actually* touches — mismatch or missing-proposal is an ERROR. Stops an agent smuggling a rule edit inside a proposal labelled "track-1 body-only." Cannot verify a human *truthfully* reviewed — that is the commit bit's job.
+_Avoid_: consent check (overstates what a stateless validator can prove)
