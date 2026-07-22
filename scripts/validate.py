@@ -261,6 +261,43 @@ def check_deep_record(abspath, root):
     return findings
 
 
+def check_ontology(root):
+    """#5 structural checks over ontologies/<function>/ directories."""
+    findings = []
+    base = os.path.join(root, "ontologies")
+    if not os.path.isdir(base):
+        return findings
+    for fn in sorted(os.listdir(base)):
+        fdir = os.path.join(base, fn)
+        if not os.path.isdir(fdir):
+            continue
+        rel_fdir = os.path.relpath(fdir, root)
+        exec_path = os.path.join(fdir, "_executive-view.md")
+        deep_files = sorted(f for f in os.listdir(fdir)
+                            if f.endswith(".md") and f != "_executive-view.md")
+        linked = set()
+        if not os.path.isfile(exec_path):
+            if deep_files:
+                findings.append(Finding("ERROR", os.path.join(rel_fdir, "_executive-view.md"),
+                                        None, "function ontology has no executive view (_executive-view.md)"))
+        else:
+            with open(exec_path, encoding="utf-8") as fh:
+                rows = parse_exec_table(fh.read())
+            rel_exec = os.path.relpath(exec_path, root)
+            for activity, direction, link, ln in rows:
+                if direction not in DIRECTIONS:
+                    findings.append(Finding("ERROR", rel_exec, ln,
+                                            "Direction must be 'up' or 'down', got %r" % direction))
+                if link:
+                    linked.add(os.path.basename(link))
+        for df in deep_files:
+            findings += check_deep_record(os.path.join(fdir, df), root)
+            if df not in linked:
+                findings.append(Finding("WARN", os.path.join(rel_fdir, df), None,
+                                        "deep record not listed in the executive view"))
+    return findings
+
+
 def load_gitignore(root):
     """Minimal .gitignore reader: exact names and simple globs (e.g. '*.log').
     Enough to skip .env-style files so the gate scans (roughly) what's tracked.
@@ -317,6 +354,7 @@ def validate(root):
         findings += check_entropy(text, rel)
         if abspath.endswith(".md"):
             findings += check_links(abspath, text, root)
+    findings += check_ontology(root)
     return findings
 
 

@@ -203,6 +203,45 @@ class TestExecTable(unittest.TestCase):
         self.assertEqual(validate.parse_exec_table("# just prose\n"), [])
 
 
+EXEC_OK = (
+    "# People/HR — executive view\n\n"
+    "| Activity | Direction | Deep record |\n"
+    "|---|---|---|\n"
+    "| Onboarding orchestration | down | [deep record](onboarding-orchestration.md) |\n"
+    "| Headcount planning | up | — |\n"
+)
+
+
+class TestOntology(unittest.TestCase):
+    def test_clean_function_passes(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/people-hr/_executive-view.md", EXEC_OK)
+            _write(d, "ontologies/people-hr/onboarding-orchestration.md", AUTOMATE_OK)
+            self.assertEqual([f for f in validate.check_ontology(d) if f.level == "ERROR"], [])
+
+    def test_missing_exec_view_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/people-hr/onboarding-orchestration.md", AUTOMATE_OK)
+            errs = [f for f in validate.check_ontology(d) if f.level == "ERROR"]
+            self.assertTrue(any("executive view" in f.message for f in errs))
+
+    def test_bad_direction_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/people-hr/_executive-view.md",
+                   EXEC_OK.replace("| Headcount planning | up |", "| Headcount planning | sideways |"))
+            _write(d, "ontologies/people-hr/onboarding-orchestration.md", AUTOMATE_OK)
+            errs = [f for f in validate.check_ontology(d) if f.level == "ERROR"]
+            self.assertTrue(any("Direction" in f.message for f in errs))
+
+    def test_unlisted_deep_record_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/people-hr/_executive-view.md", EXEC_OK)
+            _write(d, "ontologies/people-hr/onboarding-orchestration.md", AUTOMATE_OK)
+            _write(d, "ontologies/people-hr/offboarding.md", AUTOMATE_OK)  # not in exec view
+            warns = [f for f in validate.check_ontology(d) if f.level == "WARN"]
+            self.assertTrue(any("not listed" in f.message for f in warns))
+
+
 class TestGitignore(unittest.TestCase):
     def test_gitignored_file_is_not_scanned(self):
         with tempfile.TemporaryDirectory() as d:
