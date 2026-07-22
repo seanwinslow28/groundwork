@@ -14,7 +14,7 @@ Two active projects work the same territory — a company brain as a git repo of
 
 | Project | What it is | The contrast (nuance lives in the prose below) |
 |---|---|---|
-| [Sylph](https://github.com/getnao/sylph) | Harness-agnostic markdown skills in git, self-improving | The rule change itself: automatic there, human-reviewed here |
+| [Sylph](https://github.com/getnao/sylph) | Harness-agnostic markdown skills in git, self-improving | The rule change itself: automatic there, a human-approved proposal in groundwork's design |
 | [clawcompany](https://github.com/Claw-Company/clawcompany) | A runtime app (`npx clawcompany`) with compressed memory | A runtime you adopt vs. files any agent already reads |
 
 ### On the two active projects
@@ -23,11 +23,11 @@ Two active projects work the same territory — a company brain as a git repo of
 
 **[clawcompany](https://github.com/Claw-Company/clawcompany)** ships 4-layer compressed memory (~400 tokens per mission) — real context-budget engineering, and prior art groundwork learned from. The difference is a category, not a feature count: clawcompany is a fat runtime you adopt — its own app, UI, and server, multi-*provider* by design — while groundwork is files any agent already reads. groundwork's memory bet also differs in kind: governed memory (provenance, review, supersession) the company owns as files, rather than compression. One status fact, stated only because they report it themselves: clawcompany's own README notes the open-source repo is maintenance-slowed in favor of a paid closed-source sibling — relevant if you are choosing a foundation.
 
-The wider landscape (dswh/company-os, Workflowsio, gbrain, beevibe, the commodity skill libraries) is earlier or thinner takes on parts of the same idea; the sources groundwork genuinely builds on are credited at the bottom in [Prior art & inspiration](#prior-art--inspiration).
+The wider landscape (dswh/company-os, Workflowsio, gbrain, beevibe, the commodity skill libraries) covers parts of the same idea; the sources groundwork genuinely builds on are credited at the bottom in [Prior art & inspiration](#prior-art--inspiration).
 
 ## License
 
-Apache-2.0 — chosen for its patent grant (enterprise-counsel comfort). Content generated into `your-company/` is the adopter's own and is **not** covered by this license (an explicit README/NOTICE carve-out ships with the generator). The `LICENSE` file lands with the first release artifacts.
+Apache-2.0 — chosen for its patent grant (enterprise-counsel comfort). Content generated into `your-company/` is the adopter's own and is **not** covered by this license (an explicit README/NOTICE carve-out will ship with the generator). The `LICENSE` file lands with the first release artifacts.
 
 ## Prior art & inspiration
 
