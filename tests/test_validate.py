@@ -168,6 +168,35 @@ class TestDeepRecord(unittest.TestCase):
             errs = [f for f in validate.check_deep_record(p, d) if f.level == "ERROR"]
             self.assertTrue(any("motion" in f.message for f in errs))
 
+    def test_list_valued_enum_errors_not_crashes(self):
+        # Codex review: 'motion:' + '- automate' parses as a list; membership
+        # tests on sets must not raise TypeError.
+        with tempfile.TemporaryDirectory() as d:
+            bad = AUTOMATE_OK.replace("motion: automate", "motion:\n  - automate")
+            p = _write(d, "ontologies/people-hr/x.md", bad)
+            errs = [f for f in validate.check_deep_record(p, d) if f.level == "ERROR"]
+            self.assertTrue(any("motion" in f.message and "single value" in f.message
+                                for f in errs))
+
+    def test_empty_list_field_is_missing(self):
+        # 'work_type:' with no items parses as [] — that is a missing field.
+        with tempfile.TemporaryDirectory() as d:
+            bad = AUTOMATE_OK.replace("work_type: routing", "work_type:")
+            p = _write(d, "ontologies/people-hr/x.md", bad)
+            errs = [f for f in validate.check_deep_record(p, d) if f.level == "ERROR"]
+            self.assertTrue(any("missing 'work_type'" in f.message for f in errs))
+
+    def test_blank_free_text_field_errors_on_automation(self):
+        # Codex review: 'accountable_owner:' (blank) parses as [] and must not
+        # pass an automation-path record.
+        with tempfile.TemporaryDirectory() as d:
+            bad = AUTOMATE_OK.replace("accountable_owner: Head of People\n", "accountable_owner:\n")
+            bad = bad.replace("substrate: HRIS + IT tracker\n", "substrate:\n")
+            p = _write(d, "ontologies/people-hr/x.md", bad)
+            errs = [f for f in validate.check_deep_record(p, d) if f.level == "ERROR"]
+            self.assertTrue(any("missing 'accountable_owner'" in f.message for f in errs))
+            self.assertTrue(any("missing 'substrate'" in f.message for f in errs))
+
     def test_non_automation_incomplete_is_warn_not_error(self):
         with tempfile.TemporaryDirectory() as d:
             rec = "---\nactivity: Comp review\nmotion: hire\n---\n# x\n"  # missing common core
@@ -232,6 +261,16 @@ class TestOntology(unittest.TestCase):
             _write(d, "ontologies/people-hr/onboarding-orchestration.md", AUTOMATE_OK)
             errs = [f for f in validate.check_ontology(d) if f.level == "ERROR"]
             self.assertTrue(any("Direction" in f.message for f in errs))
+
+    def test_gitignored_deep_record_is_not_checked(self):
+        # Codex review: the semantic checks must honor the same ignore set as
+        # the generic walker.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/people-hr/_executive-view.md", EXEC_OK)
+            _write(d, "ontologies/people-hr/onboarding-orchestration.md", AUTOMATE_OK)
+            _write(d, "ontologies/people-hr/draft-notes.md", "---\nmotion: teleport\n---\n")
+            findings = validate.check_ontology(d, ignore={"draft-*.md"})
+            self.assertFalse(any("draft-notes" in f.path for f in findings))
 
     def test_unlisted_deep_record_warns(self):
         with tempfile.TemporaryDirectory() as d:

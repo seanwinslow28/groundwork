@@ -222,18 +222,25 @@ def check_deep_record(abspath, root):
         return findings
 
     motion = data.get("motion")
-    if motion is None:
+    if motion is None or motion == []:
         findings.append(Finding("WARN", rel, None, "missing 'motion' (incomplete thinking)"))
+    elif not isinstance(motion, str):
+        findings.append(Finding("ERROR", rel, None,
+                                "invalid motion %r — must be a single value (one of %s)"
+                                % (motion, sorted(MOTIONS))))
     elif motion not in MOTIONS:
         findings.append(Finding("ERROR", rel, None,
                                 "invalid motion %r (one of %s)" % (motion, sorted(MOTIONS))))
-    on_automation = motion in AUTOMATION_MOTIONS
+    on_automation = isinstance(motion, str) and motion in AUTOMATION_MOTIONS
 
     def require(field, valid=None):
         v = data.get(field)
         missing_level = "ERROR" if on_automation else "WARN"
-        if v is None or (isinstance(v, str) and v.strip() == ""):
+        if v is None or v == [] or (isinstance(v, str) and v.strip() == ""):
             findings.append(Finding(missing_level, rel, None, "missing '%s'" % field))
+        elif not isinstance(v, str):
+            findings.append(Finding("ERROR", rel, None,
+                                    "invalid '%s' %r — must be a single value" % (field, v)))
         elif valid is not None and v not in valid:
             findings.append(Finding("ERROR", rel, None,
                                     "invalid '%s' %r (one of %s)" % (field, v, sorted(valid))))
@@ -261,20 +268,22 @@ def check_deep_record(abspath, root):
     return findings
 
 
-def check_ontology(root):
-    """#5 structural checks over ontologies/<function>/ directories."""
+def check_ontology(root, ignore=()):
+    """#5 structural checks over ontologies/<function>/ directories.
+    Honors the same .gitignore patterns as the generic walker."""
     findings = []
     base = os.path.join(root, "ontologies")
     if not os.path.isdir(base):
         return findings
     for fn in sorted(os.listdir(base)):
         fdir = os.path.join(base, fn)
-        if not os.path.isdir(fdir):
+        if not os.path.isdir(fdir) or _ignored(fn, ignore):
             continue
         rel_fdir = os.path.relpath(fdir, root)
         exec_path = os.path.join(fdir, "_executive-view.md")
         deep_files = sorted(f for f in os.listdir(fdir)
-                            if f.endswith(".md") and f != "_executive-view.md")
+                            if f.endswith(".md") and f != "_executive-view.md"
+                            and not _ignored(f, ignore))
         linked = set()
         if not os.path.isfile(exec_path):
             if deep_files:
@@ -354,7 +363,7 @@ def validate(root):
         findings += check_entropy(text, rel)
         if abspath.endswith(".md"):
             findings += check_links(abspath, text, root)
-    findings += check_ontology(root)
+    findings += check_ontology(root, ignore)
     return findings
 
 
