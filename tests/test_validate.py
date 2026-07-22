@@ -107,6 +107,32 @@ class TestGate(unittest.TestCase):
         self.assertEqual(errors, [], "unexpected errors: %s" % errors)
 
 
+class TestExecTable(unittest.TestCase):
+    TABLE = (
+        "# People/HR — executive view\n\n"
+        "| Activity | Direction | Deep record |\n"
+        "|---|---|---|\n"
+        "| Onboarding orchestration | down | [deep record](onboarding-orchestration.md) |\n"
+        "| Headcount planning | up | — |\n"
+    )
+
+    def test_parses_rows(self):
+        rows = validate.parse_exec_table(self.TABLE)
+        self.assertEqual(len(rows), 2)
+        act, direction, link, _ = rows[0]
+        self.assertEqual(act, "Onboarding orchestration")
+        self.assertEqual(direction, "down")
+        self.assertEqual(link, "onboarding-orchestration.md")
+
+    def test_row_without_link(self):
+        _, direction, link, _ = validate.parse_exec_table(self.TABLE)[1]
+        self.assertEqual(direction, "up")
+        self.assertIsNone(link)
+
+    def test_no_table_returns_empty(self):
+        self.assertEqual(validate.parse_exec_table("# just prose\n"), [])
+
+
 class TestGitignore(unittest.TestCase):
     def test_gitignored_file_is_not_scanned(self):
         with tempfile.TemporaryDirectory() as d:

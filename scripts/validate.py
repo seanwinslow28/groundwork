@@ -167,6 +167,48 @@ def check_links(abspath, text, root):
     return findings
 
 
+DIRECTIONS = {"up", "down"}
+MOTIONS = {"automate", "build", "buy", "hire", "wait"}
+AUTOMATION_MOTIONS = {"automate", "build"}
+WORK_TYPES = {"routing", "sensemaking", "accountability"}
+SHAPES = {"chat", "single-agent", "agent-team", "dont-bother"}
+SCORE_FIELDS = ["score_repetition", "score_risk", "score_judgment",
+                "score_company_specificity", "score_market_maturity"]
+SCORE_VALUES = {"low", "medium", "high"}
+GATE_FIELDS = ["gate_inputs", "gate_output", "gate_standard", "gate_source_of_truth",
+               "gate_exception_path", "gate_error_cost", "gate_owner", "gate_review_gate"]
+
+
+def parse_exec_table(text):
+    """Parse the first markdown table whose header row contains 'Direction'.
+    Returns [(activity, direction_lower, deep_link_or_None, line_no)]."""
+    rows = []
+    lines = text.split("\n")
+    header_idx = None
+    for idx, line in enumerate(lines):
+        if line.lstrip().startswith("|") and "direction" in line.lower():
+            header_idx = idx
+            break
+    if header_idx is None:
+        return rows
+    for j in range(header_idx + 1, len(lines)):
+        line = lines[j]
+        if not line.lstrip().startswith("|"):
+            break
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if not cells or set("".join(cells)) <= set("-: "):
+            continue  # the |---|---| separator row
+        activity = cells[0] if len(cells) > 0 else ""
+        direction = cells[1].lower() if len(cells) > 1 else ""
+        link = None
+        if len(cells) > 2:
+            m = _LINK.search(cells[2])
+            if m:
+                link = m.group(1)
+        rows.append((activity, direction, link, j + 1))
+    return rows
+
+
 def load_gitignore(root):
     """Minimal .gitignore reader: exact names and simple globs (e.g. '*.log').
     Enough to skip .env-style files so the gate scans (roughly) what's tracked.
