@@ -79,6 +79,13 @@ Per the map's "Not yet specified" (V2/V3 fog) and "Out of scope":
 - **Never (brief §7):** hosted anything, dashboards, per-seat features, an agent runtime, a memory/retrieval engine. groundwork is files — conventions + validator checks only.
 - **One worked runnable exemplar** ships in the demo per #8 (the meeting-challenger, compatibility-noted, copy-me reference — *not* generated) to make the V2 path concrete without building V2.
 
+## Build log (decisions & learnings after the design landed)
+
+- **2026-07-22 — Phase 0 + validator foundation landed** (`build/v1-sequence-plan`, green + Codex-reviewed). Tasks 1–7 of the first plan complete: workbench migration, README Tiers 0/1, and `scripts/validate.py` (frontmatter reader, secrets floor, context-budget, referential integrity), 19 `unittest` tests, gate exits 0.
+- **Gate-hygiene decision (Option A, locked):** the repo gate keeps `SKIP_RELPATHS={tests, docs/superpowers}` (the scanner's own fixtures/specs necessarily quote example secret & link patterns) and respects `.gitignore` (so `.env`-style files aren't scanned). #16 "global secrets" is read as "all **content** trees"; Gitleaks is the documented backstop for the skipped harness trees; the limitation is recorded in `docs/known-limitations.md`. The cleaner "gate on git-tracked content" model is noted as a V1.5 hardening.
+- **Honesty carryover:** the README headline was reframed from a shipped-fact present tense to explicit design-intent (the interview + generator are Phase 3) — Slice 1.2, Task 2.
+- **Primary-artifact shape (Slice 1.2):** ontology = one dir per function; deep records are flat-frontmatter one-activity files (so the #11 reader checks them, per #5's "strict where a field backs machinery"); Direction lives canonically in the exec-view table, not duplicated on deep records. Load-bearing — every later slice + the generator inherit it.
+
 ## Success criteria for the V1 build
 
 - The adopter's required path runs end-to-end: `interview/` generates a `your-company/` in the demo-proven shape; `scripts/validate.py` passes on it; a provisioning guide exists.
