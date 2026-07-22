@@ -2,7 +2,7 @@
 
 > The groundwork your company runs on.
 
-An open-source, harness-agnostic Company OS. Point your coding agent at this repo and it interviews your company about the work each function actually does — what should get **more** human time, what should get **automated away**, and under **what rules** — then generates your operating system from that map: folder-per-function ontologies, skills with named owners, a compiled constitution, and organizational memory that learns under governance instead of rewriting itself.
+An open-source, harness-agnostic Company OS. **The idea:** you point your coding agent at this repo and it interviews your company about the work each function actually does — what should get **more** human time, what should get **automated away**, and under **what rules** — then generates your operating system from that map: folder-per-function ontologies, skills with named owners, a compiled constitution, and organizational memory that learns under governance instead of rewriting itself. *(In active build — see [Status](#status-building-v1) for what's real today.)*
 
 ## Status: building V1
 
