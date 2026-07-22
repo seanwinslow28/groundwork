@@ -74,6 +74,25 @@ class TestSecrets(unittest.TestCase):
         self.assertTrue(all(f.level == "WARN" for f in findings))
 
 
+class TestBudget(unittest.TestCase):
+    def test_small_file_no_findings(self):
+        self.assertEqual(validate.check_context_budget("f.md", b"hello"), [])
+
+    def test_warn_threshold(self):
+        payload = b"x" * (20_000 * 4)  # ~20k est. tokens
+        findings = validate.check_context_budget("f.md", payload)
+        self.assertTrue(any(f.level == "WARN" for f in findings))
+        self.assertFalse(any(f.level == "ERROR" for f in findings))
+
+    def test_error_threshold(self):
+        payload = b"x" * (50_000 * 4)  # ~50k est. tokens
+        findings = validate.check_context_budget("f.md", payload)
+        self.assertTrue(any(f.level == "ERROR" for f in findings))
+
+    def test_est_tokens(self):
+        self.assertEqual(validate.est_tokens(4000), 1000)
+
+
 class TestGate(unittest.TestCase):
     def test_clean_stub_fixture_passes(self):
         findings = validate.validate(str(REPO / "tests" / "fixtures" / "stub"))

@@ -119,6 +119,26 @@ def check_entropy(text, path):
     return findings
 
 
+WARN_TOKENS = 20_000
+ERROR_TOKENS = 50_000
+
+
+def est_tokens(num_bytes):
+    """Measure bytes, report estimated tokens (stdlib len/4 heuristic, #13)."""
+    return num_bytes // 4
+
+
+def check_context_budget(path, data_bytes):
+    toks = est_tokens(len(data_bytes))
+    if toks >= ERROR_TOKENS:
+        return [Finding("ERROR", path, None,
+                        "context budget: ~%d est. tokens (>= %d ERROR)" % (toks, ERROR_TOKENS))]
+    if toks >= WARN_TOKENS:
+        return [Finding("WARN", path, None,
+                        "context budget: ~%d est. tokens (>= %d WARN)" % (toks, WARN_TOKENS))]
+    return []
+
+
 def iter_files(root):
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".")]
@@ -136,7 +156,7 @@ def validate(root):
             data_bytes = open(abspath, "rb").read()
         except OSError:
             continue
-        # (context-budget check added in Task 6)
+        findings += check_context_budget(rel, data_bytes)
         try:
             text = data_bytes.decode("utf-8")
         except UnicodeDecodeError:
