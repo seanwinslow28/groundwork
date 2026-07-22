@@ -6,6 +6,7 @@ Schema-specific checks (#5/#6/#7/#8) live in a later build slice; this module
 is the generic foundation: frontmatter parsing, secrets, context budget,
 referential integrity.
 """
+import fnmatch
 import math
 import os
 import re
@@ -166,13 +167,36 @@ def check_links(abspath, text, root):
     return findings
 
 
-def iter_files(root):
+def load_gitignore(root):
+    """Minimal .gitignore reader: exact names and simple globs (e.g. '*.log').
+    Enough to skip .env-style files so the gate scans (roughly) what's tracked.
+    NOT full git ignore semantics (no negation, nesting, or path anchoring) —
+    documented in docs/known-limitations.md."""
+    patterns = set()
+    gi = os.path.join(root, ".gitignore")
+    if os.path.isfile(gi):
+        with open(gi, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    patterns.add(line.rstrip("/"))
+    return patterns
+
+
+def _ignored(name, patterns):
+    return any(fnmatch.fnmatch(name, p) for p in patterns)
+
+
+def iter_files(root, ignore=()):
     for dirpath, dirnames, filenames in os.walk(root):
         rel_dir = os.path.relpath(dirpath, root)
         dirnames[:] = [d for d in dirnames
                        if d not in SKIP_DIRS and not d.startswith(".")
-                       and os.path.normpath(os.path.join(rel_dir, d)) not in SKIP_RELPATHS]
+                       and os.path.normpath(os.path.join(rel_dir, d)) not in SKIP_RELPATHS
+                       and not _ignored(d, ignore)]
         for fn in filenames:
+            if _ignored(fn, ignore):
+                continue
             yield os.path.join(dirpath, fn)
 
 
@@ -182,7 +206,8 @@ def validate(root):
     if not os.path.isdir(root):
         return [Finding("ERROR", root, None, "root does not exist or is not a directory")]
     findings = []
-    for abspath in iter_files(root):
+    ignore = load_gitignore(root)
+    for abspath in iter_files(root, ignore):
         rel = os.path.relpath(abspath, root)
         try:
             with open(abspath, "rb") as fh:

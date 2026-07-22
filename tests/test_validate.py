@@ -1,6 +1,8 @@
 import ast
+import os
 import pathlib
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "scripts"))
@@ -42,7 +44,7 @@ class TestFrontmatter(unittest.TestCase):
 
 class TestZeroDep(unittest.TestCase):
     def test_only_stdlib_imports(self):
-        allowed = {"os", "sys", "re", "ast", "math", "collections", "pathlib"}
+        allowed = {"os", "sys", "re", "ast", "math", "fnmatch", "collections", "pathlib"}
         tree = ast.parse((REPO / "scripts" / "validate.py").read_text())
         mods = set()
         for node in ast.walk(tree):
@@ -103,6 +105,17 @@ class TestGate(unittest.TestCase):
         findings = validate.validate(str(REPO / "tests" / "fixtures" / "stub"))
         errors = [f for f in findings if f.level == "ERROR"]
         self.assertEqual(errors, [], "unexpected errors: %s" % errors)
+
+
+class TestGitignore(unittest.TestCase):
+    def test_gitignored_file_is_not_scanned(self):
+        with tempfile.TemporaryDirectory() as d:
+            open(os.path.join(d, ".gitignore"), "w").write(".env\n*.log\n")
+            open(os.path.join(d, ".env"), "w").write("SECRET=AKIAIOSFODNN7EXAMPLE\n")
+            open(os.path.join(d, "app.log"), "w").write("AKIAIOSFODNN7EXAMPLE\n")
+            open(os.path.join(d, "keep.md"), "w").write("# clean\n")
+            findings = validate.validate(d)
+            self.assertEqual([f for f in findings if f.level == "ERROR"], [])
 
 
 class TestLinks(unittest.TestCase):
