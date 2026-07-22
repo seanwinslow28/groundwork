@@ -1,0 +1,88 @@
+# groundwork V1 — build-sequence design
+
+> **Workbench artifact, not product content.** This is the plan for scaffolding groundwork V1 from the locked wayfinder decisions. It lives under `docs/superpowers/` (build-workbench, distribution-safe per #10 manifest-scoping) and is superseded by the implementation plan it feeds. Date: 2026-07-22.
+
+## Context
+
+The wayfinder charting phase is complete: all 19 decision tickets on the [map](https://github.com/seanwinslow28/groundwork/issues/1) are resolved and recorded, with ubiquitous language captured in [CONTEXT.md](../../../CONTEXT.md). The way from the approved [design brief](https://github.com/seanwinslow28/code-brain/blob/376dd5af85cd25fe06bcbe3fc9c366c022a94332/docs/plans/2026-07-15-company-os-design-brief.md) (§6 multi-harness/work-packages, §7 scope ladder, §10 target layout) to a buildable V1 is charted. This document sequences the build.
+
+**V1 target (brief §7):** adoptable in an afternoon — the binding constraint is the adopter's *required path* (interview → generate → validate → provision), not repo size. The committed layout (§10): `README.md`, `AGENTS.md`, one-line `CLAUDE.md`, `.cursor/rules/`, `interview/`, `ontologies/`, `skills/`, `governance/`, `delivery/`, `demo/`, `your-company/`, `scripts/validate.py`, `docs/`.
+
+## The organizing insight
+
+The three candidate starting points — `scripts/validate.py`, `demo/`, `interview/` — are not independent. They are all **consumers of one thing that does not yet exist as files: the schema.** Every CONTEXT.md decision is a *shape* (ontology tiers #5, Owner's Card spine #6, memory frontmatter #7, proposal schema #17, version pin #21, demo canon #16). The validator *checks* that shape; the demo *instantiates* it; the interview *generates* it. Each candidate, started whole and alone, fails differently:
+
+- **Validator alone → inert.** A checker with nothing to check passes vacuously; a correct checker is indistinguishable from a broken one. (The wwf5d dead-path / corpus-void trap — a scan that scans nothing ships looking done.)
+- **Demo alone → too big.** A complete synthetic company depends on *every* schema at once — maximum surface, zero checker feedback.
+- **Interview alone → premature.** The generator produces content in the schema's shape; building it before the target shape is hand-proven means authoring a machine for an artifact never made once.
+
+**Resolution: build one vertical slice (a walking skeleton).** One function, all the way down — schema-as-files + a filled demo instance + the validator checks that govern exactly those files — then repeat horizontally, then build the generator, then honesty-gate the outward docs.
+
+## Decisions locked in this session
+
+| # | Decision | Choice | Rationale (short) |
+|---|----------|--------|-------------------|
+| D1 | First increment | **Vertical slice** (one function, schema + validator + demo instance together) | De-risks the `schema→files` translation everything inherits; later work is horizontal repetition |
+| D1a | Slice function | **People/HR → onboarding-orchestration** (automate-path, #4) | Max schema surface in one slice (common core + Substrate/Shape/Describability Gate); front-loads the trust/governance story |
+| D2 | Charting `CLAUDE.md` → product root files | **Two-move split** | *Move 1 now:* migrate build rules to `docs/agents/build-sessions.md`, retire charting language. *Move 2 at end of Phase 1:* author product `AGENTS.md`, collapse `CLAUDE.md` to `@AGENTS.md`. Two audiences (workbench vs product), honesty-safe |
+| D3 | README sequencing | **Tiered** (now / early / trailing) | Facts-about-the-world go in now; claims-about-our-software go in when true |
+| D4 | Build-session machinery | **Lightweight gate**; "one increment ends green" | Mirrors the proven charting cadence; Fable 5 builds, Codex reviews, Sean merges |
+
+**Confirmed, not reopened:** Fable 5 + Codex review gate holds (brief §9, CLAUDE.md). This planning session runs on Opus + wwf5d (planning is what wwf5d is for); build sessions run on Fable 5 directly. Codex is the review gate; the **commit bit** (Sean's merge) is the actual governance teeth (#18).
+
+## Dependency order (the spine → consumers)
+
+1. **Schema-as-files** (the grammar): ontology worksheet template, work-package spec, Owner's Card template, org-memory schema, constitution/governance templates → `ontologies/ skills/ governance/`.
+2. **`scripts/validate.py`** — co-developed; each schema file gets its checks in the same slice (can't trust a shape without a check, can't write a check without a shape).
+3. **One demo function slice** — the end-to-end vertical proof.
+4. **Rest of `demo/`** — horizontal repetition.
+5. **`interview/`** — the generator, now that the output shape is proven.
+6. **`delivery/` + `docs/` + README capability claims** — honesty-gated, last.
+7. **Root files** (`AGENTS.md`, one-line `CLAUDE.md`) — D2 Move 2, at the Phase 1→2 boundary.
+
+## Phased sequence
+
+Every session: **build one increment → `validate` green → Codex review → Sean merges → stop** ("the pull to keep going is the signal to stop"). Exact per-session increment boundaries are the *implementation-plan* deliverable, not fixed here.
+
+### Phase 0 — Workbench & honesty debt *(no product dependency)*
+- **0.1** D2 Move 1: migrate live build rules → `docs/agents/build-sessions.md`; retire charting/wayfinder language from `CLAUDE.md`. + README **Tier 0**: License → Apache-2.0 with the `your-company/` carve-out (#3); fix the "nothing is built" status line. *(Stops live trust-debt in the public README — License currently says "TBD" though #3 locked Apache-2.0.)*
+- **0.2** README **Tier 1**: #15 positioning (Sylph + clawcompany; governance lane as the one owned contrast; punch-down line; concede shared ground in the same breath) + #14 prior-art block (bottom, prose bullets, 5-source load-bearing roster, paid-content posture — link don't endorse) + the **3 brief-fact corrections** baked in: Nate's Open Skills is *paid* (open artifact is Open Brain/OB1); Aakash's Team OS isn't fully closed (public starter repo; Hannah Stulberg is the DoorDash origin); the "5 structural tests" is likely his **7-row control map**.
+
+### Phase 1 — Vertical slice / walking skeleton *(People/HR → onboarding-orchestration)*
+- **1.1** `scripts/validate.py` skeleton + hand-rolled frontmatter reader (#11: flat `---`/`key: value`/`- list`, raw strings no coercion, ERROR on unsupported syntax) + zero-dep self-check + structure / referential-integrity / secrets-floor (global, high-signal regexes #16) / context-budget (#13: bytes measured, tokens reported; WARN ~20K, ERROR ~50K; AGENTS.md chain >32 KiB hard ERROR) checks, run against a tiny stub fixture.
+- **1.2** Ontology schema files (#5 two-tier: name+Direction for every activity; deep fields only for acted-on, forked on Motion) + People/HR executive view + the onboarding-orchestration deep record (automate-path → common core + Substrate + Shape + all-8 Describability Gate) + #5 machinery-follows checks (ERROR when a field backs a running agent, WARN on incomplete thinking, silent on untouched worksheets).
+- **1.3** Work-package spec (§6: SKILL.md + harness requirements + compatibility notes + Memory row + owner) + Owner's Card template (#6: 12 spine / 3 track-2 / 2 optional; generator refuses owner/forbidden-action/death-condition) + the worked onboarding skill + its filled card + action taxonomy (read-only / reversible-write / external-side-effect / high-risk) + the fixed Claude-Code hook set (#8, high-risk hard-block, degrades to review-gate prose on other harnesses per #19) + #6 checks (strictness at provisioning; staleness warns).
+- **1.4** Org-memory schema (#7: six field groups; provenance/owner/valid_at/source always required; ERROR on missing spine / broken supersession / unsourced `confirmed`; WARN on missing/overdue review_by; body+valid_at frozen, governance fields mutable) + one baseline record (the pre-provisioning baseline #3-gate) + memory-scoped `--diff` mode.
+- **1.5** Governance: constitution templates + one compiled rule (#8: typed as one of four objects/four owners, placed on the five-rung ladder, sunset date; ERROR on no-rung-six safety invariant + orphan-prohibition + missing owner at provisioning) + the cross-cutting infra the slice forces: version pin file (#21: `schema_version` + `generated_by_commit`, root-level, independent of `interview/`), proposal schema (#17: diff/reason/evidence/blast-radius), consent-gate blast-radius `--diff` tripwire (#18: escalating change must trace to an approved proposal whose declared blast-radius matches the actual diff), demo canon file + synthetic-identifier check (#16: `demo/`-only ERROR, allowlist to canon or RFC-reserved fiction namespaces). *(Dense — expected to split across sessions in the implementation plan.)*
+- **→ D2 Move 2 (Phase 1→2 boundary):** structure is now real → author product `AGENTS.md` (navigation + interview entry, GitHub authoring standard; honestly marks `interview/` and full `demo/` as in-progress) collapse `CLAUDE.md` to the one-line `@AGENTS.md` import, and add the `.cursor/rules/*.mdc` pointers back to `AGENTS.md` (§6 root-file set). `docs/agents/build-sessions.md` continues to carry workbench rules independently.
+
+### Phase 2 — Horizontal fill *(repetition of the proven slice)*
+- **2.1** Remaining 7 executive-view ontologies (#5 exec tier: sales, CS, marketing, product, engineering, finance, legal — People/HR done in Phase 1).
+- **2.2** Remaining 2 demo deep functions — CS renewal-prep, PM feature-request-triage — as worked slices.
+- **2.3** Complete `demo/`: pre-installed synthetic ~20-person B2B SaaS + the 15-minute 3-query script (decision lookup → cross-function synthesis → skill invocation, with the rung-5 governance block firing at the end per #4) + demo canon completeness.
+
+### Phase 3 — The generator (`interview/`)
+- **3.1** Consultant protocol (§4): define-the-role-first, one-question-at-a-time (no generation until understanding complete), the evidence-based read-what-exists option, checkpoint approvals, resumable state per #9 (`interview/` folder: fixed-size `00-manifest.md` pointer + one frozen committed file per confirmed layer + a single dirty `_working.md`; confirmed-vs-provisional encoded as git structure, not agent-honored labels).
+- **3.2** The generator writes `your-company/` in the demo-proven shape (the demo is the reference target); two-repo semantics (#10: public groundwork clone stays a pull-only engine; the company OS lives in a separate private repo created as the interview's first act; validator runs from the engine clone against it).
+- **3.3** Question skeleton (intent-engineering 9-section adaptation — objective/outcomes/health-metrics/constraints/autonomy/edge-cases/stop-rules) + constitution-compiler five-question worksheet (name ritual → name scarcity → is it still real → rewrite as verifiable rule → decide machinery).
+
+### Phase 4 — Finish-artifact bar & provisioning
+- **4.1** `delivery/`: org-skills zip provisioning guide (V2 Cowork plugin/marketplace path *documented as V2*, not built).
+- **4.2** README **Tier 2**: capability claims turn on — "Not technical? Point your agent at this repo" first-section move, demo walkthrough, `validate` usage.
+- **4.3** `docs/`: Known Limitations (synthetic ceiling #16, commit-bit teeth limit #18, ~70% skill auto-invocation), security/privacy section, versioned roadmap, `LICENSE` file (Apache-2.0, #3).
+
+## Scope boundaries (what this build does NOT include)
+
+Per the map's "Not yet specified" (V2/V3 fog) and "Out of scope":
+- **V2, documented-not-built:** Classify→Consent→Enforce compliance pack; Cowork plugin packaging / GitHub-synced marketplace walkthrough; morning-Slack-briefing pattern; truth-layer schema; runnable learning-loop skills (session-to-skill extraction, improvement-proposal skill); runnable rung-3 reminder generation; governed *autonomous* application; cross-harness runtime-enforcement parity.
+- **V3:** re-interview / drift flow; per-function deepening; adoption scoreboard as coordination-tax-removed; evals/traces recipe.
+- **Never (brief §7):** hosted anything, dashboards, per-seat features, an agent runtime, a memory/retrieval engine. groundwork is files — conventions + validator checks only.
+- **One worked runnable exemplar** ships in the demo per #8 (the meeting-challenger, compatibility-noted, copy-me reference — *not* generated) to make the V2 path concrete without building V2.
+
+## Success criteria for the V1 build
+
+- The adopter's required path runs end-to-end: `interview/` generates a `your-company/` in the demo-proven shape; `scripts/validate.py` passes on it; a provisioning guide exists.
+- `demo/` runs the 15-minute 3-query script with zero credentials, including the rung-5 governance block.
+- `scripts/validate.py` is Python-3-stdlib-only (zero third-party deps; self-checked), and every #5/#6/#7/#8/#16/#18/#21 ERROR/WARN rule fires where CONTEXT.md says it should.
+- The README is honest at every stage: no capability claim precedes the capability; positioning concedes shared ground; prior art credits by name with paid/free stated straight.
+- Root files match §6: `AGENTS.md` canonical, one-line `CLAUDE.md` import, `.cursor/rules/` pointers; drift between them is a validator check.
