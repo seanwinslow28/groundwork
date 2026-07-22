@@ -209,6 +209,58 @@ def parse_exec_table(text):
     return rows
 
 
+def check_deep_record(abspath, root):
+    """#5 machinery-follows checks for one acted-on activity's deep record."""
+    rel = os.path.relpath(abspath, root)
+    with open(abspath, encoding="utf-8") as fh:
+        text = fh.read()
+    data, findings = parse_frontmatter(text, rel)
+    findings = list(findings)
+    if not data:
+        findings.append(Finding("WARN", rel, None,
+                                "acted-on activity has no structured fields yet (incomplete thinking)"))
+        return findings
+
+    motion = data.get("motion")
+    if motion is None:
+        findings.append(Finding("WARN", rel, None, "missing 'motion' (incomplete thinking)"))
+    elif motion not in MOTIONS:
+        findings.append(Finding("ERROR", rel, None,
+                                "invalid motion %r (one of %s)" % (motion, sorted(MOTIONS))))
+    on_automation = motion in AUTOMATION_MOTIONS
+
+    def require(field, valid=None):
+        v = data.get(field)
+        missing_level = "ERROR" if on_automation else "WARN"
+        if v is None or (isinstance(v, str) and v.strip() == ""):
+            findings.append(Finding(missing_level, rel, None, "missing '%s'" % field))
+        elif valid is not None and v not in valid:
+            findings.append(Finding("ERROR", rel, None,
+                                    "invalid '%s' %r (one of %s)" % (field, v, sorted(valid))))
+
+    require("work_type", WORK_TYPES)
+    require("accountable_owner")
+    for sf in SCORE_FIELDS:
+        require(sf, SCORE_VALUES)
+
+    if on_automation:
+        require("substrate")
+        require("shape", SHAPES)
+        for gf in GATE_FIELDS:
+            v = data.get(gf)
+            if not isinstance(v, str):
+                findings.append(Finding("ERROR", rel, None,
+                                        "Describability Gate: '%s' must be a single answered value" % gf))
+            elif v.strip() == "":
+                findings.append(Finding("ERROR", rel, None,
+                                        "Describability Gate: '%s' must be answered ('none' is valid; blank is not)" % gf))
+            elif v.strip().lower() in {"n/a", "na", "tbd"}:
+                findings.append(Finding("ERROR", rel, None,
+                                        "Describability Gate: '%s' is %r — must be answered "
+                                        "('none' is valid; 'N/A' is not, no waiver)" % (gf, v)))
+    return findings
+
+
 def load_gitignore(root):
     """Minimal .gitignore reader: exact names and simple globs (e.g. '*.log').
     Enough to skip .env-style files so the gate scans (roughly) what's tracked.
