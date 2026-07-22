@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+"""groundwork validator — Python stdlib only (zero third-party deps, enforced).
+
+Walks a repo tree and reports ERROR/WARN Findings. ERROR fails the gate.
+Schema-specific checks (#5/#6/#7/#8) live in a later build slice; this module
+is the generic foundation: frontmatter parsing, secrets, context budget,
+referential integrity.
+"""
+import os
+import re
+import sys
+from collections import namedtuple
+
+Finding = namedtuple("Finding", ["level", "path", "line", "message"])
+
+SKIP_DIRS = {".git", ".remember", "__pycache__"}
+
+
+def parse_frontmatter(text, path="<unknown>"):
+    """Parse a restricted frontmatter block. Returns (dict, list[Finding]).
+
+    Grammar (flat subset only): a leading '---' line, then lines that are
+    'key: value', 'key:' (introducing a list), '- item' list elements, blank,
+    or '# comment', terminated by a closing '---'. Every scalar is returned as
+    a RAW STRING (no type coercion — field validators own all typing, which
+    sidesteps the Norway/date-coercion problems). Any other syntax ERRORs.
+    """
+    findings = []
+    lines = text.split("\n")
+    if not lines or lines[0].strip() != "---":
+        return {}, findings  # no frontmatter block is not itself an error
+    data = {}
+    current_key = None
+    closed = False
+    i = 1
+    while i < len(lines):
+        raw = lines[i]
+        line_no = i + 1
+        stripped = raw.strip()
+        if stripped == "---":
+            closed = True
+            break
+        if stripped == "" or stripped.startswith("#"):
+            i += 1
+            continue
+        if stripped.startswith("- "):
+            if current_key is None:
+                findings.append(Finding("ERROR", path, line_no, "list item with no preceding key"))
+            elif not isinstance(data.get(current_key), list):
+                findings.append(Finding("ERROR", path, line_no,
+                                        "list item under scalar key '%s'" % current_key))
+            else:
+                data[current_key].append(stripped[2:].strip())
+            i += 1
+            continue
+        if raw.startswith((" ", "\t")):
+            findings.append(Finding("ERROR", path, line_no,
+                                    "unsupported indented frontmatter syntax: %r" % raw))
+            i += 1
+            continue
+        if ":" in raw:
+            key, _, value = raw.partition(":")
+            key, value = key.strip(), value.strip()
+            if key == "":
+                findings.append(Finding("ERROR", path, line_no, "empty frontmatter key"))
+            elif value == "":
+                data[key] = []          # a list is expected to follow
+                current_key = key
+            else:
+                data[key] = value       # raw string, no coercion
+                current_key = key
+            i += 1
+            continue
+        findings.append(Finding("ERROR", path, line_no,
+                                "unsupported frontmatter syntax: %r" % raw))
+        i += 1
+    if not closed:
+        findings.append(Finding("ERROR", path, len(lines),
+                                "frontmatter block opened with '---' but never closed"))
+    return data, findings
+
+
+def iter_files(root):
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".")]
+        for fn in filenames:
+            yield os.path.join(dirpath, fn)
+
+
+def validate(root):
+    """Walk root, run every check, return a flat list[Finding]."""
+    root = os.path.abspath(root)
+    findings = []
+    for abspath in iter_files(root):
+        rel = os.path.relpath(abspath, root)
+        try:
+            data_bytes = open(abspath, "rb").read()
+        except OSError:
+            continue
+        # (context-budget check added in Task 6)
+        try:
+            text = data_bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+        # (secrets check added in Task 5; link check added in Task 7)
+    return findings
+
+
+def main(argv):
+    root = argv[1] if len(argv) > 1 else "."
+    findings = validate(root)
+    errors = [f for f in findings if f.level == "ERROR"]
+    warns = [f for f in findings if f.level == "WARN"]
+    for f in findings:
+        loc = f.path + ((":%d" % f.line) if f.line else "")
+        print("%-5s %s  %s" % (f.level, loc, f.message))
+    print("\n%d error(s), %d warning(s)" % (len(errors), len(warns)))
+    return 1 if errors else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

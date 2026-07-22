@@ -1,0 +1,66 @@
+import ast
+import pathlib
+import sys
+import unittest
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "scripts"))
+import validate  # noqa: E402
+
+REPO = pathlib.Path(__file__).resolve().parent.parent
+
+
+class TestFrontmatter(unittest.TestCase):
+    def test_scalars_are_raw_strings_no_coercion(self):
+        text = "---\nowner: Ada\ncount: 7\nswitch: yes\n---\nbody\n"
+        data, findings = validate.parse_frontmatter(text)
+        self.assertEqual(data["owner"], "Ada")
+        self.assertEqual(data["count"], "7")     # NOT int 7
+        self.assertEqual(data["switch"], "yes")   # NOT bool True (Norway problem)
+        self.assertEqual(findings, [])
+
+    def test_list_values(self):
+        text = "---\nallowed:\n  - read\n  - write\n---\n"
+        data, findings = validate.parse_frontmatter(text)
+        self.assertEqual(data["allowed"], ["read", "write"])
+        self.assertEqual(findings, [])
+
+    def test_value_with_colon_keeps_full_value(self):
+        text = "---\nsource: https://example.com/x\n---\n"
+        data, _ = validate.parse_frontmatter(text)
+        self.assertEqual(data["source"], "https://example.com/x")
+
+    def test_unsupported_syntax_errors_with_line(self):
+        text = "---\nowner: Ada\n\tnested: bad\n---\n"
+        _, findings = validate.parse_frontmatter(text, "f.md")
+        self.assertTrue(any(f.level == "ERROR" and f.line == 3 for f in findings))
+
+    def test_unclosed_block_errors(self):
+        text = "---\nowner: Ada\nbody with no close\n"
+        _, findings = validate.parse_frontmatter(text, "f.md")
+        self.assertTrue(any("never closed" in f.message for f in findings))
+
+
+class TestZeroDep(unittest.TestCase):
+    def test_only_stdlib_imports(self):
+        allowed = {"os", "sys", "re", "ast", "math", "collections", "pathlib"}
+        tree = ast.parse((REPO / "scripts" / "validate.py").read_text())
+        mods = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for n in node.names:
+                    mods.add(n.name.split(".")[0])
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                mods.add(node.module.split(".")[0])
+        extra = mods - allowed
+        self.assertEqual(extra, set(), "non-stdlib imports: %s" % extra)
+
+
+class TestGate(unittest.TestCase):
+    def test_clean_stub_fixture_passes(self):
+        findings = validate.validate(str(REPO / "tests" / "fixtures" / "stub"))
+        errors = [f for f in findings if f.level == "ERROR"]
+        self.assertEqual(errors, [], "unexpected errors: %s" % errors)
+
+
+if __name__ == "__main__":
+    unittest.main()
