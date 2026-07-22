@@ -179,11 +179,14 @@ def iter_files(root):
 def validate(root):
     """Walk root, run every check, return a flat list[Finding]."""
     root = os.path.abspath(root)
+    if not os.path.isdir(root):
+        return [Finding("ERROR", root, None, "root does not exist or is not a directory")]
     findings = []
     for abspath in iter_files(root):
         rel = os.path.relpath(abspath, root)
         try:
-            data_bytes = open(abspath, "rb").read()
+            with open(abspath, "rb") as fh:
+                data_bytes = fh.read()
         except OSError:
             continue
         findings += check_context_budget(rel, data_bytes)

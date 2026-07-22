@@ -94,6 +94,11 @@ class TestBudget(unittest.TestCase):
 
 
 class TestGate(unittest.TestCase):
+    def test_missing_root_errors(self):
+        findings = validate.validate(str(REPO / "tests" / "fixtures" / "no-such-dir"))
+        self.assertTrue(any(f.level == "ERROR" and "not a directory" in f.message
+                            for f in findings))
+
     def test_clean_stub_fixture_passes(self):
         findings = validate.validate(str(REPO / "tests" / "fixtures" / "stub"))
         errors = [f for f in findings if f.level == "ERROR"]
