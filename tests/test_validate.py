@@ -55,6 +55,25 @@ class TestZeroDep(unittest.TestCase):
         self.assertEqual(extra, set(), "non-stdlib imports: %s" % extra)
 
 
+class TestSecrets(unittest.TestCase):
+    def test_aws_key_errors(self):
+        # AWS's own documentation example key — safe to hardcode.
+        findings = validate.check_secrets("key = AKIAIOSFODNN7EXAMPLE\n", "f.md")
+        self.assertTrue(any(f.level == "ERROR" for f in findings))
+
+    def test_private_key_header_errors(self):
+        findings = validate.check_secrets("-----BEGIN OPENSSH PRIVATE KEY-----\n", "f.md")
+        self.assertTrue(any(f.level == "ERROR" for f in findings))
+
+    def test_clean_text_no_findings(self):
+        self.assertEqual(validate.check_secrets("owner: Ada\n", "f.md"), [])
+
+    def test_high_entropy_warns_not_errors(self):
+        blob = "TOKEN=" + "aB3dE5fH7jK9mN1pQ3sU5wX7zA9cE1gI3kM5oQ7s"  # 40 chars
+        findings = validate.check_entropy(blob + "\n", "f.md")
+        self.assertTrue(all(f.level == "WARN" for f in findings))
+
+
 class TestGate(unittest.TestCase):
     def test_clean_stub_fixture_passes(self):
         findings = validate.validate(str(REPO / "tests" / "fixtures" / "stub"))

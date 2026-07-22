@@ -6,6 +6,7 @@ Schema-specific checks (#5/#6/#7/#8) live in a later build slice; this module
 is the generic foundation: frontmatter parsing, secrets, context budget,
 referential integrity.
 """
+import math
 import os
 import re
 import sys
@@ -80,6 +81,44 @@ def parse_frontmatter(text, path="<unknown>"):
     return data, findings
 
 
+SECRET_PATTERNS = [
+    ("AWS access key id", re.compile(r"AKIA[0-9A-Z]{16}")),
+    ("private key header", re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |PGP |DSA )?PRIVATE KEY-----")),
+    ("GitHub token", re.compile(r"ghp_[A-Za-z0-9]{36}")),
+    ("Slack token", re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}")),
+    ("OpenAI-style API key", re.compile(r"sk-[A-Za-z0-9]{20,}")),
+]
+_HIGH_ENTROPY = re.compile(r"[A-Za-z0-9+/=_-]{40,}")
+
+
+def check_secrets(text, path):
+    """High-signal, not exhaustive. Global ERROR — a leaked credential is
+    dangerous everywhere (unlike the demo-only synthetic rule, #16)."""
+    findings = []
+    for lineno, line in enumerate(text.split("\n"), 1):
+        for label, pat in SECRET_PATTERNS:
+            if pat.search(line):
+                findings.append(Finding("ERROR", path, lineno,
+                                        "possible %s (high-signal, not exhaustive)" % label))
+    return findings
+
+
+def _shannon_entropy(s):
+    if not s:
+        return 0.0
+    return -sum((s.count(c) / len(s)) * math.log2(s.count(c) / len(s)) for c in set(s))
+
+
+def check_entropy(text, path):
+    findings = []
+    for lineno, line in enumerate(text.split("\n"), 1):
+        for tok in _HIGH_ENTROPY.findall(line):
+            if _shannon_entropy(tok) >= 4.0:
+                findings.append(Finding("WARN", path, lineno,
+                                        "high-entropy string (possible secret; high-signal, not exhaustive)"))
+    return findings
+
+
 def iter_files(root):
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".")]
@@ -102,7 +141,9 @@ def validate(root):
             text = data_bytes.decode("utf-8")
         except UnicodeDecodeError:
             continue
-        # (secrets check added in Task 5; link check added in Task 7)
+        findings += check_secrets(text, rel)
+        findings += check_entropy(text, rel)
+        # (link check added in Task 7)
     return findings
 
 
