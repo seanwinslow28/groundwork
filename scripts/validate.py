@@ -15,6 +15,11 @@ from collections import namedtuple
 Finding = namedtuple("Finding", ["level", "path", "line", "message"])
 
 SKIP_DIRS = {".git", ".remember", "__pycache__"}
+# Non-content trees, relative to the validated root: the validator's own test
+# harness (deliberately-poisoned fixtures + documented-example secret patterns)
+# and the build-workbench docs (specs/plans that quote that poison verbatim).
+# Everything else is checked at full strictness.
+SKIP_RELPATHS = {"tests", os.path.join("docs", "superpowers")}
 
 
 def parse_frontmatter(text, path="<unknown>"):
@@ -139,9 +144,34 @@ def check_context_budget(path, data_bytes):
     return []
 
 
+_LINK = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
+
+
+def check_links(abspath, text, root):
+    """ERROR on broken relative markdown links. External and anchor-only
+    links are skipped (referential integrity, brief §10 validator)."""
+    findings = []
+    base = os.path.dirname(abspath)
+    for lineno, line in enumerate(text.split("\n"), 1):
+        for target in _LINK.findall(line):
+            if target.startswith(("http://", "https://", "mailto:", "#")):
+                continue
+            path_part = target.split("#", 1)[0]
+            if not path_part:
+                continue
+            resolved = os.path.normpath(os.path.join(base, path_part))
+            if not os.path.exists(resolved):
+                findings.append(Finding("ERROR", os.path.relpath(abspath, root), lineno,
+                                        "broken relative link: %s" % target))
+    return findings
+
+
 def iter_files(root):
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".")]
+        rel_dir = os.path.relpath(dirpath, root)
+        dirnames[:] = [d for d in dirnames
+                       if d not in SKIP_DIRS and not d.startswith(".")
+                       and os.path.normpath(os.path.join(rel_dir, d)) not in SKIP_RELPATHS]
         for fn in filenames:
             yield os.path.join(dirpath, fn)
 
@@ -163,7 +193,8 @@ def validate(root):
             continue
         findings += check_secrets(text, rel)
         findings += check_entropy(text, rel)
-        # (link check added in Task 7)
+        if abspath.endswith(".md"):
+            findings += check_links(abspath, text, root)
     return findings
 
 

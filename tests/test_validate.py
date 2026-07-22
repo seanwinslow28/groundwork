@@ -100,5 +100,24 @@ class TestGate(unittest.TestCase):
         self.assertEqual(errors, [], "unexpected errors: %s" % errors)
 
 
+class TestLinks(unittest.TestCase):
+    def test_broken_relative_link_errors(self):
+        findings = validate.validate(str(REPO / "tests" / "fixtures" / "broken"))
+        self.assertTrue(any(f.level == "ERROR" and "broken" in f.message.lower()
+                            for f in findings))
+
+    def test_stub_fixture_valid_link_ok(self):
+        # good.md -> linked.md resolves; no link ERRORs in the clean stub.
+        findings = validate.validate(str(REPO / "tests" / "fixtures" / "stub"))
+        self.assertFalse(any("broken" in f.message.lower() for f in findings))
+
+    def test_external_links_skipped(self):
+        findings = validate.check_links(
+            str(REPO / "README.md"),
+            "see [x](https://example.com) and [y](#anchor)",
+            str(REPO))
+        self.assertEqual(findings, [])
+
+
 if __name__ == "__main__":
     unittest.main()
