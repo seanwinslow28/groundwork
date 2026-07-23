@@ -339,6 +339,8 @@ def check_ontology(root, ignore=()):
     return findings
 
 
+PROVENANCE = {"observed", "inferred", "confirmed", "superseded"}
+
 ACTION_CLASSES = {"read-only", "reversible-write", "external-side-effect", "high-risk"}
 TRACK2_CLASSES = {"external-side-effect", "high-risk"}
 CARD_REQUIRED = ["owner", "backup_owner", "job",
@@ -381,6 +383,7 @@ def check_owner_cards(root, ignore=()):
         return findings
     today = datetime.date.today()
     ontologies_root = os.path.realpath(os.path.join(root, "ontologies"))
+    memory_record_realpaths = None
     for name in sorted(os.listdir(base)):
         sdir = os.path.join(base, name)
         rel_sdir = os.path.relpath(sdir, root)
@@ -437,6 +440,27 @@ def check_owner_cards(root, ignore=()):
                 "skill provisioned must be a single 'yes' or 'no' value"))
         provisioned = isinstance(provisioned_value, str) and \
             provisioned_value.strip().lower() == "yes"
+
+        if provisioned:
+            baseline = skill_fm.get("baseline")
+            if _blank(baseline):
+                findings.append(Finding("ERROR", rel_skill, None,
+                                        "provisioned skill must cite a captured 'baseline' (#5 provisioning gate)"))
+            elif not isinstance(baseline, str):
+                findings.append(Finding("ERROR", rel_skill, None,
+                                        "skill baseline must be a single value"))
+            else:
+                if memory_record_realpaths is None:
+                    memory_record_realpaths = _live_record_realpaths(
+                        _memory_record_files(root))
+                baseline_real = _record_ref_realpath(root, baseline)
+                if baseline_real is None or \
+                        baseline_real not in memory_record_realpaths:
+                    findings.append(Finding(
+                        "ERROR", rel_skill, None,
+                        "baseline record not found (must be a repo-relative "
+                        "path resolving to a memory record): %s"
+                        % baseline.strip()))
 
         action_class = skill_fm.get("action_class")
         if not isinstance(action_class, str):
@@ -629,6 +653,145 @@ def check_owner_cards(root, ignore=()):
     return findings
 
 
+def _memory_record_files(root):
+    out = []
+    for abspath in iter_files(root, load_gitignore(root)):
+        rel = os.path.relpath(abspath, root).replace("\\", "/")
+        parts = rel.split("/")
+        if "memory" in parts and abspath.endswith(".md") \
+                and os.path.basename(abspath) not in {"_index.md", "README.md"}:
+            out.append(abspath)
+    return out
+
+
+def _record_ref_realpath(root, ref):
+    """Resolve a memory-record reference. None if the literal path is absolute
+    or escapes the repo root (the schema says repo-relative), or unresolvable.
+    Drive-letter ('C:...') and UNC ('\\\\server') literals are rejected on every
+    platform — a repo-relative record path never looks like either."""
+    ref = ref.strip()
+    if os.path.isabs(ref) or ref.startswith(("\\\\", "//")) \
+            or re.match(r"[A-Za-z]:", ref):
+        return None
+    norm = os.path.normpath(ref).replace("\\", "/")
+    if norm == ".." or norm.startswith("../"):
+        return None
+    try:
+        return os.path.realpath(os.path.join(root, ref))
+    except (OSError, ValueError):
+        return None
+
+
+def _live_record_realpaths(records):
+    """The reference allowlist: real paths of non-symlink records only, so a
+    symlinked record cannot smuggle an out-of-tree target into the set."""
+    return {os.path.realpath(p) for p in records if not os.path.islink(p)}
+
+
+def check_memory(root):
+    """#7 record-level shape checks. Nothing is silent at record level."""
+    findings = []
+    records = _memory_record_files(root)
+    record_realpaths = _live_record_realpaths(records)
+    symlinked = {p for p in records if os.path.islink(p)}
+    for abspath in records:
+        rel = os.path.relpath(abspath, root)
+        if abspath in symlinked:
+            findings.append(Finding("ERROR", rel, None,
+                                    "memory record must not be a symlink"))
+            continue
+        data, fm = _load_frontmatter(abspath, rel)
+        findings += fm
+        if data is None:
+            continue
+
+        prov = data.get("provenance")
+        if _blank(prov):
+            findings.append(Finding("ERROR", rel, None, "missing 'provenance'"))
+        elif not (isinstance(prov, str) and prov in PROVENANCE):
+            findings.append(Finding("ERROR", rel, None,
+                                    "invalid 'provenance' %r (one of %s)" % (prov, sorted(PROVENANCE))))
+
+        owner = data.get("owner")
+        if _blank(owner):
+            findings.append(Finding("ERROR", rel, None, "missing 'owner' (an unowned memory is ungoverned drift)"))
+        elif not isinstance(owner, str):
+            findings.append(Finding("ERROR", rel, None, "'owner' must be a single value"))
+
+        if _blank(data.get("valid_at")) or _parse_date(data.get("valid_at")) is None:
+            findings.append(Finding("ERROR", rel, None, "missing or unparseable 'valid_at' (ISO date)"))
+
+        source_blank = _blank(data.get("source"))
+        if source_blank and prov == "confirmed":
+            findings.append(Finding("ERROR", rel, None, "'confirmed' record has no 'source' (confirmation must cite evidence)"))
+        elif source_blank:
+            findings.append(Finding("WARN", rel, None, "missing 'source' (push toward evidence)"))
+
+        if _blank(data.get("review_by")):
+            findings.append(Finding("WARN", rel, None, "missing 'review_by' (staleness)"))
+        else:
+            rb = _parse_date(data.get("review_by"))
+            if rb is None:
+                findings.append(Finding("WARN", rel, None,
+                                        "'review_by' is not an ISO date (YYYY-MM-DD)"))
+            elif rb < datetime.date.today():
+                findings.append(Finding("WARN", rel, None, "'review_by' has passed (staleness)"))
+
+        # supersession invariants
+        is_sup = prov == "superseded"
+        has_sb = not _blank(data.get("superseded_by"))
+        has_ia = not _blank(data.get("invalid_at"))
+        if is_sup and not (has_sb and has_ia):
+            findings.append(Finding("ERROR", rel, None,
+                                    "superseded record must carry both 'superseded_by' and 'invalid_at'"))
+        if not is_sup and (has_sb or has_ia):
+            findings.append(Finding("ERROR", rel, None,
+                                    "supersession fields (invalid_at/superseded_by) are forbidden on a live record"))
+        if has_ia and _parse_date(data.get("invalid_at")) is None:
+            findings.append(Finding("ERROR", rel, None, "unparseable 'invalid_at' (ISO date)"))
+        if has_sb:
+            target = data.get("superseded_by")
+            if not isinstance(target, str):
+                findings.append(Finding("ERROR", rel, None, "'superseded_by' must be a single value"))
+            else:
+                target_real = _record_ref_realpath(root, target)
+                if target_real is None or target_real not in record_realpaths:
+                    findings.append(Finding(
+                        "ERROR", rel, None,
+                        "dangling 'superseded_by' pointer (must be a repo-relative "
+                        "path resolving to a memory record): %s" % target))
+
+    # index cross-check: live records must appear in their memory/_index.md
+    for abspath in iter_files(root, load_gitignore(root)):
+        if os.path.basename(abspath) != "_index.md":
+            continue
+        rel = os.path.relpath(abspath, root).replace("\\", "/")
+        if "memory" not in rel.split("/"):
+            continue
+        mem_dir = os.path.dirname(abspath)
+        index_text, idx_findings = _read_utf8(abspath, rel)
+        findings += idx_findings
+        if index_text is None:
+            continue
+        linked = {os.path.normpath(os.path.join(mem_dir, t.split("#", 1)[0]))
+                  for t in _LINK.findall(index_text)
+                  if not t.startswith(("http://", "https://", "mailto:", "#"))}
+        for rec in records:
+            if rec in symlinked:
+                continue  # already an ERROR in the record pass
+            if os.path.dirname(rec) != mem_dir and not rec.startswith(mem_dir + os.sep):
+                continue
+            data, _discard = _load_frontmatter(rec, os.path.relpath(rec, root))
+            if data is None:
+                continue  # unreadable — already reported in the record pass
+            if data.get("provenance") == "superseded":
+                continue  # history, silent
+            if os.path.normpath(rec) not in linked:
+                findings.append(Finding("WARN", os.path.relpath(rec, root), None,
+                                        "live record not in the index (dark, not lying)"))
+    return findings
+
+
 def load_gitignore(root):
     """Minimal .gitignore reader: exact names and simple globs (e.g. '*.log').
     Enough to skip .env-style files so the gate scans (roughly) what's tracked.
@@ -687,6 +850,7 @@ def validate(root):
             findings += check_links(abspath, text, root)
     findings += check_ontology(root, ignore)
     findings += check_owner_cards(root, ignore)
+    findings += check_memory(root)
     return findings
 
 

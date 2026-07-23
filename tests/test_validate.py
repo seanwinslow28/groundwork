@@ -394,8 +394,14 @@ def _write_package(d, skill=SKILL_OK, card=CARD_OK, ont=AUTOMATE_OK,
 
 class TestOwnerCard(unittest.TestCase):
     def test_complete_provisioned_card_clean(self):
+        # A complete provisioned package includes the #5 baseline citation
+        # (Slice 1.4 provisioning gate).
         with tempfile.TemporaryDirectory() as d:
-            _write_package(d)
+            skill = SKILL_OK.replace(
+                "provisioned: yes",
+                "provisioned: yes\nbaseline: memory/onboarding-baseline.md")
+            _write_package(d, skill=skill)
+            _write(d, "memory/onboarding-baseline.md", MEM_OK)
             errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
             self.assertEqual(errs, [])
 
@@ -807,6 +813,332 @@ class TestCardDrift(unittest.TestCase):
                 card=_replace_field(CARD_OK, "owner", "Wrong"))
             errs = [f for f in validate.validate(d) if f.level == "ERROR"]
             self.assertTrue(any("owner" in f.message for f in errs))
+
+
+MEM_OK = """---
+provenance: observed
+owner: Head of People
+valid_at: 2026-07-15
+review_by: 2099-10-15
+source: The People team's Q2 onboarding tracker (12 hires)
+---
+# Onboarding baseline
+Median time-to-day-one-ready: 4 business days.
+"""
+
+
+class TestMemory(unittest.TestCase):
+    def test_valid_record_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/onboarding-baseline.md", MEM_OK)
+            self.assertEqual([f for f in validate.check_memory(d) if f.level == "ERROR"], [])
+
+    def test_bad_provenance_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/x.md", MEM_OK.replace("provenance: observed", "provenance: guessed"))
+            self.assertTrue(any(f.level == "ERROR" and "provenance" in f.message
+                                for f in validate.check_memory(d)))
+
+    def test_missing_owner_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/x.md", MEM_OK.replace("owner: Head of People\n", ""))
+            self.assertTrue(any(f.level == "ERROR" and "owner" in f.message
+                                for f in validate.check_memory(d)))
+
+    def test_unparseable_valid_at_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/x.md", MEM_OK.replace("valid_at: 2026-07-15", "valid_at: last Tuesday"))
+            self.assertTrue(any(f.level == "ERROR" and "valid_at" in f.message
+                                for f in validate.check_memory(d)))
+
+    def test_confirmed_without_source_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            rec = MEM_OK.replace("provenance: observed", "provenance: confirmed").replace(
+                "source: The People team's Q2 onboarding tracker (12 hires)\n", "")
+            _write(d, "memory/x.md", rec)
+            self.assertTrue(any(f.level == "ERROR" and "source" in f.message
+                                for f in validate.check_memory(d)))
+
+    def test_observed_without_source_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            rec = MEM_OK.replace("source: The People team's Q2 onboarding tracker (12 hires)\n", "")
+            _write(d, "memory/x.md", rec)
+            findings = validate.check_memory(d)
+            self.assertTrue(any(f.level == "WARN" and "source" in f.message for f in findings))
+            self.assertFalse(any(f.level == "ERROR" and "source" in f.message for f in findings))
+
+    def test_supersession_fields_on_live_record_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/x.md", MEM_OK.replace("review_by: 2099-10-15",
+                                                    "review_by: 2099-10-15\ninvalid_at: 2026-08-01"))
+            self.assertTrue(any(f.level == "ERROR" and "live record" in f.message
+                                for f in validate.check_memory(d)))
+
+    def test_superseded_missing_pointer_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            rec = MEM_OK.replace("provenance: observed", "provenance: superseded")
+            _write(d, "memory/x.md", rec)  # no invalid_at / superseded_by
+            self.assertTrue(any(f.level == "ERROR" and "supersed" in f.message.lower()
+                                for f in validate.check_memory(d)))
+
+    def test_dangling_superseded_by_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            rec = MEM_OK.replace("provenance: observed", "provenance: superseded")
+            rec = rec.replace("review_by: 2099-10-15",
+                              "review_by: 2099-10-15\ninvalid_at: 2026-08-01\nsuperseded_by: memory/nope.md")
+            _write(d, "memory/x.md", rec)
+            self.assertTrue(any(f.level == "ERROR" and "dangling" in f.message.lower()
+                                for f in validate.check_memory(d)))
+
+    def test_non_utf8_memory_record_errors_instead_of_crashing(self):
+        # Codex review: unreadable records must yield findings, not exceptions.
+        with tempfile.TemporaryDirectory() as d:
+            _write_bytes(d, "memory/x.md", b"\xff\xfe")
+            errs = [f for f in validate.check_memory(d) if f.level == "ERROR"]
+            self.assertTrue(any("UTF-8" in f.message for f in errs))
+
+    def test_non_scalar_owner_errors(self):
+        # Codex review: a list-valued owner must not pass as non-blank.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/x.md",
+                   MEM_OK.replace("owner: Head of People", "owner:\n  - Head of People"))
+            self.assertTrue(any(f.level == "ERROR" and "owner" in f.message
+                                and "single value" in f.message
+                                for f in validate.check_memory(d)))
+
+    def test_unparseable_review_by_warns(self):
+        # Codex review: nothing is silent — a present-but-unparseable review_by WARNs.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/x.md", MEM_OK.replace("review_by: 2099-10-15", "review_by: someday"))
+            self.assertTrue(any(f.level == "WARN" and "review_by" in f.message
+                                and "ISO date" in f.message
+                                for f in validate.check_memory(d)))
+
+    def test_non_scalar_superseded_by_errors(self):
+        # Codex review: a list-valued superseded_by must not satisfy the invariant silently.
+        with tempfile.TemporaryDirectory() as d:
+            rec = MEM_OK.replace("provenance: observed", "provenance: superseded")
+            rec = rec.replace("review_by: 2099-10-15",
+                              "review_by: 2099-10-15\ninvalid_at: 2026-08-01\nsuperseded_by:\n  - memory/new.md")
+            _write(d, "memory/x.md", rec)
+            self.assertTrue(any(f.level == "ERROR" and "superseded_by" in f.message
+                                and "single value" in f.message
+                                for f in validate.check_memory(d)))
+
+    def test_superseded_by_non_memory_target_errors(self):
+        # Codex review: the pointer must resolve to a memory record, not just any file.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "README.md", "# not a memory record\n")
+            rec = MEM_OK.replace("provenance: observed", "provenance: superseded")
+            rec = rec.replace("review_by: 2099-10-15",
+                              "review_by: 2099-10-15\ninvalid_at: 2026-08-01\nsuperseded_by: README.md")
+            _write(d, "memory/x.md", rec)
+            self.assertTrue(any(f.level == "ERROR" and "dangling" in f.message.lower()
+                                for f in validate.check_memory(d)))
+
+    def test_superseded_by_absolute_or_reentering_path_errors(self):
+        # Codex review: the schema says repo-relative — an absolute path or a
+        # ../ alias that re-enters the repo must not satisfy the pointer even
+        # when it resolves to a real record.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/new.md", MEM_OK)
+            for target in (os.path.join(d, "memory/new.md"),
+                           "../%s/memory/new.md" % os.path.basename(d)):
+                with self.subTest(target=target):
+                    rec = MEM_OK.replace("provenance: observed", "provenance: superseded")
+                    rec = rec.replace(
+                        "review_by: 2099-10-15",
+                        "review_by: 2099-10-15\ninvalid_at: 2026-08-01\nsuperseded_by: %s" % target)
+                    _write(d, "memory/x.md", rec)
+                    self.assertTrue(any(f.level == "ERROR" and "dangling" in f.message.lower()
+                                        for f in validate.check_memory(d)))
+
+    def test_symlinked_memory_record_errors_and_poisons_nothing(self):
+        # Codex review: a symlinked record is an ERROR, and its external target
+        # must not enter the reference allowlist.
+        with tempfile.TemporaryDirectory() as d:
+            with tempfile.TemporaryDirectory() as outside:
+                target = _write(outside, "escaped.md", MEM_OK)
+                os.makedirs(os.path.join(d, "memory"))
+                os.symlink(target, os.path.join(d, "memory", "x.md"))
+                findings = validate.check_memory(d)
+                self.assertTrue(any(f.level == "ERROR" and "symlink" in f.message
+                                    for f in findings))
+
+    def test_record_ref_rejects_drive_relative_and_unc_literals(self):
+        # Codex review: Windows drive-relative ('C:..\\repo\\...') and UNC
+        # literals dodge both the POSIX isabs and '../' checks; the guard is
+        # literal and platform-independent, so unit-test the helper directly.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/x.md", MEM_OK)
+            for ref in (r"C:..\%s\memory\x.md" % os.path.basename(d),
+                        "C:memory/x.md",
+                        r"\\server\share\memory\x.md",
+                        "//server/share/memory/x.md"):
+                with self.subTest(ref=ref):
+                    self.assertIsNone(validate._record_ref_realpath(d, ref))
+            self.assertIsNotNone(validate._record_ref_realpath(d, "memory/x.md"))
+
+    def test_valid_supersession_chain_is_clean(self):
+        # A well-formed supersession (both records exist, repo-relative
+        # pointer) must produce zero ERRORs.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/new.md", MEM_OK)
+            sup = MEM_OK.replace("provenance: observed", "provenance: superseded")
+            sup = sup.replace("review_by: 2099-10-15",
+                              "review_by: 2099-10-15\ninvalid_at: 2026-08-01\nsuperseded_by: memory/new.md")
+            _write(d, "memory/old.md", sup)
+            errs = [f for f in validate.check_memory(d) if f.level == "ERROR"]
+            self.assertEqual(errs, [])
+
+    def test_symlinked_record_cannot_be_a_supersession_target(self):
+        # Codex review: a symlinked record is excluded from the allowlist, so
+        # pointing superseded_by at it must be a dangling ERROR.
+        with tempfile.TemporaryDirectory() as d:
+            with tempfile.TemporaryDirectory() as outside:
+                target = _write(outside, "escaped.md", MEM_OK)
+                os.makedirs(os.path.join(d, "memory"))
+                os.symlink(target, os.path.join(d, "memory", "new.md"))
+                sup = MEM_OK.replace("provenance: observed", "provenance: superseded")
+                sup = sup.replace("review_by: 2099-10-15",
+                                  "review_by: 2099-10-15\ninvalid_at: 2026-08-01\nsuperseded_by: memory/new.md")
+                _write(d, "memory/old.md", sup)
+                self.assertTrue(any(f.level == "ERROR" and "dangling" in f.message.lower()
+                                    for f in validate.check_memory(d)))
+
+    def test_list_valued_review_by_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/x.md",
+                   MEM_OK.replace("review_by: 2099-10-15", "review_by:\n  - 2099-10-15"))
+            self.assertTrue(any(f.level == "WARN" and "review_by" in f.message
+                                and "ISO date" in f.message
+                                for f in validate.check_memory(d)))
+
+
+class TestMemoryIndex(unittest.TestCase):
+    def test_live_record_not_in_index_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/_index.md", "# Index\n\n(no entries)\n")
+            _write(d, "memory/onboarding-baseline.md", MEM_OK)
+            warns = [f for f in validate.check_memory(d) if f.level == "WARN"]
+            self.assertTrue(any("not in the index" in f.message for f in warns))
+
+    def test_listed_live_record_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/_index.md", "# Index\n\n- [baseline](onboarding-baseline.md)\n")
+            _write(d, "memory/onboarding-baseline.md", MEM_OK)
+            self.assertFalse(any("not in the index" in f.message for f in validate.check_memory(d)))
+
+    def test_superseded_record_not_in_index_is_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/_index.md", "# Index\n\n- [new](new.md)\n")
+            _write(d, "memory/new.md", MEM_OK)
+            sup = (MEM_OK.replace("provenance: observed", "provenance: superseded")
+                   .replace("review_by: 2099-10-15",
+                            "review_by: 2099-10-15\ninvalid_at: 2026-08-01\nsuperseded_by: memory/new.md"))
+            _write(d, "memory/old.md", sup)
+            self.assertFalse(any("not in the index" in f.message and "old.md" in f.path
+                                 for f in validate.check_memory(d)))
+
+    def test_non_utf8_index_errors_instead_of_crashing(self):
+        # Codex review: an unreadable index must yield a finding, not an exception.
+        with tempfile.TemporaryDirectory() as d:
+            _write_bytes(d, "memory/_index.md", b"\xff\xfe")
+            _write(d, "memory/x.md", MEM_OK)
+            findings = validate.check_memory(d)
+            self.assertTrue(any(f.level == "ERROR" and "UTF-8" in f.message for f in findings))
+
+    def test_validate_wires_memory(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/x.md", MEM_OK.replace("provenance: observed", "provenance: guessed"))
+            self.assertTrue(any(f.level == "ERROR" and "provenance" in f.message
+                                for f in validate.validate(d)))
+
+
+class TestProvisioningGate(unittest.TestCase):
+    def _pkg(self, d, skill):
+        _write(d, "skills/onboarding-orchestration/SKILL.md", skill)
+        _write(d, "skills/onboarding-orchestration/owner-card.md", CARD_OK)
+        _write(d, "ontologies/people-hr/onboarding-orchestration.md", AUTOMATE_OK)
+
+    def test_provisioned_without_baseline_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._pkg(d, SKILL_OK)  # provisioned: yes, no baseline field
+            errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
+            self.assertTrue(any("baseline" in f.message for f in errs))
+
+    def test_provisioned_with_missing_baseline_file_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._pkg(d, SKILL_OK.replace("provisioned: yes",
+                                          "provisioned: yes\nbaseline: memory/nope.md"))
+            errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
+            self.assertTrue(any("baseline" in f.message and "not found" in f.message for f in errs))
+
+    def test_provisioned_with_baseline_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._pkg(d, SKILL_OK.replace("provisioned: yes",
+                                          "provisioned: yes\nbaseline: memory/onboarding-baseline.md"))
+            _write(d, "memory/onboarding-baseline.md", MEM_OK)
+            errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR" and "baseline" in f.message]
+            self.assertEqual(errs, [])
+
+    def test_draft_skill_needs_no_baseline(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._pkg(d, SKILL_OK.replace("provisioned: yes", "provisioned: no"))
+            errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR" and "baseline" in f.message]
+            self.assertEqual(errs, [])
+
+    def test_non_scalar_baseline_errors(self):
+        # Codex review: a list-valued baseline must not pass the gate.
+        with tempfile.TemporaryDirectory() as d:
+            self._pkg(d, SKILL_OK.replace(
+                "provisioned: yes",
+                "provisioned: yes\nbaseline:\n  - memory/onboarding-baseline.md"))
+            _write(d, "memory/onboarding-baseline.md", MEM_OK)
+            errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
+            self.assertTrue(any("baseline" in f.message and "single value" in f.message
+                                for f in errs))
+
+    def test_baseline_must_resolve_to_a_memory_record(self):
+        # Codex review: an existing file outside memory/ (or an escaping path)
+        # does not satisfy the gate.
+        for target in ("README.md", "../outside.md"):
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as d:
+                _write(d, "README.md", "# not a memory record\n")
+                self._pkg(d, SKILL_OK.replace("provisioned: yes",
+                                              "provisioned: yes\nbaseline: %s" % target))
+                errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
+                self.assertTrue(any("baseline" in f.message and "not found" in f.message
+                                    for f in errs))
+
+    def test_absolute_or_reentering_baseline_errors(self):
+        # Codex review: absolute paths and ../ aliases that re-enter the repo
+        # must not satisfy the gate even when they resolve to a real record.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/onboarding-baseline.md", MEM_OK)
+            for target in (os.path.join(d, "memory/onboarding-baseline.md"),
+                           "../%s/memory/onboarding-baseline.md" % os.path.basename(d)):
+                with self.subTest(target=target):
+                    self._pkg(d, SKILL_OK.replace("provisioned: yes",
+                                                  "provisioned: yes\nbaseline: %s" % target))
+                    errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
+                    self.assertTrue(any("baseline" in f.message and "not found" in f.message
+                                        for f in errs))
+
+    def test_symlinked_baseline_target_does_not_satisfy_the_gate(self):
+        # Codex review: a symlinked "record" must not let an out-of-tree file
+        # satisfy the provisioning gate.
+        with tempfile.TemporaryDirectory() as d:
+            with tempfile.TemporaryDirectory() as outside:
+                target = _write(outside, "escaped.md", MEM_OK)
+                os.makedirs(os.path.join(d, "memory"))
+                os.symlink(target, os.path.join(d, "memory", "onboarding-baseline.md"))
+                self._pkg(d, SKILL_OK.replace(
+                    "provisioned: yes",
+                    "provisioned: yes\nbaseline: memory/onboarding-baseline.md"))
+                errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
+                self.assertTrue(any("baseline" in f.message and "not found" in f.message
+                                    for f in errs))
 
 
 if __name__ == "__main__":
