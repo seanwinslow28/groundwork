@@ -440,6 +440,15 @@ def check_owner_cards(root, ignore=()):
         provisioned = isinstance(provisioned_value, str) and \
             provisioned_value.strip().lower() == "yes"
 
+        if provisioned:
+            baseline = skill_fm.get("baseline")
+            if _blank(baseline):
+                findings.append(Finding("ERROR", rel_skill, None,
+                                        "provisioned skill must cite a captured 'baseline' (#5 provisioning gate)"))
+            elif isinstance(baseline, str) and not os.path.isfile(os.path.join(root, baseline.strip())):
+                findings.append(Finding("ERROR", rel_skill, None,
+                                        "baseline record not found: %s" % baseline.strip()))
+
         action_class = skill_fm.get("action_class")
         if not isinstance(action_class, str):
             findings.append(Finding(

@@ -394,8 +394,14 @@ def _write_package(d, skill=SKILL_OK, card=CARD_OK, ont=AUTOMATE_OK,
 
 class TestOwnerCard(unittest.TestCase):
     def test_complete_provisioned_card_clean(self):
+        # A complete provisioned package includes the #5 baseline citation
+        # (Slice 1.4 provisioning gate).
         with tempfile.TemporaryDirectory() as d:
-            _write_package(d)
+            skill = SKILL_OK.replace(
+                "provisioned: yes",
+                "provisioned: yes\nbaseline: memory/onboarding-baseline.md")
+            _write_package(d, skill=skill)
+            _write(d, "memory/onboarding-baseline.md", MEM_OK)
             errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
             self.assertEqual(errs, [])
 
@@ -915,6 +921,40 @@ class TestMemoryIndex(unittest.TestCase):
             _write(d, "memory/x.md", MEM_OK.replace("provenance: observed", "provenance: guessed"))
             self.assertTrue(any(f.level == "ERROR" and "provenance" in f.message
                                 for f in validate.validate(d)))
+
+
+class TestProvisioningGate(unittest.TestCase):
+    def _pkg(self, d, skill):
+        _write(d, "skills/onboarding-orchestration/SKILL.md", skill)
+        _write(d, "skills/onboarding-orchestration/owner-card.md", CARD_OK)
+        _write(d, "ontologies/people-hr/onboarding-orchestration.md", AUTOMATE_OK)
+
+    def test_provisioned_without_baseline_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._pkg(d, SKILL_OK)  # provisioned: yes, no baseline field
+            errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
+            self.assertTrue(any("baseline" in f.message for f in errs))
+
+    def test_provisioned_with_missing_baseline_file_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._pkg(d, SKILL_OK.replace("provisioned: yes",
+                                          "provisioned: yes\nbaseline: memory/nope.md"))
+            errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
+            self.assertTrue(any("baseline" in f.message and "not found" in f.message for f in errs))
+
+    def test_provisioned_with_baseline_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._pkg(d, SKILL_OK.replace("provisioned: yes",
+                                          "provisioned: yes\nbaseline: memory/onboarding-baseline.md"))
+            _write(d, "memory/onboarding-baseline.md", MEM_OK)
+            errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR" and "baseline" in f.message]
+            self.assertEqual(errs, [])
+
+    def test_draft_skill_needs_no_baseline(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._pkg(d, SKILL_OK.replace("provisioned: yes", "provisioned: no"))
+            errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR" and "baseline" in f.message]
+            self.assertEqual(errs, [])
 
 
 if __name__ == "__main__":
