@@ -693,6 +693,30 @@ def check_memory(root):
             target = data.get("superseded_by")
             if isinstance(target, str) and not os.path.isfile(os.path.join(root, target.strip())):
                 findings.append(Finding("ERROR", rel, None, "dangling 'superseded_by' pointer: %s" % target))
+
+    # index cross-check: live records must appear in their memory/_index.md
+    for abspath in iter_files(root, load_gitignore(root)):
+        if os.path.basename(abspath) != "_index.md":
+            continue
+        rel = os.path.relpath(abspath, root).replace("\\", "/")
+        if "memory" not in rel.split("/"):
+            continue
+        mem_dir = os.path.dirname(abspath)
+        with open(abspath, encoding="utf-8") as fh:
+            index_text = fh.read()
+        linked = {os.path.normpath(os.path.join(mem_dir, t.split("#", 1)[0]))
+                  for t in _LINK.findall(index_text)
+                  if not t.startswith(("http://", "https://", "mailto:", "#"))}
+        for rec in _memory_record_files(root):
+            if os.path.dirname(rec) != mem_dir and not rec.startswith(mem_dir + os.sep):
+                continue
+            with open(rec, encoding="utf-8") as fh:
+                data, _ = parse_frontmatter(fh.read(), rec)
+            if data.get("provenance") == "superseded":
+                continue  # history, silent
+            if os.path.normpath(rec) not in linked:
+                findings.append(Finding("WARN", os.path.relpath(rec, root), None,
+                                        "live record not in the index (dark, not lying)"))
     return findings
 
 
@@ -754,6 +778,7 @@ def validate(root):
             findings += check_links(abspath, text, root)
     findings += check_ontology(root, ignore)
     findings += check_owner_cards(root, ignore)
+    findings += check_memory(root)
     return findings
 
 

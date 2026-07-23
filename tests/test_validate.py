@@ -885,5 +885,37 @@ class TestMemory(unittest.TestCase):
                                 for f in validate.check_memory(d)))
 
 
+class TestMemoryIndex(unittest.TestCase):
+    def test_live_record_not_in_index_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/_index.md", "# Index\n\n(no entries)\n")
+            _write(d, "memory/onboarding-baseline.md", MEM_OK)
+            warns = [f for f in validate.check_memory(d) if f.level == "WARN"]
+            self.assertTrue(any("not in the index" in f.message for f in warns))
+
+    def test_listed_live_record_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/_index.md", "# Index\n\n- [baseline](onboarding-baseline.md)\n")
+            _write(d, "memory/onboarding-baseline.md", MEM_OK)
+            self.assertFalse(any("not in the index" in f.message for f in validate.check_memory(d)))
+
+    def test_superseded_record_not_in_index_is_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/_index.md", "# Index\n\n- [new](new.md)\n")
+            _write(d, "memory/new.md", MEM_OK)
+            sup = (MEM_OK.replace("provenance: observed", "provenance: superseded")
+                   .replace("review_by: 2099-10-15",
+                            "review_by: 2099-10-15\ninvalid_at: 2026-08-01\nsuperseded_by: memory/new.md"))
+            _write(d, "memory/old.md", sup)
+            self.assertFalse(any("not in the index" in f.message and "old.md" in f.path
+                                 for f in validate.check_memory(d)))
+
+    def test_validate_wires_memory(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/x.md", MEM_OK.replace("provenance: observed", "provenance: guessed"))
+            self.assertTrue(any(f.level == "ERROR" and "provenance" in f.message
+                                for f in validate.validate(d)))
+
+
 if __name__ == "__main__":
     unittest.main()
