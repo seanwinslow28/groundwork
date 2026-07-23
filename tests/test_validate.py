@@ -1,4 +1,5 @@
 import ast
+import datetime
 import os
 import pathlib
 import sys
@@ -41,10 +42,17 @@ class TestFrontmatter(unittest.TestCase):
         _, findings = validate.parse_frontmatter(text, "f.md")
         self.assertTrue(any("never closed" in f.message for f in findings))
 
+    def test_duplicate_key_errors_and_keeps_first_value(self):
+        text = "---\nowner: Ada\nowner: Grace\n---\n"
+        data, findings = validate.parse_frontmatter(text, "f.md")
+        self.assertEqual(data["owner"], "Ada")
+        self.assertTrue(any(f.level == "ERROR" and "duplicate" in f.message
+                            and "owner" in f.message for f in findings))
+
 
 class TestZeroDep(unittest.TestCase):
     def test_only_stdlib_imports(self):
-        allowed = {"os", "sys", "re", "ast", "math", "fnmatch", "collections", "pathlib"}
+        allowed = {"os", "sys", "re", "ast", "math", "fnmatch", "collections", "pathlib", "datetime"}
         tree = ast.parse((REPO / "scripts" / "validate.py").read_text())
         mods = set()
         for node in ast.walk(tree):
@@ -115,6 +123,14 @@ def _write(d, relpath, text):
     return p
 
 
+def _write_bytes(d, relpath, data):
+    p = os.path.join(d, relpath)
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    with open(p, "wb") as fh:
+        fh.write(data)
+    return p
+
+
 AUTOMATE_OK = """---
 activity: Onboarding orchestration
 motion: automate
@@ -130,7 +146,7 @@ shape: single-agent
 gate_inputs: start date, role, manager, access needs
 gate_output: completed onboarding checklist
 gate_standard: accounts + equipment + schedule ready before start
-gate_source_of_truth: the HRIS record
+gate_source_of_truth: The HRIS record for the hire; the IT provisioning tracker for access state
 gate_exception_path: non-standard role pauses to Head of People
 gate_error_cost: a late day-one, recoverable, not dangerous
 gate_owner: Head of People
@@ -309,6 +325,488 @@ class TestLinks(unittest.TestCase):
             "see [x](https://example.com) and [y](#anchor)",
             str(REPO))
         self.assertEqual(findings, [])
+
+
+SKILL_OK = """---
+name: onboarding-orchestration
+description: Provision a new hire's accounts, equipment, and first-week schedule before day one
+action_class: external-side-effect
+provisioned: yes
+ontology: ontologies/people-hr/onboarding-orchestration.md
+---
+# Onboarding orchestration
+"""
+
+CARD_OK = """---
+owner: Head of People
+backup_owner: People Ops Lead
+job: Provision every new hire before day one
+action_class: external-side-effect
+allowed_actions: create accounts; order standard equipment; send the day-one schedule
+proposed_only_actions: grant non-standard system access
+forbidden_actions: approve compensation; sign offers; delete employee records
+pause_condition: HRIS or IT tracker unreachable, or intake data missing
+retirement_condition: onboarding moves to a dedicated HRIS-native workflow the team trusts
+source_of_truth: The HRIS record for the hire; the IT provisioning tracker for access state
+review_cadence: monthly
+known_failure_modes: none observed yet
+last_reviewed: 2026-07-20
+next_review: 2099-08-20
+success_standard: Every new hire day-one-ready before start, against the pre-provisioning baseline
+evidence_required: The completed checklist with per-item timestamps and the provisioning log
+sources_must_not_use: Personal email or chat threads as a source of truth for access grants
+review_sample: One onboarding per week spot-checked by the hiring manager
+---
+# Owner's Card — Onboarding orchestration
+"""
+
+
+def _drop_field(text, field):
+    return "".join(
+        line for line in text.splitlines(keepends=True)
+        if not line.startswith(field + ":")
+    )
+
+
+def _replace_field(text, field, value):
+    old_line = next(
+        line for line in text.splitlines(keepends=True)
+        if line.startswith(field + ":")
+    )
+    return text.replace(old_line, "%s: %s\n" % (field, value), 1)
+
+
+def _replace_field_with_list(text, field, value):
+    old_line = next(
+        line for line in text.splitlines(keepends=True)
+        if line.startswith(field + ":")
+    )
+    return text.replace(old_line, "%s:\n- %s\n" % (field, value), 1)
+
+
+def _write_package(d, skill=SKILL_OK, card=CARD_OK, ont=AUTOMATE_OK,
+                   name="onboarding-orchestration"):
+    _write(d, "skills/%s/SKILL.md" % name, skill)
+    if card is not None:
+        _write(d, "skills/%s/owner-card.md" % name, card)
+    _write(d, "ontologies/people-hr/onboarding-orchestration.md", ont)
+
+
+class TestOwnerCard(unittest.TestCase):
+    def test_complete_provisioned_card_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write_package(d)
+            errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
+            self.assertEqual(errs, [])
+
+    def test_each_missing_spine_field_errors_when_provisioned(self):
+        for field in validate.CARD_REQUIRED:
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as d:
+                _write_package(d, card=_drop_field(CARD_OK, field))
+                errors = [f for f in validate.check_owner_cards(d)
+                          if f.level == "ERROR"]
+                self.assertTrue(any(field in f.message for f in errors))
+
+    def test_each_blank_spine_field_errors_when_provisioned(self):
+        for field in validate.CARD_REQUIRED:
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as d:
+                _write_package(d, card=_replace_field(CARD_OK, field, ""))
+                errors = [f for f in validate.check_owner_cards(d)
+                          if f.level == "ERROR"]
+                self.assertTrue(any(field in f.message for f in errors))
+
+    def test_missing_spine_field_warns_while_drafting(self):
+        with tempfile.TemporaryDirectory() as d:
+            skill = _replace_field(SKILL_OK, "provisioned", "no")
+            _write_package(d, skill=skill, card=_drop_field(CARD_OK, "pause_condition"))
+            findings = validate.check_owner_cards(d)
+            matching = [f for f in findings if "pause_condition" in f.message]
+            self.assertTrue(any(f.level == "WARN" for f in matching))
+            self.assertFalse(any(f.level == "ERROR" for f in matching))
+
+    def test_non_scalar_spine_field_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write_package(
+                d, card=_replace_field_with_list(CARD_OK, "owner", "Head of People"))
+            errors = [f for f in validate.check_owner_cards(d)
+                      if f.level == "ERROR"]
+            self.assertTrue(any("owner" in f.message and "single value" in f.message
+                                for f in errors))
+
+    def test_missing_owner_card_errors_when_provisioned(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write_package(d, card=None)
+            findings = validate.check_owner_cards(d)
+            self.assertTrue(any(f.level == "ERROR" and "no Owner's Card" in f.message
+                                for f in findings))
+
+    def test_missing_owner_card_warns_while_drafting(self):
+        with tempfile.TemporaryDirectory() as d:
+            skill = _replace_field(SKILL_OK, "provisioned", "no")
+            _write_package(d, skill=skill, card=None)
+            findings = validate.check_owner_cards(d)
+            self.assertTrue(any(f.level == "WARN" and "no Owner's Card" in f.message
+                                for f in findings))
+
+    def test_each_track2_field_errors_for_each_track2_class(self):
+        for action_class in validate.TRACK2_CLASSES:
+            for field in validate.CARD_TRACK2:
+                with self.subTest(action_class=action_class, field=field):
+                    with tempfile.TemporaryDirectory() as d:
+                        skill = _replace_field(SKILL_OK, "action_class", action_class)
+                        card = _replace_field(CARD_OK, "action_class", action_class)
+                        _write_package(d, skill=skill, card=_drop_field(card, field))
+                        errors = [f for f in validate.check_owner_cards(d)
+                                  if f.level == "ERROR"]
+                        self.assertTrue(any(field in f.message for f in errors))
+
+    def test_each_track2_field_warns_for_each_track1_class(self):
+        track1_classes = validate.ACTION_CLASSES - validate.TRACK2_CLASSES
+        for action_class in track1_classes:
+            for field in validate.CARD_TRACK2:
+                with self.subTest(action_class=action_class, field=field):
+                    with tempfile.TemporaryDirectory() as d:
+                        skill = _replace_field(SKILL_OK, "action_class", action_class)
+                        card = _replace_field(CARD_OK, "action_class", action_class)
+                        _write_package(d, skill=skill, card=_drop_field(card, field))
+                        findings = validate.check_owner_cards(d)
+                        matching = [f for f in findings if field in f.message]
+                        self.assertTrue(any(f.level == "WARN" for f in matching))
+                        self.assertFalse(any(f.level == "ERROR" for f in matching))
+
+    def test_track2_field_warns_while_drafting(self):
+        with tempfile.TemporaryDirectory() as d:
+            skill = _replace_field(SKILL_OK, "provisioned", "no")
+            _write_package(d, skill=skill,
+                           card=_drop_field(CARD_OK, "evidence_required"))
+            findings = validate.check_owner_cards(d)
+            matching = [f for f in findings if "evidence_required" in f.message]
+            self.assertTrue(any(f.level == "WARN" for f in matching))
+            self.assertFalse(any(f.level == "ERROR" for f in matching))
+
+    def test_overdue_next_review_warns_not_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            yesterday = datetime.date.today() - datetime.timedelta(days=1)
+            _write_package(
+                d, card=_replace_field(CARD_OK, "next_review", yesterday.isoformat()))
+            findings = validate.check_owner_cards(d)
+            self.assertTrue(any(f.level == "WARN" and "next_review" in f.message for f in findings))
+            self.assertFalse(any(f.level == "ERROR" and "next_review" in f.message for f in findings))
+
+    def test_stale_last_reviewed_warns_not_errors_for_high_risk(self):
+        with tempfile.TemporaryDirectory() as d:
+            old_date = datetime.date.today() - datetime.timedelta(days=91)
+            future_date = datetime.date.today() + datetime.timedelta(days=30)
+            skill = _replace_field(SKILL_OK, "action_class", "high-risk")
+            card = _replace_field(CARD_OK, "action_class", "high-risk")
+            card = _replace_field(card, "last_reviewed", old_date.isoformat())
+            card = _replace_field(card, "next_review", future_date.isoformat())
+            _write_package(d, skill=skill, card=card)
+            findings = validate.check_owner_cards(d)
+            matching = [f for f in findings if "last_reviewed" in f.message]
+            self.assertTrue(any(f.level == "WARN" for f in matching))
+            self.assertFalse(any(f.level == "ERROR" for f in matching))
+
+    def test_freshness_boundaries_do_not_warn(self):
+        with tempfile.TemporaryDirectory() as d:
+            today = datetime.date.today()
+            boundary = today - datetime.timedelta(days=90)
+            card = _replace_field(CARD_OK, "last_reviewed", boundary.isoformat())
+            card = _replace_field(card, "next_review", today.isoformat())
+            _write_package(d, card=card)
+            freshness = [f for f in validate.check_owner_cards(d)
+                         if "freshness" in f.message]
+            self.assertEqual(freshness, [])
+
+    def test_invalid_review_dates_error_when_provisioned(self):
+        for field in ("last_reviewed", "next_review"):
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as d:
+                _write_package(d, card=_replace_field(CARD_OK, field, "not-a-date"))
+                errors = [f for f in validate.check_owner_cards(d)
+                          if f.level == "ERROR"]
+                self.assertTrue(any(field in f.message and "ISO date" in f.message
+                                    for f in errors))
+
+    def test_non_canonical_iso_review_dates_error(self):
+        for value in ("20260720", "2026-W30-1"):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as d:
+                _write_package(
+                    d, card=_replace_field(CARD_OK, "next_review", value))
+                errors = [f for f in validate.check_owner_cards(d)
+                          if f.level == "ERROR"]
+                self.assertTrue(any("next_review" in f.message
+                                    and "ISO date" in f.message
+                                    for f in errors))
+
+    def test_invalid_review_date_warns_while_drafting(self):
+        with tempfile.TemporaryDirectory() as d:
+            skill = _replace_field(SKILL_OK, "provisioned", "no")
+            _write_package(
+                d, skill=skill,
+                card=_replace_field(CARD_OK, "next_review", "not-a-date"))
+            matching = [f for f in validate.check_owner_cards(d)
+                        if "next_review" in f.message and "ISO date" in f.message]
+            self.assertTrue(any(f.level == "WARN" for f in matching))
+            self.assertFalse(any(f.level == "ERROR" for f in matching))
+
+    def test_future_last_reviewed_errors_when_provisioned(self):
+        with tempfile.TemporaryDirectory() as d:
+            future = datetime.date.today() + datetime.timedelta(days=1)
+            _write_package(
+                d, card=_replace_field(CARD_OK, "last_reviewed", future.isoformat()))
+            errors = [f for f in validate.check_owner_cards(d)
+                      if f.level == "ERROR"]
+            self.assertTrue(any("last_reviewed" in f.message and "future" in f.message
+                                for f in errors))
+
+    def test_required_skill_metadata_missing_or_non_scalar_errors(self):
+        for field, value in (
+                ("name", "onboarding-orchestration"),
+                ("description", "Provision new hires before day one"),
+                ("provisioned", "yes"),
+                ("action_class", "external-side-effect"),
+                ("ontology", "ontologies/people-hr/onboarding-orchestration.md")):
+            variants = (
+                _drop_field(SKILL_OK, field),
+                _replace_field(SKILL_OK, field, ""),
+                _replace_field_with_list(SKILL_OK, field, value),
+            )
+            for variant in variants:
+                with self.subTest(field=field, variant=variant):
+                    with tempfile.TemporaryDirectory() as d:
+                        _write_package(d, skill=variant)
+                        errors = [f for f in validate.check_owner_cards(d)
+                                  if f.level == "ERROR"]
+                        self.assertTrue(any(field in f.message for f in errors))
+
+    def test_skill_name_must_match_package_directory(self):
+        with tempfile.TemporaryDirectory() as d:
+            skill = _replace_field(SKILL_OK, "name", "different-name")
+            _write_package(d, skill=skill)
+            errors = [f for f in validate.check_owner_cards(d)
+                      if f.level == "ERROR"]
+            self.assertTrue(any("name" in f.message and "directory" in f.message
+                                for f in errors))
+
+    def test_invalid_provisioned_value_errors_and_does_not_fail_open(self):
+        with tempfile.TemporaryDirectory() as d:
+            skill = _replace_field(SKILL_OK, "provisioned", "yse")
+            _write_package(d, skill=skill, card=_drop_field(CARD_OK, "owner"))
+            errors = [f for f in validate.check_owner_cards(d)
+                      if f.level == "ERROR"]
+            self.assertTrue(any("provisioned" in f.message for f in errors))
+
+    def test_invalid_skill_action_class_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            skill = _replace_field(SKILL_OK, "action_class", "side-effect-ish")
+            _write_package(d, skill=skill)
+            errors = [f for f in validate.check_owner_cards(d)
+                      if f.level == "ERROR"]
+            self.assertTrue(any("action_class" in f.message for f in errors))
+
+    def test_gitignored_skill_package_is_not_checked(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, ".gitignore", "ignored-skill\n")
+            _write_package(d, name="ignored-skill", card=None)
+            findings = validate.validate(d)
+            self.assertFalse(any("ignored-skill" in f.path for f in findings))
+
+    def test_gitignored_package_artifacts_are_treated_as_missing(self):
+        for ignored, expected in (
+                ("SKILL.md", "SKILL.md"),
+                ("owner-card.md", "no Owner's Card"),
+                ("onboarding-orchestration.md", "ontology reference")):
+            with self.subTest(ignored=ignored), tempfile.TemporaryDirectory() as d:
+                _write(d, ".gitignore", ignored + "\n")
+                _write_package(d)
+                findings = validate.check_owner_cards(
+                    d, validate.load_gitignore(d))
+                self.assertTrue(any(f.level == "ERROR"
+                                    and expected in f.message
+                                    for f in findings))
+
+    def test_package_directory_without_skill_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "skills", "empty-package"))
+            errors = [f for f in validate.check_owner_cards(d)
+                      if f.level == "ERROR"]
+            self.assertTrue(any("empty-package" in f.path and "SKILL.md" in f.message
+                                for f in errors))
+
+    def test_symlinked_skills_directory_errors_without_following_it(self):
+        with tempfile.TemporaryDirectory() as d:
+            with tempfile.TemporaryDirectory() as outside:
+                _write(outside, "escaped/SKILL.md", SKILL_OK)
+                os.symlink(os.path.join(outside, "escaped"),
+                           os.path.join(d, "skills"))
+                errors = [f for f in validate.check_owner_cards(d)
+                          if f.level == "ERROR"]
+                self.assertTrue(any(f.path == "skills" and "symlink" in f.message
+                                    for f in errors))
+
+    def test_symlinked_package_directory_errors_without_following_it(self):
+        with tempfile.TemporaryDirectory() as d:
+            with tempfile.TemporaryDirectory() as outside:
+                os.makedirs(os.path.join(d, "skills"))
+                _write(outside, "escaped/SKILL.md", SKILL_OK)
+                os.symlink(os.path.join(outside, "escaped"),
+                           os.path.join(d, "skills", "escaped"))
+                errors = [f for f in validate.check_owner_cards(d)
+                          if f.level == "ERROR"]
+                self.assertTrue(any("skills/escaped" in f.path
+                                    and "symlink" in f.message for f in errors))
+
+    def test_symlinked_skill_or_card_errors_without_reading_target(self):
+        for component in ("SKILL.md", "owner-card.md"):
+            with self.subTest(component=component):
+                with tempfile.TemporaryDirectory() as d:
+                    with tempfile.TemporaryDirectory() as outside:
+                        if component == "SKILL.md":
+                            os.makedirs(os.path.join(
+                                d, "skills", "onboarding-orchestration"))
+                            target = _write(
+                                outside, "escaped.md",
+                                "---\nmarker_without_colon\n---\n")
+                            os.symlink(
+                                target,
+                                os.path.join(
+                                    d, "skills", "onboarding-orchestration",
+                                    component))
+                        else:
+                            _write_package(d, card=None)
+                            target = _write(outside, "escaped.md", CARD_OK)
+                            os.symlink(
+                                target,
+                                os.path.join(
+                                    d, "skills", "onboarding-orchestration",
+                                    component))
+                        findings = validate.check_owner_cards(d)
+                        self.assertTrue(any(f.level == "ERROR"
+                                            and component in f.path
+                                            and "symlink" in f.message
+                                            for f in findings))
+                        self.assertFalse(any(
+                            "marker_without_colon" in f.message
+                            for f in findings))
+
+    def test_non_utf8_package_files_error_instead_of_crashing(self):
+        for component, relpath in (
+                ("skill", "skills/onboarding-orchestration/SKILL.md"),
+                ("card", "skills/onboarding-orchestration/owner-card.md"),
+                ("ontology", "ontologies/people-hr/onboarding-orchestration.md")):
+            with self.subTest(component=component), tempfile.TemporaryDirectory() as d:
+                _write_package(d)
+                _write_bytes(d, relpath, b"\xff\xfe")
+                errors = [f for f in validate.validate(d)
+                          if f.level == "ERROR"]
+                self.assertTrue(any(relpath in f.path and "UTF-8" in f.message
+                                    for f in errors))
+
+    def test_nul_in_ontology_reference_errors_instead_of_crashing(self):
+        with tempfile.TemporaryDirectory() as d:
+            skill = _replace_field(
+                SKILL_OK, "ontology", "ontologies/people-hr/\x00.md")
+            _write_package(d, skill=skill)
+            errors = [f for f in validate.check_owner_cards(d)
+                      if f.level == "ERROR"]
+            self.assertTrue(any("ontology reference" in f.message
+                                and "NUL" in f.message for f in errors))
+
+    def test_duplicate_critical_skill_and_card_fields_error(self):
+        skill = _replace_field(
+            SKILL_OK, "provisioned", "yes\nprovisioned: no")
+        card = _replace_field(
+            CARD_OK, "owner", "Head of People\nowner: Someone Else")
+        with tempfile.TemporaryDirectory() as d:
+            _write_package(d, skill=skill, card=card)
+            errors = [f for f in validate.check_owner_cards(d)
+                      if f.level == "ERROR"]
+            self.assertTrue(any("duplicate" in f.message
+                                and "provisioned" in f.message for f in errors))
+            self.assertTrue(any("duplicate" in f.message
+                                and "owner" in f.message for f in errors))
+
+
+class TestCardDrift(unittest.TestCase):
+    def test_owner_drift_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write_package(
+                d, card=_replace_field(CARD_OK, "owner", "Someone Else"))
+            errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
+            self.assertTrue(any("owner" in f.message and "ontology" in f.message for f in errs))
+
+    def test_action_class_drift_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write_package(
+                d, card=_replace_field(CARD_OK, "action_class", "read-only"))
+            errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
+            self.assertTrue(any("action_class" in f.message for f in errs))
+
+    def test_missing_or_non_scalar_card_action_class_errors(self):
+        variants = (
+            _drop_field(CARD_OK, "action_class"),
+            _replace_field_with_list(
+                CARD_OK, "action_class", "external-side-effect"),
+        )
+        for card in variants:
+            with self.subTest(card=card), tempfile.TemporaryDirectory() as d:
+                _write_package(d, card=card)
+                errors = [f for f in validate.check_owner_cards(d)
+                          if f.level == "ERROR"]
+                self.assertTrue(any("card action_class" in f.message
+                                    for f in errors))
+
+    def test_invalid_card_action_class_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write_package(
+                d, card=_replace_field(CARD_OK, "action_class", "side-effect-ish"))
+            errors = [f for f in validate.check_owner_cards(d)
+                      if f.level == "ERROR"]
+            self.assertTrue(any("card action_class" in f.message for f in errors))
+
+    def test_source_of_truth_drift_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write_package(
+                d, card=_replace_field(
+                    CARD_OK, "source_of_truth", "A spreadsheet"))
+            errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
+            self.assertTrue(any("source_of_truth" in f.message for f in errs))
+
+    def test_unresolved_ontology_ref_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write_package(
+                d, skill=_replace_field(
+                    SKILL_OK, "ontology", "ontologies/people-hr/missing.md"))
+            errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
+            self.assertTrue(any("ontology reference" in f.message for f in errs))
+
+    def test_ontology_ref_must_stay_under_ontologies(self):
+        with tempfile.TemporaryDirectory() as d:
+            outside = _write(d, "outside.md", AUTOMATE_OK)
+            skill = _replace_field(SKILL_OK, "ontology", outside)
+            _write_package(d, skill=skill)
+            errors = [f for f in validate.check_owner_cards(d)
+                      if f.level == "ERROR"]
+            self.assertTrue(any("ontology reference" in f.message
+                                and "under ontologies" in f.message
+                                for f in errors))
+
+    def test_referenced_ontology_requires_drift_source_fields(self):
+        for field in ("accountable_owner", "gate_source_of_truth"):
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as d:
+                _write_package(d, ont=_drop_field(AUTOMATE_OK, field))
+                errors = [f for f in validate.check_owner_cards(d)
+                          if f.level == "ERROR"]
+                self.assertTrue(any(field in f.message for f in errors))
+
+    def test_validate_wires_card_checks(self):
+        with tempfile.TemporaryDirectory() as d:
+            skill = _replace_field(SKILL_OK, "name", "x")
+            _write_package(
+                d, name="x", skill=skill,
+                card=_replace_field(CARD_OK, "owner", "Wrong"))
+            errs = [f for f in validate.validate(d) if f.level == "ERROR"]
+            self.assertTrue(any("owner" in f.message for f in errs))
 
 
 if __name__ == "__main__":
