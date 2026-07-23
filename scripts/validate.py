@@ -792,6 +792,71 @@ def check_memory(root):
     return findings
 
 
+_PROV_FORWARD = {
+    "observed": {"observed", "confirmed", "superseded"},
+    "inferred": {"inferred", "confirmed", "superseded"},
+    "confirmed": {"confirmed", "superseded"},
+    "superseded": {"superseded"},
+}
+
+
+def _frontmatter_and_body(text):
+    data, _ = parse_frontmatter(text)
+    lines = text.split("\n")
+    if lines and lines[0].strip() == "---":
+        for i in range(1, len(lines)):
+            if lines[i].strip() == "---":
+                return data, "\n".join(lines[i + 1:])
+    return data, text
+
+
+def _as_list(v):
+    if v is None or v == []:
+        return []
+    return v if isinstance(v, list) else [v]
+
+
+def _source_append_only(old_src, new_src):
+    """Append-only: every existing entry is preserved in order; only the FINAL
+    existing entry may be extended in place (a scalar source grows by suffix);
+    new entries may follow. Removal or alteration of earlier entries fails."""
+    if not old_src:
+        return True
+    return (len(new_src) >= len(old_src)
+            and new_src[:len(old_src) - 1] == old_src[:-1]
+            and new_src[len(old_src) - 1].startswith(old_src[-1]))
+
+
+def check_memory_diff(old_text, new_text, path):
+    """#7 immutability rules between a record's base version and its new version.
+    Pure (no git). All findings are ERROR — an immutable field changed."""
+    findings = []
+    old_fm, old_body = _frontmatter_and_body(old_text)
+    new_fm, new_body = _frontmatter_and_body(new_text)
+
+    if old_body.strip() != new_body.strip():
+        findings.append(Finding("ERROR", path, None, "immutable: body changed (frozen at commit)"))
+    if old_fm.get("valid_at") != new_fm.get("valid_at"):
+        findings.append(Finding("ERROR", path, None, "immutable: valid_at changed (frozen at commit)"))
+
+    op, np = old_fm.get("provenance"), new_fm.get("provenance")
+    if isinstance(op, str) and isinstance(np, str) and op in _PROV_FORWARD and np not in _PROV_FORWARD[op]:
+        findings.append(Finding("ERROR", path, None,
+                                "provenance downgrade / illegal transition: %s -> %s (forward only)" % (op, np)))
+
+    old_src, new_src = _as_list(old_fm.get("source")), _as_list(new_fm.get("source"))
+    if not _source_append_only(old_src, new_src):
+        findings.append(Finding("ERROR", path, None,
+                                "source is append-only (existing entries cannot be altered or removed)"))
+
+    for field in ("invalid_at", "superseded_by"):
+        ov = old_fm.get(field)
+        if not _blank(ov) and new_fm.get(field) != ov:
+            findings.append(Finding("ERROR", path, None,
+                                    "supersession field '%s' is set once and cannot change" % field))
+    return findings
+
+
 def load_gitignore(root):
     """Minimal .gitignore reader: exact names and simple globs (e.g. '*.log').
     Enough to skip .env-style files so the gate scans (roughly) what's tracked.

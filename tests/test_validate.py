@@ -1141,5 +1141,85 @@ class TestProvisioningGate(unittest.TestCase):
                                     for f in errs))
 
 
+class TestMemoryDiff(unittest.TestCase):
+    def test_body_frozen(self):
+        new = MEM_OK.replace("Median time-to-day-one-ready: 4 business days.", "Median: 2 days.")
+        self.assertTrue(any(f.level == "ERROR" and "body" in f.message
+                            for f in validate.check_memory_diff(MEM_OK, new, "m.md")))
+
+    def test_valid_at_frozen(self):
+        new = MEM_OK.replace("valid_at: 2026-07-15", "valid_at: 2026-07-16")
+        self.assertTrue(any(f.level == "ERROR" and "valid_at" in f.message
+                            for f in validate.check_memory_diff(MEM_OK, new, "m.md")))
+
+    def test_provenance_forward_ok(self):
+        new = MEM_OK.replace("provenance: observed", "provenance: confirmed")
+        self.assertEqual([f for f in validate.check_memory_diff(MEM_OK, new, "m.md")
+                          if "provenance" in f.message], [])
+
+    def test_provenance_downgrade_errors(self):
+        old = MEM_OK.replace("provenance: observed", "provenance: confirmed")
+        new = MEM_OK.replace("provenance: observed", "provenance: inferred")
+        self.assertTrue(any(f.level == "ERROR" and "provenance" in f.message
+                            for f in validate.check_memory_diff(old, new, "m.md")))
+
+    def test_source_append_ok(self):
+        new = MEM_OK.replace("source: The People team's Q2 onboarding tracker (12 hires)",
+                             "source: The People team's Q2 onboarding tracker (12 hires); plus the IT log")
+        self.assertEqual([f for f in validate.check_memory_diff(MEM_OK, new, "m.md")
+                          if "source" in f.message], [])
+
+    def test_source_alteration_errors(self):
+        new = MEM_OK.replace("source: The People team's Q2 onboarding tracker (12 hires)",
+                             "source: A different tracker")
+        self.assertTrue(any(f.level == "ERROR" and "source" in f.message
+                            for f in validate.check_memory_diff(MEM_OK, new, "m.md")))
+
+    def test_source_list_append_ok(self):
+        # Regression (plan fix): appending a NEW list entry is an append.
+        new = MEM_OK.replace(
+            "source: The People team's Q2 onboarding tracker (12 hires)",
+            "source:\n  - The People team's Q2 onboarding tracker (12 hires)\n  - The IT provisioning log")
+        old = MEM_OK.replace(
+            "source: The People team's Q2 onboarding tracker (12 hires)",
+            "source:\n  - The People team's Q2 onboarding tracker (12 hires)")
+        self.assertEqual([f for f in validate.check_memory_diff(old, new, "m.md")
+                          if "source" in f.message], [])
+
+    def test_source_entry_removal_errors(self):
+        # Regression (plan fix): dropping an existing entry is not an append.
+        old = MEM_OK.replace(
+            "source: The People team's Q2 onboarding tracker (12 hires)",
+            "source:\n  - The People team's Q2 onboarding tracker (12 hires)\n  - The IT provisioning log")
+        new = MEM_OK.replace(
+            "source: The People team's Q2 onboarding tracker (12 hires)",
+            "source:\n  - The People team's Q2 onboarding tracker (12 hires)")
+        self.assertTrue(any(f.level == "ERROR" and "source" in f.message
+                            for f in validate.check_memory_diff(old, new, "m.md")))
+
+    def test_source_earlier_entry_alteration_errors(self):
+        # Regression (plan fix): only the FINAL existing entry may be extended
+        # in place; earlier entries are frozen.
+        old = MEM_OK.replace(
+            "source: The People team's Q2 onboarding tracker (12 hires)",
+            "source:\n  - The People team's Q2 onboarding tracker (12 hires)\n  - The IT provisioning log")
+        new = MEM_OK.replace(
+            "source: The People team's Q2 onboarding tracker (12 hires)",
+            "source:\n  - The People team's Q2 onboarding tracker (12 hires); edited\n  - The IT provisioning log")
+        self.assertTrue(any(f.level == "ERROR" and "source" in f.message
+                            for f in validate.check_memory_diff(old, new, "m.md")))
+
+    def test_supersession_field_set_once(self):
+        old = (MEM_OK.replace("provenance: observed", "provenance: superseded")
+               .replace("review_by: 2099-10-15",
+                        "review_by: 2099-10-15\ninvalid_at: 2026-08-01\nsuperseded_by: memory/new.md"))
+        new = old.replace("invalid_at: 2026-08-01", "invalid_at: 2026-09-01")
+        self.assertTrue(any(f.level == "ERROR" and "invalid_at" in f.message
+                            for f in validate.check_memory_diff(old, new, "m.md")))
+
+    def test_unchanged_record_clean(self):
+        self.assertEqual(validate.check_memory_diff(MEM_OK, MEM_OK, "m.md"), [])
+
+
 if __name__ == "__main__":
     unittest.main()
