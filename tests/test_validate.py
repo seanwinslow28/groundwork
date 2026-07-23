@@ -1898,6 +1898,35 @@ class TestActionClassGate(unittest.TestCase):
              "tool_input": {"command": None}})
         self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "ask")
 
+    def test_global_options_before_subcommand_blocked(self):
+        # Codex round 3 (P1): global CLI options are standard automation forms,
+        # not obfuscation — they must not break the subcommand match.
+        self.assertEqual(action_class_gate.classify("git -C repo push --force origin main")[0], "delete")
+        self.assertEqual(action_class_gate.classify("git -c user.name=x reset --hard")[0], "delete")
+        self.assertEqual(action_class_gate.classify("terraform -chdir=infra apply")[0], "spend")
+
+    def test_curl_write_option_forms_blocked(self):
+        # Codex round 3 (P1): attached short args and long request/body options
+        # are standard curl spellings.
+        self.assertEqual(action_class_gate.classify("curl -d'{}' https://example.com")[0], "external-send")
+        self.assertEqual(action_class_gate.classify("curl --request DELETE https://example.com/item")[0], "external-send")
+        self.assertEqual(action_class_gate.classify("curl --data-raw '{}' https://example.com")[0], "external-send")
+
+    def test_curl_read_only_not_blocked(self):
+        self.assertEqual(action_class_gate.classify("curl https://example.com")[0], None)
+        self.assertEqual(action_class_gate.classify("curl -sSL -o out.html https://example.com")[0], None)
+
+    def test_rm_value_bearing_safety_option_blocked(self):
+        # Codex round 3 (P1): a value-bearing option before -rf must not
+        # disable detection.
+        self.assertEqual(action_class_gate.classify("rm --preserve-root=all -rf /var/data")[0], "delete")
+
+    def test_git_clean_dry_run_not_blocked(self):
+        # Codex round 3 (P2): -n forces a dry run even with -f present.
+        self.assertEqual(action_class_gate.classify("git clean -nf")[0], None)
+        self.assertEqual(action_class_gate.classify("git clean -n -f")[0], None)
+        self.assertEqual(action_class_gate.classify("git clean -fd")[0], "delete")
+
     def test_decide_asks_on_blank_command(self):
         # Codex round 2 (P2): a blank command string is unusable input, not a
         # benign command — fail loud, don't defer.
@@ -1998,6 +2027,14 @@ class TestHooks(unittest.TestCase):
     def test_non_bash_matcher_errors(self):
         with tempfile.TemporaryDirectory() as d:
             self._set(d, snippet=SNIPPET_OK.replace('"matcher": "Bash"', '"matcher": "Edit"'))
+            self.assertTrue(any(f.level == "ERROR" and "PreToolUse" in f.message
+                                for f in validate.check_hooks(d)))
+
+    def test_empty_hooks_object_errors(self):
+        # Codex round 3 (P2): a snippet with no command hooks at all is a
+        # completely unwired guard — an ERROR, not just a WARN.
+        with tempfile.TemporaryDirectory() as d:
+            self._set(d, snippet='{"hooks": {}}\n')
             self.assertTrue(any(f.level == "ERROR" and "PreToolUse" in f.message
                                 for f in validate.check_hooks(d)))
 

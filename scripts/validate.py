@@ -1042,7 +1042,8 @@ def check_hooks(root):
             if declared == 0:
                 findings.append(Finding("WARN", rel_snip, None,
                                         "hook settings snippet declares no command hooks"))
-            elif pre_bash == 0:
+            # independent of `declared`: an empty hook set is still an unwired guard
+            if pre_bash == 0:
                 findings.append(Finding("ERROR", rel_snip, None,
                                         "no command hook registered under PreToolUse with a matcher "
                                         "covering Bash — the gate cannot block a command before it runs"))

@@ -16,6 +16,12 @@ Honest limits of the current build. This file grows as the product does (brief �
   reset, destructive SQL, raw disk writes, outbound write requests, mail, `terraform apply`,
   payments CLIs). It is a floor, not a sandbox — an unusual or deliberately obfuscated
   command can pass it. Treat it as one layer, not the guarantee.
+- **Patterns match the raw command string, including quoted text.** A read-only command
+  that merely *mentions* a risky string — `grep -R "DROP TABLE" .`, `printf 'terraform apply'` —
+  may be denied. This is deliberate: a false positive fails safe (a human runs or approves
+  the command), while teaching the gate to skip quoted or non-command positions would
+  require a real shell parser and open genuine bypass holes (`sh -c "..."`, `env` prefixes).
+  The gate errs toward deny.
 - **Hooks are Claude-Code-only.** Codex, Cursor, and Gemini CLI silently ignore hook
   configuration. On those harnesses the same rule ships as a review-gate *instruction*
   (`governance/hooks/review-gate.md`) — an instruction is not enforcement. Cross-harness
