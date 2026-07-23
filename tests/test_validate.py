@@ -1555,14 +1555,16 @@ class TestConstitution(unittest.TestCase):
 
     def test_active_rule_without_owner_errors(self):
         with tempfile.TemporaryDirectory() as d:
-            self._rule(d, RULE_OK.replace("owner: Head of IT\n", ""))
+            # count=1: only the top-level 'owner' line — a bare replace would also
+            # eat the tail of 'runtime_check_owner: Head of IT' and mangle the fixture
+            self._rule(d, RULE_OK.replace("owner: Head of IT\n", "", 1))
             self.assertTrue(any(f.level == "ERROR" and "owner" in f.message
                                 for f in validate.check_constitution(d)))
 
     def test_draft_rule_warns_not_errors(self):
         with tempfile.TemporaryDirectory() as d:
             # no rung → draft; also drop owner (fine while drafting)
-            self._rule(d, RULE_OK.replace("rung: human-decision\n", "").replace("owner: Head of IT\n", ""))
+            self._rule(d, RULE_OK.replace("rung: human-decision\n", "").replace("owner: Head of IT\n", "", 1))
             findings = validate.check_constitution(d)
             self.assertTrue(any(f.level == "WARN" and "rung" in f.message for f in findings))
             self.assertFalse(any(f.level == "ERROR" and "owner" in f.message for f in findings))
@@ -1580,6 +1582,30 @@ class TestConstitution(unittest.TestCase):
                 "ritual: IT manually provisioning every access request by ticket\nrepeals: The weekly access-review meeting"))
             errs = [f for f in validate.check_constitution(d) if f.level == "ERROR"]
             self.assertTrue(any("orphan" in f.message for f in errs))
+
+    def test_draft_high_risk_without_appeal_still_errors(self):
+        # Codex P1 regression: the safety spine runs on drafts too — a high-risk
+        # rule with no appeal path must ERROR even before it is placed on a rung.
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace("rung: human-decision\n", "")
+                .replace("human_appeal: A denied or delayed grant escalates to the CISO, who decides within one business day\n", "")
+                .replace("human_appeal_owner: CISO\n", ""))
+            errs = [f for f in validate.check_constitution(d) if f.level == "ERROR"]
+            self.assertTrue(any("rung six" in f.message for f in errs))
+
+    def test_draft_missing_sunset_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace("rung: human-decision\n", "")
+                .replace("sunset: 2099-07-01\n", ""))
+            self.assertTrue(any(f.level == "WARN" and "sunset" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_unparseable_sunset_warns(self):
+        # Codex P2 regression: `sunset: never` must not silently disable staleness.
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace("sunset: 2099-07-01", "sunset: never"))
+            self.assertTrue(any(f.level == "WARN" and "sunset" in f.message
+                                for f in validate.check_constitution(d)))
 
     def test_unreadable_rule_errors_not_crashes(self):
         with tempfile.TemporaryDirectory() as d:

@@ -813,6 +813,9 @@ def check_constitution(root):
         if data is None:
             continue
 
+        # Only the owner requirement is provisioning-scoped (#6/#8: unowned is
+        # fine while drafting). The safety-spine checks below run on drafts too
+        # — a high-risk draft with no appeal path must not leave the gate green.
         rung = data.get("rung")
         active = not _blank(rung)
         if not active:
@@ -823,22 +826,26 @@ def check_constitution(root):
                                         "invalid rung %r (one of %s)" % (rung, sorted(RUNGS))))
             if _blank(data.get("owner")):
                 findings.append(Finding("ERROR", rel, None, "active rule has no owner"))
-            ac = data.get("action_class")
-            if not _blank(ac) and not (isinstance(ac, str) and ac in ACTION_CLASSES):
-                findings.append(Finding("ERROR", rel, None,
-                                        "invalid action_class %r (one of %s)" % (ac, sorted(ACTION_CLASSES))))
-            if isinstance(ac, str) and ac == "high-risk" \
-                    and (_blank(data.get("human_appeal")) or _blank(data.get("human_appeal_owner"))):
-                findings.append(Finding("ERROR", rel, None,
-                                        "high-risk rule must carry a human-appeal path with an owner "
-                                        "(there is no rung six)"))
-            sunset = data.get("sunset")
-            if _blank(sunset):
-                findings.append(Finding("WARN", rel, None, "missing sunset date"))
-            else:
-                sd = _parse_date(sunset)
-                if sd is not None and sd < today:
-                    findings.append(Finding("WARN", rel, None, "sunset date has passed"))
+
+        ac = data.get("action_class")
+        if not _blank(ac) and not (isinstance(ac, str) and ac in ACTION_CLASSES):
+            findings.append(Finding("ERROR", rel, None,
+                                    "invalid action_class %r (one of %s)" % (ac, sorted(ACTION_CLASSES))))
+        if isinstance(ac, str) and ac == "high-risk" \
+                and (_blank(data.get("human_appeal")) or _blank(data.get("human_appeal_owner"))):
+            findings.append(Finding("ERROR", rel, None,
+                                    "high-risk rule must carry a human-appeal path with an owner "
+                                    "(there is no rung six)"))
+        sunset = data.get("sunset")
+        if _blank(sunset):
+            findings.append(Finding("WARN", rel, None, "missing sunset date"))
+        else:
+            sd = _parse_date(sunset)
+            if sd is None:
+                findings.append(Finding("WARN", rel, None,
+                                        "'sunset' is not an ISO date (YYYY-MM-DD)"))
+            elif sd < today:
+                findings.append(Finding("WARN", rel, None, "sunset date has passed"))
 
         if not _blank(data.get("repeals")):
             if _blank(data.get("surviving_job")) or _blank(data.get("reassigned_to")):

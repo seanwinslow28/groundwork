@@ -34,4 +34,6 @@ job** must be reassigned before the repeal ships (orphan-prohibition).
 - **ERROR:** a `high-risk` rule with no human-appeal path (no rung six); a repeal
   (`repeals`) whose `surviving_job` is not `reassigned_to` someone; an active rule
   (placed on a rung) with no `owner`.
-- **WARN:** a missing or overdue `sunset`; a rule not yet placed on a rung (draft).
+- **WARN:** a missing, unparseable, or overdue `sunset`; a rule not yet placed on a
+  rung (draft). The safety-spine ERRORs above apply to drafts too — only the `owner`
+  requirement waits for provisioning (rung placement).
