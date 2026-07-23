@@ -54,7 +54,8 @@ class TestFrontmatter(unittest.TestCase):
 
 class TestZeroDep(unittest.TestCase):
     def test_only_stdlib_imports(self):
-        allowed = {"os", "sys", "re", "ast", "math", "fnmatch", "collections", "pathlib", "datetime", "subprocess"}
+        allowed = {"os", "sys", "re", "ast", "math", "fnmatch", "collections", "pathlib",
+                   "datetime", "subprocess", "unicodedata"}
         tree = ast.parse((REPO / "scripts" / "validate.py").read_text())
         mods = set()
         for node in ast.walk(tree):
@@ -1449,6 +1450,19 @@ class TestMemoryDiffCLI(unittest.TestCase):
             findings = validate.memory_diff_findings(d, "HEAD")
             self.assertTrue(any(f.level == "ERROR" and "unsupported path" in f.message
                                 for f in findings))
+
+    def test_nfd_on_disk_nfc_in_git_unchanged_record_is_clean(self):
+        # Codex final pass: git core.precomposeunicode reports NFC names while
+        # the filesystem may list NFD entries; an UNCHANGED record must not be
+        # falsely reported as deleted.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _git(d, "config", "core.precomposeunicode", "true")
+            _write(d, "memory/cafe\u0301.md", MEM_OK)  # explicit NFD on disk
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "nfd")
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertEqual([f for f in findings if "deleted" in f.message], [])
 
     def test_crlf_base_version_of_unchanged_record_is_clean(self):
         # Codex review: a CRLF blob at base vs an LF working read must not

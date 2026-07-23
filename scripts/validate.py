@@ -13,6 +13,7 @@ import os
 import re
 import subprocess
 import sys
+import unicodedata
 from collections import namedtuple
 
 Finding = namedtuple("Finding", ["level", "path", "line", "message"])
@@ -943,21 +944,28 @@ def _diff_in_workbench_skips(rel_from_root):
     return any("/".join(dirs[:i + 1]) in skip_rel for i in range(len(dirs)))
 
 
-def _committed_path_status(toplevel, parts):
+def _committed_path_status(toplevel, parts, cache=None):
     """Walk toplevel/parts verifying each component exists under its EXACT
     committed name (a case-folding filesystem cannot hide a case-only rename
     of a record or any ancestor directory) and that no component is a symlink
     (a symlinked memory folder or record must not stand in for the committed
-    one). Returns 'ok', 'symlink', or 'missing'. Check-then-open is not
+    one). Names are NFC-normalized on both sides — git core.precomposeunicode
+    reports NFC while a mac filesystem may list NFD, and that mismatch must
+    not fake a deletion. Returns 'ok', 'symlink', or 'missing'. Pass a dict as
+    `cache` to reuse directory listings across records. Check-then-open is not
     atomic — a concurrent writer race is a documented non-goal
     (docs/known-limitations.md)."""
+    if cache is None:
+        cache = {}
     p = toplevel
     for part in parts:
-        try:
-            entries = os.listdir(p)
-        except OSError:
-            return "missing"
-        if part not in entries:
+        if p not in cache:
+            try:
+                cache[p] = {unicodedata.normalize("NFC", e) for e in os.listdir(p)}
+            except OSError:
+                cache[p] = None
+        entries = cache[p]
+        if entries is None or unicodedata.normalize("NFC", part) not in entries:
             return "missing"
         p = os.path.join(p, part)
         if os.path.islink(p):
@@ -1000,6 +1008,7 @@ def memory_diff_findings(root, base):
     except subprocess.CalledProcessError:
         return [Finding("ERROR", root, None, "--diff could not list the base tree for %s" % base)]
     findings = []
+    listdir_cache = {}
     for bf in (os.fsdecode(b) for b in raw.split(b"\0") if b):
         if scope != "." and not bf.startswith(scope + "/"):
             continue
@@ -1011,7 +1020,7 @@ def memory_diff_findings(root, base):
         if _diff_in_workbench_skips(rel):
             continue
         abspath = os.path.join(toplevel, *parts)
-        status = _committed_path_status(toplevel, parts)
+        status = _committed_path_status(toplevel, parts, listdir_cache)
         if status == "symlink":
             findings.append(Finding("ERROR", bf, None,
                                     "memory record is or sits behind a symlink (cannot verify immutability)"))
