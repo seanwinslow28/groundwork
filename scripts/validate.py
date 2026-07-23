@@ -451,17 +451,15 @@ def check_owner_cards(root, ignore=()):
                                         "skill baseline must be a single value"))
             else:
                 if memory_record_realpaths is None:
-                    memory_record_realpaths = {
-                        os.path.realpath(p) for p in _memory_record_files(root)}
-                try:
-                    baseline_real = os.path.realpath(
-                        os.path.join(root, baseline.strip()))
-                except (OSError, ValueError):
-                    baseline_real = None
-                if baseline_real not in memory_record_realpaths:
+                    memory_record_realpaths = _live_record_realpaths(
+                        _memory_record_files(root))
+                baseline_real = _record_ref_realpath(root, baseline)
+                if baseline_real is None or \
+                        baseline_real not in memory_record_realpaths:
                     findings.append(Finding(
                         "ERROR", rel_skill, None,
-                        "baseline record not found (must resolve to a memory record): %s"
+                        "baseline record not found (must be a repo-relative "
+                        "path resolving to a memory record): %s"
                         % baseline.strip()))
 
         action_class = skill_fm.get("action_class")
@@ -666,13 +664,39 @@ def _memory_record_files(root):
     return out
 
 
+def _record_ref_realpath(root, ref):
+    """Resolve a memory-record reference. None if the literal path is absolute
+    or escapes the repo root (the schema says repo-relative), or unresolvable."""
+    ref = ref.strip()
+    if os.path.isabs(ref):
+        return None
+    norm = os.path.normpath(ref).replace("\\", "/")
+    if norm == ".." or norm.startswith("../"):
+        return None
+    try:
+        return os.path.realpath(os.path.join(root, ref))
+    except (OSError, ValueError):
+        return None
+
+
+def _live_record_realpaths(records):
+    """The reference allowlist: real paths of non-symlink records only, so a
+    symlinked record cannot smuggle an out-of-tree target into the set."""
+    return {os.path.realpath(p) for p in records if not os.path.islink(p)}
+
+
 def check_memory(root):
     """#7 record-level shape checks. Nothing is silent at record level."""
     findings = []
     records = _memory_record_files(root)
-    record_realpaths = {os.path.realpath(p) for p in records}
+    record_realpaths = _live_record_realpaths(records)
+    symlinked = {p for p in records if os.path.islink(p)}
     for abspath in records:
         rel = os.path.relpath(abspath, root)
+        if abspath in symlinked:
+            findings.append(Finding("ERROR", rel, None,
+                                    "memory record must not be a symlink"))
+            continue
         data, fm = _load_frontmatter(abspath, rel)
         findings += fm
         if data is None:
@@ -727,14 +751,12 @@ def check_memory(root):
             if not isinstance(target, str):
                 findings.append(Finding("ERROR", rel, None, "'superseded_by' must be a single value"))
             else:
-                try:
-                    target_real = os.path.realpath(os.path.join(root, target.strip()))
-                except (OSError, ValueError):
-                    target_real = None
-                if target_real not in record_realpaths:
+                target_real = _record_ref_realpath(root, target)
+                if target_real is None or target_real not in record_realpaths:
                     findings.append(Finding(
                         "ERROR", rel, None,
-                        "dangling 'superseded_by' pointer (must resolve to a memory record): %s" % target))
+                        "dangling 'superseded_by' pointer (must be a repo-relative "
+                        "path resolving to a memory record): %s" % target))
 
     # index cross-check: live records must appear in their memory/_index.md
     for abspath in iter_files(root, load_gitignore(root)):
@@ -752,6 +774,8 @@ def check_memory(root):
                   for t in _LINK.findall(index_text)
                   if not t.startswith(("http://", "https://", "mailto:", "#"))}
         for rec in records:
+            if rec in symlinked:
+                continue  # already an ERROR in the record pass
             if os.path.dirname(rec) != mem_dir and not rec.startswith(mem_dir + os.sep):
                 continue
             data, _discard = _load_frontmatter(rec, os.path.relpath(rec, root))

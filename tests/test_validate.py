@@ -936,6 +936,43 @@ class TestMemory(unittest.TestCase):
             self.assertTrue(any(f.level == "ERROR" and "dangling" in f.message.lower()
                                 for f in validate.check_memory(d)))
 
+    def test_superseded_by_absolute_or_reentering_path_errors(self):
+        # Codex review: the schema says repo-relative — an absolute path or a
+        # ../ alias that re-enters the repo must not satisfy the pointer even
+        # when it resolves to a real record.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/new.md", MEM_OK)
+            for target in (os.path.join(d, "memory/new.md"),
+                           "../%s/memory/new.md" % os.path.basename(d)):
+                with self.subTest(target=target):
+                    rec = MEM_OK.replace("provenance: observed", "provenance: superseded")
+                    rec = rec.replace(
+                        "review_by: 2099-10-15",
+                        "review_by: 2099-10-15\ninvalid_at: 2026-08-01\nsuperseded_by: %s" % target)
+                    _write(d, "memory/x.md", rec)
+                    self.assertTrue(any(f.level == "ERROR" and "dangling" in f.message.lower()
+                                        for f in validate.check_memory(d)))
+
+    def test_symlinked_memory_record_errors_and_poisons_nothing(self):
+        # Codex review: a symlinked record is an ERROR, and its external target
+        # must not enter the reference allowlist.
+        with tempfile.TemporaryDirectory() as d:
+            with tempfile.TemporaryDirectory() as outside:
+                target = _write(outside, "escaped.md", MEM_OK)
+                os.makedirs(os.path.join(d, "memory"))
+                os.symlink(target, os.path.join(d, "memory", "x.md"))
+                findings = validate.check_memory(d)
+                self.assertTrue(any(f.level == "ERROR" and "symlink" in f.message
+                                    for f in findings))
+
+    def test_list_valued_review_by_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/x.md",
+                   MEM_OK.replace("review_by: 2099-10-15", "review_by:\n  - 2099-10-15"))
+            self.assertTrue(any(f.level == "WARN" and "review_by" in f.message
+                                and "ISO date" in f.message
+                                for f in validate.check_memory(d)))
+
 
 class TestMemoryIndex(unittest.TestCase):
     def test_live_record_not_in_index_warns(self):
@@ -1029,6 +1066,35 @@ class TestProvisioningGate(unittest.TestCase):
                 _write(d, "README.md", "# not a memory record\n")
                 self._pkg(d, SKILL_OK.replace("provisioned: yes",
                                               "provisioned: yes\nbaseline: %s" % target))
+                errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
+                self.assertTrue(any("baseline" in f.message and "not found" in f.message
+                                    for f in errs))
+
+    def test_absolute_or_reentering_baseline_errors(self):
+        # Codex review: absolute paths and ../ aliases that re-enter the repo
+        # must not satisfy the gate even when they resolve to a real record.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/onboarding-baseline.md", MEM_OK)
+            for target in (os.path.join(d, "memory/onboarding-baseline.md"),
+                           "../%s/memory/onboarding-baseline.md" % os.path.basename(d)):
+                with self.subTest(target=target):
+                    self._pkg(d, SKILL_OK.replace("provisioned: yes",
+                                                  "provisioned: yes\nbaseline: %s" % target))
+                    errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
+                    self.assertTrue(any("baseline" in f.message and "not found" in f.message
+                                        for f in errs))
+
+    def test_symlinked_baseline_target_does_not_satisfy_the_gate(self):
+        # Codex review: a symlinked "record" must not let an out-of-tree file
+        # satisfy the provisioning gate.
+        with tempfile.TemporaryDirectory() as d:
+            with tempfile.TemporaryDirectory() as outside:
+                target = _write(outside, "escaped.md", MEM_OK)
+                os.makedirs(os.path.join(d, "memory"))
+                os.symlink(target, os.path.join(d, "memory", "onboarding-baseline.md"))
+                self._pkg(d, SKILL_OK.replace(
+                    "provisioned: yes",
+                    "provisioned: yes\nbaseline: memory/onboarding-baseline.md"))
                 errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
                 self.assertTrue(any("baseline" in f.message and "not found" in f.message
                                     for f in errs))
