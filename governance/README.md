@@ -31,9 +31,11 @@ job** must be reassigned before the repeal ships (orphan-prohibition).
 
 ## What the validator enforces
 
-- **ERROR:** a `high-risk` rule with no human-appeal path (no rung six); a repeal
-  (`repeals`) whose `surviving_job` is not `reassigned_to` someone; an active rule
-  (placed on a rung) with no `owner`.
+- **ERROR:** a `high-risk` rule with no human-appeal path (no rung six — placeholder
+  answers like `none`/`TBD` do not count); a repeal (`repeals`) whose `surviving_job`
+  is not `reassigned_to` a single accountable person; an active rule (placed on a
+  rung) with no `owner`, or missing any of the four owned objects or its rule
+  statement (the H1 title + body); a missing `action_class` on an active rule.
 - **WARN:** a missing, unparseable, or overdue `sunset`; a rule not yet placed on a
   rung (draft). The safety-spine ERRORs above apply to drafts too — only the `owner`
   requirement waits for provisioning (rung placement).

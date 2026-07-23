@@ -800,6 +800,23 @@ def _scalar(v):
     return isinstance(v, str) and v.strip() != ""
 
 
+# Explicit unanswered values must not satisfy a safety invariant: a generated
+# worksheet that writes `human_appeal: none` has NOT provided an appeal path.
+_PLACEHOLDERS = {"none", "n/a", "na", "tbd", "todo", "unknown", "pending", "-", "?"}
+
+
+def _answered(v):
+    return _scalar(v) and v.strip().lower() not in _PLACEHOLDERS
+
+
+# The four owned governance objects of §5.1 minus the rule statement itself
+# (the H1 + body, checked separately) and the top-level `owner` (checked with
+# its own message). Required in full once a rule is active (rung-placed).
+_RULE_OBJECT_FIELDS = ["value", "value_owner", "runtime_check", "runtime_check_owner",
+                       "human_appeal", "human_appeal_owner"]
+_H1 = re.compile(r"^# \S", re.MULTILINE)
+
+
 def check_constitution(root, ignore=()):
     """#8 typed-rule checks. Strict where a rule backs a safety invariant; WARN on
     incomplete thinking. The runnable hook set is a separate artifact (Slice 1.5b).
@@ -817,14 +834,17 @@ def check_constitution(root, ignore=()):
             continue
         abspath = os.path.join(base, name)
         rel = os.path.relpath(abspath, root)
-        data, fm = _load_frontmatter(abspath, rel)
-        findings += fm
-        if data is None:
+        text, rd_findings = _read_utf8(abspath, rel)
+        findings += rd_findings
+        if text is None:
             continue
+        data, body, fm = _frontmatter_and_body(text, rel)
+        findings += fm
 
-        # Only the owner requirement is provisioning-scoped (#6/#8: unowned is
-        # fine while drafting). The safety-spine checks below run on drafts too
-        # — a high-risk draft with no appeal path must not leave the gate green.
+        # Only the provisioning requirements (owner + the full four-object
+        # schema) wait for a rung (#6/#8: incomplete is fine while drafting).
+        # The safety-spine checks below run on drafts too — a high-risk draft
+        # with no appeal path must not leave the gate green.
         rung = data.get("rung")
         active = not _blank(rung)
         if not active:
@@ -838,6 +858,17 @@ def check_constitution(root, ignore=()):
                 findings.append(Finding("ERROR", rel, None, "active rule has no owner"))
             elif not isinstance(owner, str):
                 findings.append(Finding("ERROR", rel, None, "'owner' must be a single value"))
+            for field in _RULE_OBJECT_FIELDS:
+                v = data.get(field)
+                if _blank(v):
+                    findings.append(Finding("ERROR", rel, None,
+                                            "active rule missing '%s' (four objects / four owners)" % field))
+                elif not isinstance(v, str):
+                    findings.append(Finding("ERROR", rel, None,
+                                            "'%s' must be a single value" % field))
+            if _H1.search(body) is None:
+                findings.append(Finding("ERROR", rel, None,
+                                        "active rule has no rule statement (H1 title + body)"))
 
         # action_class drives the no-rung-six invariant, so it cannot be
         # optional: a rule that omits it would bypass the safety spine.
@@ -850,7 +881,7 @@ def check_constitution(root, ignore=()):
             findings.append(Finding("ERROR", rel, None,
                                     "invalid action_class %r (one of %s)" % (ac, sorted(ACTION_CLASSES))))
         if isinstance(ac, str) and ac == "high-risk" \
-                and not (_scalar(data.get("human_appeal")) and _scalar(data.get("human_appeal_owner"))):
+                and not (_answered(data.get("human_appeal")) and _answered(data.get("human_appeal_owner"))):
             findings.append(Finding("ERROR", rel, None,
                                     "high-risk rule must carry a human-appeal path with an owner "
                                     "(there is no rung six)"))
@@ -866,7 +897,7 @@ def check_constitution(root, ignore=()):
                 findings.append(Finding("WARN", rel, None, "sunset date has passed"))
 
         if not _blank(data.get("repeals")):
-            if _blank(data.get("surviving_job")) or _blank(data.get("reassigned_to")):
+            if _blank(data.get("surviving_job")) or not _scalar(data.get("reassigned_to")):
                 findings.append(Finding("ERROR", rel, None,
                                         "orphan-prohibition: a repealed ritual's surviving job must be "
                                         "reassigned ('surviving_job' + 'reassigned_to') before the repeal ships"))

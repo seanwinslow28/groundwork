@@ -1646,6 +1646,53 @@ class TestConstitution(unittest.TestCase):
             self.assertEqual(
                 validate.check_constitution(d, validate.load_gitignore(d)), [])
 
+    def test_placeholder_appeal_errors(self):
+        # Codex round 3: `human_appeal: none` / `human_appeal_owner: TBD` are
+        # explicit non-answers and must not satisfy the no-rung-six invariant.
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace(
+                "human_appeal: A denied or delayed grant escalates to the CISO, who decides within one business day",
+                "human_appeal: none")
+                .replace("human_appeal_owner: CISO", "human_appeal_owner: TBD"))
+            self.assertTrue(any(f.level == "ERROR" and "rung six" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_list_valued_reassigned_to_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace(
+                "ritual: IT manually provisioning every access request by ticket",
+                "ritual: IT manually provisioning every access request by ticket\n"
+                "repeals: The weekly access-review meeting\n"
+                "reassigned_to:\n  - Head of IT\n  - CISO"))
+            self.assertTrue(any(f.level == "ERROR" and "orphan" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_active_rule_missing_object_fields_errors(self):
+        # Codex round 3: the four-object/four-owner schema is required in full
+        # once a rule is active — a bare owner+rung+action_class+sunset record
+        # is not a typed rule.
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK
+                .replace("runtime_check: The onboarding agent may propose a grant but halts for a named approver; the provisioning log records who approved\n", "")
+                .replace("value_owner: CISO\n", ""))
+            errs = [f.message for f in validate.check_constitution(d) if f.level == "ERROR"]
+            self.assertTrue(any("runtime_check" in m for m in errs))
+            self.assertTrue(any("value_owner" in m for m in errs))
+
+    def test_draft_missing_object_fields_no_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace("rung: human-decision\n", "")
+                .replace("runtime_check: The onboarding agent may propose a grant but halts for a named approver; the provisioning log records who approved\n", ""))
+            self.assertFalse(any(f.level == "ERROR" and "runtime_check" in f.message
+                                 for f in validate.check_constitution(d)))
+
+    def test_active_rule_without_h1_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace(
+                "# Non-standard system access requires human sign-off\n", ""))
+            self.assertTrue(any(f.level == "ERROR" and "rule statement" in f.message
+                                for f in validate.check_constitution(d)))
+
     def test_unreadable_rule_errors_not_crashes(self):
         with tempfile.TemporaryDirectory() as d:
             _write_bytes(d, "governance/constitution/access.md", b"---\nowner: \xff\xfe\n---\n")
