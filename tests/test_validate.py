@@ -1527,6 +1527,8 @@ scarcity: Security-review time — every grant got a human's eyes
 surviving_job: Deciding whether a non-standard grant is warranted
 ---
 # Non-standard system access requires human sign-off
+
+An agent may propose a grant; a named human approves it and is logged.
 """
 
 
@@ -1690,6 +1692,38 @@ class TestConstitution(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             self._rule(d, RULE_OK.replace(
                 "# Non-standard system access requires human sign-off\n", ""))
+            self.assertTrue(any(f.level == "ERROR" and "rule statement" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_placeholder_owner_errors(self):
+        # Codex round 4: the placeholder policy applies at provisioning, not
+        # just to high-risk appeals — `owner: TBD` is an explicitly unowned rule.
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace("owner: Head of IT\n", "owner: TBD\n", 1))
+            self.assertTrue(any(f.level == "ERROR" and "owner" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_placeholder_object_field_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace(
+                "value: Least-privilege access protects the company and its customers' data",
+                "value: TBD"))
+            self.assertTrue(any(f.level == "ERROR" and "value" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_placeholder_repeal_fields_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace(
+                "surviving_job: Deciding whether a non-standard grant is warranted",
+                "surviving_job: TBD\nrepeals: The weekly access-review meeting\nreassigned_to: Head of IT"))
+            self.assertTrue(any(f.level == "ERROR" and "orphan" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_title_only_rule_errors(self):
+        # Codex round 4: the rule statement is H1 + body; a bare title is not a rule.
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace(
+                "\nAn agent may propose a grant; a named human approves it and is logged.\n", ""))
             self.assertTrue(any(f.level == "ERROR" and "rule statement" in f.message
                                 for f in validate.check_constitution(d)))
 

@@ -858,6 +858,9 @@ def check_constitution(root, ignore=()):
                 findings.append(Finding("ERROR", rel, None, "active rule has no owner"))
             elif not isinstance(owner, str):
                 findings.append(Finding("ERROR", rel, None, "'owner' must be a single value"))
+            elif not _answered(owner):
+                findings.append(Finding("ERROR", rel, None,
+                                        "active rule owner is a placeholder, not an answer"))
             for field in _RULE_OBJECT_FIELDS:
                 v = data.get(field)
                 if _blank(v):
@@ -866,7 +869,13 @@ def check_constitution(root, ignore=()):
                 elif not isinstance(v, str):
                     findings.append(Finding("ERROR", rel, None,
                                             "'%s' must be a single value" % field))
-            if _H1.search(body) is None:
+                elif not _answered(v):
+                    findings.append(Finding("ERROR", rel, None,
+                                            "'%s' is a placeholder, not an answer" % field))
+            # the rule statement is the H1 plus a substantive body, not a bare title
+            if _H1.search(body) is None or not any(
+                    ln.strip() and not ln.lstrip().startswith("#")
+                    for ln in body.split("\n")):
                 findings.append(Finding("ERROR", rel, None,
                                         "active rule has no rule statement (H1 title + body)"))
 
@@ -897,7 +906,7 @@ def check_constitution(root, ignore=()):
                 findings.append(Finding("WARN", rel, None, "sunset date has passed"))
 
         if not _blank(data.get("repeals")):
-            if _blank(data.get("surviving_job")) or not _scalar(data.get("reassigned_to")):
+            if not _answered(data.get("surviving_job")) or not _answered(data.get("reassigned_to")):
                 findings.append(Finding("ERROR", rel, None,
                                         "orphan-prohibition: a repealed ritual's surviving job must be "
                                         "reassigned ('surviving_job' + 'reassigned_to') before the repeal ships"))
