@@ -19,7 +19,10 @@ import sys
 
 # (category, human-readable action, pattern). Curated and auditable — add with care.
 HIGH_RISK_PATTERNS = [
-    ("delete", "recursive/forced file deletion", re.compile(r"\brm\s+(-\w*\s+)*-\w*[rf]")),
+    # short clusters may carry -R (uppercase recursive); long spellings are named
+    # explicitly so a benign long flag containing 'r' (--verbose) does not match
+    ("delete", "recursive/forced file deletion",
+     re.compile(r"\brm\s+(?:-[\w-]+\s+)*(?:(?<!-)-[A-Za-z]*[rRf][A-Za-z]*(?![\w-])|--(?:recursive|force)\b)")),
     ("delete", "force push (rewrites shared history)", re.compile(r"\bgit\s+push\b[^\n]*(--force\b|(?<!\w)-f\b)")),
     ("delete", "hard reset (discards work)", re.compile(r"\bgit\s+reset\s+--hard\b")),
     ("delete", "force-clean untracked files", re.compile(r"\bgit\s+clean\b[^\n]*-\w*f")),
@@ -29,7 +32,9 @@ HIGH_RISK_PATTERNS = [
     ("external-send", "outbound post", re.compile(r"\bwget\b[^\n]*--post-(data|file)\b")),
     ("external-send", "outbound mail", re.compile(r"\b(sendmail|mailx|mutt)\b")),
     ("spend", "infrastructure apply (provisions billable resources)", re.compile(r"\bterraform\s+apply\b")),
-    ("spend", "payments CLI", re.compile(r"\bstripe\s+(charges?|payment_intents?|payouts?|refunds?)\b")),
+    # action-based: only mutating subcommands are spend; list/retrieve are read-only
+    ("spend", "payments CLI",
+     re.compile(r"\bstripe\s+(charges?|payment_intents?|payouts?|refunds?)\s+(create|update|capture|confirm|cancel)\b")),
 ]
 
 _DENY_REASON = (
@@ -71,9 +76,9 @@ def decide(payload):
         return _output("ask", "groundwork action-class gate could not read the tool input; "
                               "asking a human rather than guessing.")
     command = tool_input.get("command")
-    if command is None:
-        return None  # not a command-bearing tool call; nothing for this gate to say
     if not isinstance(command, str):
+        # the shipped snippet matches Bash only, so a payload without a usable
+        # command string is unexpected input, not a different tool — fail loud
         return _output("ask", "groundwork action-class gate could not read the command; "
                               "asking a human rather than guessing.")
     category, action = classify(command)

@@ -58,7 +58,7 @@ class TestFrontmatter(unittest.TestCase):
 class TestZeroDep(unittest.TestCase):
     def test_only_stdlib_imports(self):
         allowed = {"os", "sys", "re", "ast", "math", "fnmatch", "collections", "pathlib",
-                   "datetime", "subprocess", "unicodedata", "json"}
+                   "datetime", "subprocess", "unicodedata", "json", "shlex"}
         tree = ast.parse((REPO / "scripts" / "validate.py").read_text())
         mods = set()
         for node in ast.walk(tree):
@@ -1862,6 +1862,42 @@ class TestActionClassGate(unittest.TestCase):
         out = action_class_gate.decide({"hook_event_name": "PreToolUse", "tool_name": "Bash"})
         self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "ask")
 
+    def test_rm_standard_spellings_blocked(self):
+        # Codex round 1 (P1): -R / --recursive / --force are standard forms, not
+        # obfuscation — the hard-block must catch them.
+        self.assertEqual(action_class_gate.classify("rm -R /var/data")[0], "delete")
+        self.assertEqual(action_class_gate.classify("rm --recursive /var/data")[0], "delete")
+        self.assertEqual(action_class_gate.classify("rm --force stale.lock")[0], "delete")
+        self.assertEqual(action_class_gate.classify("rm --preserve-root -rf /")[0], "delete")
+        self.assertEqual(action_class_gate.classify("rm -rv /var/data")[0], "delete")
+
+    def test_rm_benign_forms_not_blocked(self):
+        self.assertEqual(action_class_gate.classify("rm notes.txt")[0], None)
+        self.assertEqual(action_class_gate.classify("rm -i notes.txt")[0], None)
+        self.assertEqual(action_class_gate.classify("rm --verbose notes.txt")[0], None)
+
+    def test_stripe_read_only_not_blocked(self):
+        # Codex round 1 (P2): the taxonomy is action-based — read-only payment
+        # queries are not spend.
+        self.assertEqual(action_class_gate.classify("stripe charges list")[0], None)
+        self.assertEqual(action_class_gate.classify("stripe refunds retrieve re_123")[0], None)
+
+    def test_stripe_mutating_blocked(self):
+        self.assertEqual(action_class_gate.classify("stripe charges create --amount 100")[0], "spend")
+        self.assertEqual(action_class_gate.classify("stripe payment_intents confirm pi_123")[0], "spend")
+        self.assertEqual(action_class_gate.classify("stripe refunds create --charge ch_1")[0], "spend")
+
+    def test_decide_asks_when_bash_payload_has_no_command(self):
+        # Codex round 1 (P2): the shipped snippet matches Bash only, so a Bash
+        # payload without a command string is unexpected input — fail loud.
+        out = action_class_gate.decide(
+            {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {}})
+        self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "ask")
+        out = action_class_gate.decide(
+            {"hook_event_name": "PreToolUse", "tool_name": "Bash",
+             "tool_input": {"command": None}})
+        self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "ask")
+
 
 SNIPPET_OK = """{
   "hooks": {
@@ -1869,6 +1905,17 @@ SNIPPET_OK = """{
       {"matcher": "Bash",
        "hooks": [{"type": "command",
                   "command": "python3 ${CLAUDE_PROJECT_DIR}/governance/hooks/action_class_gate.py"}]}
+    ]
+  }
+}
+"""
+
+SNIPPET_QUOTED = """{
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Bash",
+       "hooks": [{"type": "command",
+                  "command": "python3 \\"${CLAUDE_PROJECT_DIR}/governance/hooks/action_class_gate.py\\""}]}
     ]
   }
 }
@@ -1910,6 +1957,33 @@ class TestHooks(unittest.TestCase):
     def test_no_hooks_dir_is_silent(self):
         with tempfile.TemporaryDirectory() as d:
             self.assertEqual(validate.check_hooks(d), [])
+
+    def test_non_object_snippet_json_errors(self):
+        # Codex round 1 (P2): valid JSON with a non-object top level parsed
+        # clean — a completely unusable snippet must not pass silently.
+        for payload in ("[]\n", "null\n", '"hooks"\n'):
+            with tempfile.TemporaryDirectory() as d:
+                self._set(d, snippet=payload)
+                self.assertTrue(any(f.level == "ERROR" and "JSON object" in f.message
+                                    for f in validate.check_hooks(d)),
+                                "no ERROR for snippet %r" % payload)
+
+    def test_quoted_command_resolves_in_root_with_spaces(self):
+        # Codex round 1 (P1): the shipped snippet quotes ${CLAUDE_PROJECT_DIR};
+        # the checker must parse shell quoting, and a root with spaces must work.
+        with tempfile.TemporaryDirectory() as d:
+            root = os.path.join(d, "my company os")
+            os.makedirs(root)
+            self._set(root, snippet=SNIPPET_QUOTED)
+            self.assertEqual([f for f in validate.check_hooks(root) if f.level == "ERROR"], [])
+
+    def test_unbalanced_quote_in_command_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._set(d, snippet=SNIPPET_OK.replace(
+                "python3 ${CLAUDE_PROJECT_DIR}/governance/hooks/action_class_gate.py",
+                "python3 \\\"unclosed"))
+            self.assertTrue(any(f.level == "ERROR" and "no runnable command" in f.message
+                                for f in validate.check_hooks(d)))
 
 
 if __name__ == "__main__":

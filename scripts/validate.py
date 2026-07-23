@@ -12,6 +12,7 @@ import json
 import math
 import os
 import re
+import shlex
 import subprocess
 import sys
 import unicodedata
@@ -951,10 +952,17 @@ def check_constitution(root, ignore=()):
 
 def _hook_command_target(command, root):
     """Best-effort: pull the script path out of a hook command string.
-    Strips a leading interpreter and resolves ${CLAUDE_PROJECT_DIR} to root."""
+    Splits with shell quoting rules (the shipped snippet quotes the path so
+    roots with spaces survive word-splitting), strips a leading interpreter,
+    and resolves ${CLAUDE_PROJECT_DIR} to root."""
     if not isinstance(command, str) or not command.strip():
         return None
-    parts = command.split()
+    try:
+        parts = shlex.split(command)
+    except ValueError:  # unbalanced quoting — not a runnable command
+        return None
+    if not parts:
+        return None
     # drop a leading interpreter (python3, python, bash, sh, node, ...)
     if parts and os.path.basename(parts[0]) in {"python3", "python", "bash", "sh", "node"}:
         parts = parts[1:]
@@ -980,13 +988,18 @@ def check_hooks(root):
                                 "hook set has no settings.snippet.json (nothing to install)"))
     else:
         rel_snip = os.path.relpath(snippet, root)
+        data, parsed = None, False
         try:
             with open(snippet, encoding="utf-8") as fh:
                 data = json.load(fh)
+            parsed = True
         except (ValueError, OSError) as exc:
             findings.append(Finding("ERROR", rel_snip, None,
                                     "hook settings snippet is not valid JSON (%s)" % exc))
-            data = None
+        if parsed and not isinstance(data, dict):
+            findings.append(Finding("ERROR", rel_snip, None,
+                                    "hook settings snippet is not a JSON object "
+                                    "(nothing Claude Code can install)"))
         if isinstance(data, dict):
             events = data.get("hooks")
             groups = []
