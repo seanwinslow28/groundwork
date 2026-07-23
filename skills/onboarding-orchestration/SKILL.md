@@ -2,7 +2,8 @@
 name: onboarding-orchestration
 description: Provision a new hire's accounts, equipment, and first-week schedule before day one
 action_class: external-side-effect
-provisioned: no
+provisioned: yes
+baseline: memory/onboarding-baseline.md
 ontology: ontologies/people-hr/onboarding-orchestration.md
 ---
 # Onboarding orchestration
@@ -18,7 +19,8 @@ the hire's actual readiness
 
 ## Harness requirements
 - A governed pre-provisioning baseline for time-to-day-one-ready and day-one
-  readiness; this skill remains a draft until that Slice 1.4 record exists.
+  readiness: [memory/onboarding-baseline.md](../../memory/onboarding-baseline.md)
+  (the `baseline:` this skill cites — the #5 provisioning gate).
 - Read/write access to the HRIS, the IT provisioning tracker, and approved
   standard-role account-provisioning systems.
 - Permission to order approved standard equipment and to send calendar invites and
