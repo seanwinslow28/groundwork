@@ -1511,5 +1511,282 @@ class TestDiffCLIWiring(unittest.TestCase):
             self.assertEqual(code, 0)
 
 
+RULE_OK = """---
+owner: Head of IT
+rung: human-decision
+action_class: high-risk
+sunset: 2099-07-01
+value: Least-privilege access protects the company and its customers' data
+value_owner: CISO
+runtime_check: The onboarding agent may propose a grant but halts for a named approver; the provisioning log records who approved
+runtime_check_owner: Head of IT
+human_appeal: A denied or delayed grant escalates to the CISO, who decides within one business day
+human_appeal_owner: CISO
+ritual: IT manually provisioning every access request by ticket
+scarcity: Security-review time — every grant got a human's eyes
+surviving_job: Deciding whether a non-standard grant is warranted
+---
+# Non-standard system access requires human sign-off
+
+An agent may propose a grant; a named human approves it and is logged.
+"""
+
+
+class TestConstitution(unittest.TestCase):
+    def _rule(self, d, text=RULE_OK, name="access.md"):
+        _write(d, "governance/constitution/%s" % name, text)
+
+    def test_valid_rule_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d)
+            self.assertEqual([f for f in validate.check_constitution(d) if f.level == "ERROR"], [])
+
+    def test_high_risk_without_appeal_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace(
+                "human_appeal: A denied or delayed grant escalates to the CISO, who decides within one business day\n", "")
+                .replace("human_appeal_owner: CISO\n", ""))
+            errs = [f for f in validate.check_constitution(d) if f.level == "ERROR"]
+            self.assertTrue(any("rung six" in f.message for f in errs))
+
+    def test_invalid_rung_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace("rung: human-decision", "rung: rung-six"))
+            self.assertTrue(any(f.level == "ERROR" and "rung" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_active_rule_without_owner_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            # count=1: only the top-level 'owner' line — a bare replace would also
+            # eat the tail of 'runtime_check_owner: Head of IT' and mangle the fixture
+            self._rule(d, RULE_OK.replace("owner: Head of IT\n", "", 1))
+            self.assertTrue(any(f.level == "ERROR" and "owner" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_draft_rule_warns_not_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            # no rung → draft; also drop owner (fine while drafting)
+            self._rule(d, RULE_OK.replace("rung: human-decision\n", "").replace("owner: Head of IT\n", "", 1))
+            findings = validate.check_constitution(d)
+            self.assertTrue(any(f.level == "WARN" and "rung" in f.message for f in findings))
+            self.assertFalse(any(f.level == "ERROR" and "owner" in f.message for f in findings))
+
+    def test_missing_sunset_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace("sunset: 2099-07-01\n", ""))
+            self.assertTrue(any(f.level == "WARN" and "sunset" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_orphan_repeal_without_reassignment_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace(
+                "ritual: IT manually provisioning every access request by ticket",
+                "ritual: IT manually provisioning every access request by ticket\nrepeals: The weekly access-review meeting"))
+            errs = [f for f in validate.check_constitution(d) if f.level == "ERROR"]
+            self.assertTrue(any("orphan" in f.message for f in errs))
+
+    def test_draft_high_risk_without_appeal_still_errors(self):
+        # Codex P1 regression: the safety spine runs on drafts too — a high-risk
+        # rule with no appeal path must ERROR even before it is placed on a rung.
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace("rung: human-decision\n", "")
+                .replace("human_appeal: A denied or delayed grant escalates to the CISO, who decides within one business day\n", "")
+                .replace("human_appeal_owner: CISO\n", ""))
+            errs = [f for f in validate.check_constitution(d) if f.level == "ERROR"]
+            self.assertTrue(any("rung six" in f.message for f in errs))
+
+    def test_draft_missing_sunset_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace("rung: human-decision\n", "")
+                .replace("sunset: 2099-07-01\n", ""))
+            self.assertTrue(any(f.level == "WARN" and "sunset" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_unparseable_sunset_warns(self):
+        # Codex P2 regression: `sunset: never` must not silently disable staleness.
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace("sunset: 2099-07-01", "sunset: never"))
+            self.assertTrue(any(f.level == "WARN" and "sunset" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_active_rule_missing_action_class_errors(self):
+        # Codex round 2: action_class drives no-rung-six, so an active rule
+        # cannot omit it (a high-risk rule would bypass the safety spine).
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace("action_class: high-risk\n", ""))
+            self.assertTrue(any(f.level == "ERROR" and "action_class" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_draft_missing_action_class_warns_not_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace("rung: human-decision\n", "")
+                .replace("action_class: high-risk\n", ""))
+            findings = validate.check_constitution(d)
+            self.assertTrue(any(f.level == "WARN" and "action_class" in f.message
+                                for f in findings))
+            self.assertFalse(any(f.level == "ERROR" and "action_class" in f.message
+                                 for f in findings))
+
+    def test_list_valued_owner_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace("owner: Head of IT\n",
+                                          "owner:\n  - Head of IT\n  - CISO\n", 1))
+            self.assertTrue(any(f.level == "ERROR" and "single value" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_list_valued_appeal_owner_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace("human_appeal_owner: CISO\n",
+                                          "human_appeal_owner:\n  - CISO\n  - Head of IT\n"))
+            self.assertTrue(any(f.level == "ERROR" and "rung six" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_gitignored_rule_is_skipped(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace("rung: human-decision", "rung: rung-six"))
+            _write(d, ".gitignore", "access.md\n")
+            self.assertEqual(
+                validate.check_constitution(d, validate.load_gitignore(d)), [])
+
+    def test_placeholder_appeal_errors(self):
+        # Codex round 3: `human_appeal: none` / `human_appeal_owner: TBD` are
+        # explicit non-answers and must not satisfy the no-rung-six invariant.
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace(
+                "human_appeal: A denied or delayed grant escalates to the CISO, who decides within one business day",
+                "human_appeal: none")
+                .replace("human_appeal_owner: CISO", "human_appeal_owner: TBD"))
+            self.assertTrue(any(f.level == "ERROR" and "rung six" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_list_valued_reassigned_to_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace(
+                "ritual: IT manually provisioning every access request by ticket",
+                "ritual: IT manually provisioning every access request by ticket\n"
+                "repeals: The weekly access-review meeting\n"
+                "reassigned_to:\n  - Head of IT\n  - CISO"))
+            self.assertTrue(any(f.level == "ERROR" and "orphan" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_active_rule_missing_object_fields_errors(self):
+        # Codex round 3: the four-object/four-owner schema is required in full
+        # once a rule is active — a bare owner+rung+action_class+sunset record
+        # is not a typed rule.
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK
+                .replace("runtime_check: The onboarding agent may propose a grant but halts for a named approver; the provisioning log records who approved\n", "")
+                .replace("value_owner: CISO\n", ""))
+            errs = [f.message for f in validate.check_constitution(d) if f.level == "ERROR"]
+            self.assertTrue(any("runtime_check" in m for m in errs))
+            self.assertTrue(any("value_owner" in m for m in errs))
+
+    def test_draft_missing_object_fields_no_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace("rung: human-decision\n", "")
+                .replace("runtime_check: The onboarding agent may propose a grant but halts for a named approver; the provisioning log records who approved\n", ""))
+            self.assertFalse(any(f.level == "ERROR" and "runtime_check" in f.message
+                                 for f in validate.check_constitution(d)))
+
+    def test_active_rule_without_h1_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace(
+                "# Non-standard system access requires human sign-off\n", ""))
+            self.assertTrue(any(f.level == "ERROR" and "rule statement" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_placeholder_owner_errors(self):
+        # Codex round 4: the placeholder policy applies at provisioning, not
+        # just to high-risk appeals — `owner: TBD` is an explicitly unowned rule.
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace("owner: Head of IT\n", "owner: TBD\n", 1))
+            self.assertTrue(any(f.level == "ERROR" and "owner" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_placeholder_object_field_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace(
+                "value: Least-privilege access protects the company and its customers' data",
+                "value: TBD"))
+            self.assertTrue(any(f.level == "ERROR" and "value" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_placeholder_repeal_fields_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace(
+                "surviving_job: Deciding whether a non-standard grant is warranted",
+                "surviving_job: TBD\nrepeals: The weekly access-review meeting\nreassigned_to: Head of IT"))
+            self.assertTrue(any(f.level == "ERROR" and "orphan" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_title_only_rule_errors(self):
+        # Codex round 4: the rule statement is H1 + body; a bare title is not a rule.
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace(
+                "\nAn agent may propose a grant; a named human approves it and is logged.\n", ""))
+            self.assertTrue(any(f.level == "ERROR" and "rule statement" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_quoted_placeholder_appeal_errors(self):
+        # Codex round 5: quoting a placeholder does not answer it.
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace(
+                "human_appeal: A denied or delayed grant escalates to the CISO, who decides within one business day",
+                'human_appeal: "TBD"')
+                .replace("human_appeal_owner: CISO", 'human_appeal_owner: "TBD"'))
+            self.assertTrue(any(f.level == "ERROR" and "rung six" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_repeals_none_is_not_a_repeal(self):
+        # Codex round 5: `repeals: none` is an explicit no-repeal answer and
+        # must not demand reassignment fields.
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace(
+                "ritual: IT manually provisioning every access request by ticket",
+                "ritual: IT manually provisioning every access request by ticket\nrepeals: none"))
+            self.assertFalse(any("orphan" in f.message
+                                 for f in validate.check_constitution(d)))
+
+    def test_placeholder_only_body_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace(
+                "An agent may propose a grant; a named human approves it and is logged.",
+                "TBD\n\n---\n\n<!-- fill in -->"))
+            self.assertTrue(any(f.level == "ERROR" and "rule statement" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_markup_placeholder_appeal_errors(self):
+        # Codex round 6: markdown/comment formatting must not launder a placeholder.
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace(
+                "human_appeal: A denied or delayed grant escalates to the CISO, who decides within one business day",
+                "human_appeal: **TBD**")
+                .replace("human_appeal_owner: CISO", "human_appeal_owner: # TODO"))
+            self.assertTrue(any(f.level == "ERROR" and "rung six" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_comment_only_body_errors(self):
+        # Codex round 6: a commented-out template body (including its heading)
+        # renders nothing and is not a rule statement.
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace(
+                "# Non-standard system access requires human sign-off\n\n"
+                "An agent may propose a grant; a named human approves it and is logged.",
+                "<!--\n# Non-standard system access requires human sign-off\nTODO: write the rule\n-->"))
+            self.assertTrue(any(f.level == "ERROR" and "rule statement" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_unreadable_rule_errors_not_crashes(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write_bytes(d, "governance/constitution/access.md", b"---\nowner: \xff\xfe\n---\n")
+            self.assertTrue(any(f.level == "ERROR" and "UTF-8" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_validate_wires_constitution(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace("rung: human-decision", "rung: rung-six"))
+            self.assertTrue(any(f.level == "ERROR" and "rung" in f.message for f in validate.validate(d)))
+
+
 if __name__ == "__main__":
     unittest.main()

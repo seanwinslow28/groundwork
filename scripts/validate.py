@@ -344,6 +344,7 @@ def check_ontology(root, ignore=()):
 PROVENANCE = {"observed", "inferred", "confirmed", "superseded"}
 
 ACTION_CLASSES = {"read-only", "reversible-write", "external-side-effect", "high-risk"}
+RUNGS = {"value", "instruction", "reminder", "hard-block", "human-decision"}
 TRACK2_CLASSES = {"external-side-effect", "high-risk"}
 CARD_REQUIRED = ["owner", "backup_owner", "job",
                  "allowed_actions", "proposed_only_actions", "forbidden_actions",
@@ -794,6 +795,152 @@ def check_memory(root):
     return findings
 
 
+# Explicit unanswered values must not satisfy a safety invariant: a generated
+# worksheet that writes `human_appeal: none` has NOT provided an appeal path.
+_PLACEHOLDERS = {"none", "n/a", "na", "tbd", "todo", "unknown", "pending", "-", "?"}
+
+
+def _answered(v):
+    """A present, single-valued, non-placeholder answer. A list defeats
+    one-owner accountability; quoting or formatting a placeholder (\"TBD\",
+    **TBD**, # TODO, `none`) does not answer it."""
+    if not isinstance(v, str):
+        return False
+    s = v.strip()
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in "\"'":
+        s = s[1:-1]
+    s = s.strip().strip("*_`#> \t").strip()
+    return s != "" and s.lower() not in _PLACEHOLDERS
+
+
+# Multiline HTML comments (template leftovers) render nothing: neither a
+# commented-out heading nor the comment delimiters count as rule content.
+_HTML_COMMENT = re.compile(r"<!--.*?(?:-->|\Z)", re.S)
+
+
+_SEPARATOR_LINE = re.compile(r"[-*_=]{3,}")
+
+
+def _substantive_line(ln):
+    """A body line that carries actual rule content: not blank, not a heading,
+    not a horizontal rule, not an HTML comment, not a bare placeholder."""
+    s = ln.strip()
+    if not s or s.startswith("#") or _SEPARATOR_LINE.fullmatch(s):
+        return False
+    if s.startswith("<!--") and s.endswith("-->"):
+        return False
+    return s.strip("*_ \t").lower() not in _PLACEHOLDERS
+
+
+# The four owned governance objects of §5.1 minus the rule statement itself
+# (the H1 + body, checked separately) and the top-level `owner` (checked with
+# its own message). Required in full once a rule is active (rung-placed).
+_RULE_OBJECT_FIELDS = ["value", "value_owner", "runtime_check", "runtime_check_owner",
+                       "human_appeal", "human_appeal_owner"]
+_H1 = re.compile(r"^# \S", re.MULTILINE)
+
+
+def check_constitution(root, ignore=()):
+    """#8 typed-rule checks. Strict where a rule backs a safety invariant; WARN on
+    incomplete thinking. The runnable hook set is a separate artifact (Slice 1.5b).
+    Honors the same .gitignore patterns as the generic walker."""
+    findings = []
+    base = os.path.join(root, "governance", "constitution")
+    if not os.path.isdir(base):
+        return findings
+    if _ignored("governance", ignore) or _ignored("constitution", ignore):
+        return findings
+    today = datetime.date.today()
+    for name in sorted(os.listdir(base)):
+        if not name.endswith(".md") or name in {"README.md", "_index.md"} \
+                or _ignored(name, ignore):
+            continue
+        abspath = os.path.join(base, name)
+        rel = os.path.relpath(abspath, root)
+        text, rd_findings = _read_utf8(abspath, rel)
+        findings += rd_findings
+        if text is None:
+            continue
+        data, body, fm = _frontmatter_and_body(text, rel)
+        findings += fm
+
+        # Only the provisioning requirements (owner + the full four-object
+        # schema) wait for a rung (#6/#8: incomplete is fine while drafting).
+        # The safety-spine checks below run on drafts too — a high-risk draft
+        # with no appeal path must not leave the gate green.
+        rung = data.get("rung")
+        active = not _blank(rung)
+        if not active:
+            findings.append(Finding("WARN", rel, None, "rule not yet placed on a rung (draft)"))
+        else:
+            if not (isinstance(rung, str) and rung in RUNGS):
+                findings.append(Finding("ERROR", rel, None,
+                                        "invalid rung %r (one of %s)" % (rung, sorted(RUNGS))))
+            owner = data.get("owner")
+            if _blank(owner):
+                findings.append(Finding("ERROR", rel, None, "active rule has no owner"))
+            elif not isinstance(owner, str):
+                findings.append(Finding("ERROR", rel, None, "'owner' must be a single value"))
+            elif not _answered(owner):
+                findings.append(Finding("ERROR", rel, None,
+                                        "active rule owner is a placeholder, not an answer"))
+            for field in _RULE_OBJECT_FIELDS:
+                v = data.get(field)
+                if _blank(v):
+                    findings.append(Finding("ERROR", rel, None,
+                                            "active rule missing '%s' (four objects / four owners)" % field))
+                elif not isinstance(v, str):
+                    findings.append(Finding("ERROR", rel, None,
+                                            "'%s' must be a single value" % field))
+                elif not _answered(v):
+                    findings.append(Finding("ERROR", rel, None,
+                                            "'%s' is a placeholder, not an answer" % field))
+            # the rule statement is the H1 plus a substantive body, not a bare
+            # title over placeholders, separators, or comments
+            rendered = _HTML_COMMENT.sub("", body)
+            if _H1.search(rendered) is None or not any(
+                    _substantive_line(ln) for ln in rendered.split("\n")):
+                findings.append(Finding("ERROR", rel, None,
+                                        "active rule has no rule statement (H1 title + body)"))
+
+        # action_class drives the no-rung-six invariant, so it cannot be
+        # optional: a rule that omits it would bypass the safety spine.
+        ac = data.get("action_class")
+        if _blank(ac):
+            findings.append(Finding(
+                "ERROR" if active else "WARN", rel, None,
+                "missing 'action_class' (one of %s)" % sorted(ACTION_CLASSES)))
+        elif not (isinstance(ac, str) and ac in ACTION_CLASSES):
+            findings.append(Finding("ERROR", rel, None,
+                                    "invalid action_class %r (one of %s)" % (ac, sorted(ACTION_CLASSES))))
+        if isinstance(ac, str) and ac == "high-risk" \
+                and not (_answered(data.get("human_appeal")) and _answered(data.get("human_appeal_owner"))):
+            findings.append(Finding("ERROR", rel, None,
+                                    "high-risk rule must carry a human-appeal path with an owner "
+                                    "(there is no rung six)"))
+        sunset = data.get("sunset")
+        if _blank(sunset):
+            findings.append(Finding("WARN", rel, None, "missing sunset date"))
+        else:
+            sd = _parse_date(sunset)
+            if sd is None:
+                findings.append(Finding("WARN", rel, None,
+                                        "'sunset' is not an ISO date (YYYY-MM-DD)"))
+            elif sd < today:
+                findings.append(Finding("WARN", rel, None, "sunset date has passed"))
+
+        # `repeals: none` is an explicit no-repeal answer, not a repeal; a
+        # non-empty list of repealed rituals declares one.
+        repeals = data.get("repeals")
+        repeal_declared = bool(repeals) if isinstance(repeals, list) else _answered(repeals)
+        if repeal_declared:
+            if not _answered(data.get("surviving_job")) or not _answered(data.get("reassigned_to")):
+                findings.append(Finding("ERROR", rel, None,
+                                        "orphan-prohibition: a repealed ritual's surviving job must be "
+                                        "reassigned ('surviving_job' + 'reassigned_to') before the repeal ships"))
+    return findings
+
+
 _PROV_FORWARD = {
     "observed": {"observed", "confirmed", "superseded"},
     "inferred": {"inferred", "confirmed", "superseded"},
@@ -929,6 +1076,7 @@ def validate(root):
     findings += check_ontology(root, ignore)
     findings += check_owner_cards(root, ignore)
     findings += check_memory(root)
+    findings += check_constitution(root, ignore)
     return findings
 
 
