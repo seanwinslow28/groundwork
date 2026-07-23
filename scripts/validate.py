@@ -8,6 +8,7 @@ referential integrity.
 """
 import datetime
 import fnmatch
+import json
 import math
 import os
 import re
@@ -948,6 +949,76 @@ def check_constitution(root, ignore=()):
     return findings
 
 
+def _hook_command_target(command, root):
+    """Best-effort: pull the script path out of a hook command string.
+    Strips a leading interpreter and resolves ${CLAUDE_PROJECT_DIR} to root."""
+    if not isinstance(command, str) or not command.strip():
+        return None
+    parts = command.split()
+    # drop a leading interpreter (python3, python, bash, sh, node, ...)
+    if parts and os.path.basename(parts[0]) in {"python3", "python", "bash", "sh", "node"}:
+        parts = parts[1:]
+    if not parts:
+        return None
+    target = parts[0].replace("${CLAUDE_PROJECT_DIR}", root).replace("$CLAUDE_PROJECT_DIR", root)
+    if not os.path.isabs(target):
+        target = os.path.join(root, target)
+    return os.path.normpath(target)
+
+
+def check_hooks(root):
+    """Existence-check the enforcement claim: a hook set whose command path does not
+    resolve is a named-but-unwired guard — false safety, worse than an admitted gap."""
+    findings = []
+    hooks_dir = os.path.join(root, "governance", "hooks")
+    if not os.path.isdir(hooks_dir):
+        return findings
+    rel_dir = os.path.relpath(hooks_dir, root)
+    snippet = os.path.join(hooks_dir, "settings.snippet.json")
+    if not os.path.isfile(snippet):
+        findings.append(Finding("WARN", os.path.join(rel_dir, "settings.snippet.json"), None,
+                                "hook set has no settings.snippet.json (nothing to install)"))
+    else:
+        rel_snip = os.path.relpath(snippet, root)
+        try:
+            with open(snippet, encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (ValueError, OSError) as exc:
+            findings.append(Finding("ERROR", rel_snip, None,
+                                    "hook settings snippet is not valid JSON (%s)" % exc))
+            data = None
+        if isinstance(data, dict):
+            events = data.get("hooks")
+            groups = []
+            if isinstance(events, dict):
+                for entries in events.values():
+                    if isinstance(entries, list):
+                        groups.extend(entries)
+            declared = 0
+            for group in groups:
+                if not isinstance(group, dict):
+                    continue
+                for hook in group.get("hooks", []) if isinstance(group.get("hooks"), list) else []:
+                    if not isinstance(hook, dict) or hook.get("type") != "command":
+                        continue
+                    declared += 1
+                    target = _hook_command_target(hook.get("command"), root)
+                    if target is None:
+                        findings.append(Finding("ERROR", rel_snip, None,
+                                                "hook declares no runnable command"))
+                    elif not os.path.isfile(target):
+                        findings.append(Finding("ERROR", rel_snip, None,
+                                                "hook command not found: %s (a named-but-unwired "
+                                                "guard is false safety)" % hook.get("command")))
+            if declared == 0:
+                findings.append(Finding("WARN", rel_snip, None,
+                                        "hook settings snippet declares no command hooks"))
+    if not os.path.isfile(os.path.join(hooks_dir, "review-gate.md")):
+        findings.append(Finding("WARN", os.path.join(rel_dir, "review-gate.md"), None,
+                                "hook set has no review-gate.md — the non-Claude degradation (#19) is undocumented"))
+    return findings
+
+
 _PROV_FORWARD = {
     "observed": {"observed", "confirmed", "superseded"},
     "inferred": {"inferred", "confirmed", "superseded"},
@@ -1084,6 +1155,7 @@ def validate(root):
     findings += check_owner_cards(root, ignore)
     findings += check_memory(root)
     findings += check_constitution(root, ignore)
+    findings += check_hooks(root)
     return findings
 
 

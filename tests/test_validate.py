@@ -58,7 +58,7 @@ class TestFrontmatter(unittest.TestCase):
 class TestZeroDep(unittest.TestCase):
     def test_only_stdlib_imports(self):
         allowed = {"os", "sys", "re", "ast", "math", "fnmatch", "collections", "pathlib",
-                   "datetime", "subprocess", "unicodedata"}
+                   "datetime", "subprocess", "unicodedata", "json"}
         tree = ast.parse((REPO / "scripts" / "validate.py").read_text())
         mods = set()
         for node in ast.walk(tree):
@@ -69,6 +69,23 @@ class TestZeroDep(unittest.TestCase):
                 mods.add(node.module.split(".")[0])
         extra = mods - allowed
         self.assertEqual(extra, set(), "non-stdlib imports: %s" % extra)
+
+    def test_shipped_hook_scripts_only_stdlib(self):
+        allowed = {"os", "sys", "re", "ast", "math", "fnmatch", "collections",
+                   "pathlib", "datetime", "subprocess", "unicodedata", "json"}
+        hooks_dir = REPO / "governance" / "hooks"
+        if not hooks_dir.is_dir():
+            self.skipTest("no shipped hooks")
+        for py in sorted(hooks_dir.glob("*.py")):
+            tree = ast.parse(py.read_text())
+            mods = set()
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for n in node.names:
+                        mods.add(n.name.split(".")[0])
+                elif isinstance(node, ast.ImportFrom) and node.module:
+                    mods.add(node.module.split(".")[0])
+            self.assertEqual(mods - allowed, set(), "%s imports non-stdlib: %s" % (py.name, mods - allowed))
 
 
 class TestSecrets(unittest.TestCase):
@@ -1844,6 +1861,55 @@ class TestActionClassGate(unittest.TestCase):
     def test_decide_asks_on_malformed_input(self):
         out = action_class_gate.decide({"hook_event_name": "PreToolUse", "tool_name": "Bash"})
         self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "ask")
+
+
+SNIPPET_OK = """{
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Bash",
+       "hooks": [{"type": "command",
+                  "command": "python3 ${CLAUDE_PROJECT_DIR}/governance/hooks/action_class_gate.py"}]}
+    ]
+  }
+}
+"""
+
+
+class TestHooks(unittest.TestCase):
+    def _set(self, d, snippet=SNIPPET_OK, script=True, review=True):
+        _write(d, "governance/hooks/settings.snippet.json", snippet)
+        if script:
+            _write(d, "governance/hooks/action_class_gate.py", "# hook\n")
+        if review:
+            _write(d, "governance/hooks/review-gate.md", "# review gate\n")
+
+    def test_wired_hook_set_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._set(d)
+            self.assertEqual([f for f in validate.check_hooks(d) if f.level == "ERROR"], [])
+
+    def test_unwired_command_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._set(d, script=False)
+            errs = [f for f in validate.check_hooks(d) if f.level == "ERROR"]
+            self.assertTrue(any("not found" in f.message for f in errs))
+
+    def test_invalid_json_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._set(d, snippet="{ not json ")
+            self.assertTrue(any(f.level == "ERROR" and "JSON" in f.message
+                                for f in validate.check_hooks(d)))
+
+    def test_missing_review_gate_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._set(d, review=False)
+            findings = validate.check_hooks(d)
+            self.assertTrue(any(f.level == "WARN" and "review-gate" in f.message for f in findings))
+            self.assertFalse(any(f.level == "ERROR" and "review-gate" in f.message for f in findings))
+
+    def test_no_hooks_dir_is_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(validate.check_hooks(d), [])
 
 
 if __name__ == "__main__":
