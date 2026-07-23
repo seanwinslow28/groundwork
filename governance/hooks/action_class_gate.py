@@ -76,9 +76,10 @@ def decide(payload):
         return _output("ask", "groundwork action-class gate could not read the tool input; "
                               "asking a human rather than guessing.")
     command = tool_input.get("command")
-    if not isinstance(command, str):
+    if not isinstance(command, str) or not command.strip():
         # the shipped snippet matches Bash only, so a payload without a usable
-        # command string is unexpected input, not a different tool — fail loud
+        # non-blank command string is unexpected input, not a different tool —
+        # fail loud
         return _output("ask", "groundwork action-class gate could not read the command; "
                               "asking a human rather than guessing.")
     category, action = classify(command)

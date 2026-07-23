@@ -1898,6 +1898,16 @@ class TestActionClassGate(unittest.TestCase):
              "tool_input": {"command": None}})
         self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "ask")
 
+    def test_decide_asks_on_blank_command(self):
+        # Codex round 2 (P2): a blank command string is unusable input, not a
+        # benign command — fail loud, don't defer.
+        for cmd in ("", "   "):
+            out = action_class_gate.decide(
+                {"hook_event_name": "PreToolUse", "tool_name": "Bash",
+                 "tool_input": {"command": cmd}})
+            self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "ask",
+                             "no ask for command %r" % cmd)
+
 
 SNIPPET_OK = """{
   "hooks": {
@@ -1976,6 +1986,25 @@ class TestHooks(unittest.TestCase):
             os.makedirs(root)
             self._set(root, snippet=SNIPPET_QUOTED)
             self.assertEqual([f for f in validate.check_hooks(root) if f.level == "ERROR"], [])
+
+    def test_wrong_event_registration_errors(self):
+        # Codex round 2 (P2): a gate registered under PostToolUse cannot block
+        # a command before it runs — the registration itself is the claim.
+        with tempfile.TemporaryDirectory() as d:
+            self._set(d, snippet=SNIPPET_OK.replace("PreToolUse", "PostToolUse"))
+            self.assertTrue(any(f.level == "ERROR" and "PreToolUse" in f.message
+                                for f in validate.check_hooks(d)))
+
+    def test_non_bash_matcher_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._set(d, snippet=SNIPPET_OK.replace('"matcher": "Bash"', '"matcher": "Edit"'))
+            self.assertTrue(any(f.level == "ERROR" and "PreToolUse" in f.message
+                                for f in validate.check_hooks(d)))
+
+    def test_regex_matcher_covering_bash_is_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._set(d, snippet=SNIPPET_OK.replace('"matcher": "Bash"', '"matcher": "Bash|Edit"'))
+            self.assertEqual([f for f in validate.check_hooks(d) if f.level == "ERROR"], [])
 
     def test_unbalanced_quote_in_command_errors(self):
         with tempfile.TemporaryDirectory() as d:

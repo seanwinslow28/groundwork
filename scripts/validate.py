@@ -974,9 +974,24 @@ def _hook_command_target(command, root):
     return os.path.normpath(target)
 
 
+def _matcher_covers_bash(matcher):
+    """Claude Code matchers are tool-name regexes; an absent/empty/'*' matcher
+    matches every tool. An invalid regex covers nothing (fail closed)."""
+    if matcher is None or matcher in ("", "*"):
+        return True
+    if not isinstance(matcher, str):
+        return False
+    try:
+        return re.fullmatch(matcher, "Bash") is not None
+    except re.error:
+        return False
+
+
 def check_hooks(root):
     """Existence-check the enforcement claim: a hook set whose command path does not
-    resolve is a named-but-unwired guard — false safety, worse than an admitted gap."""
+    resolve is a named-but-unwired guard — false safety, worse than an admitted gap.
+    The registration itself is part of the claim: the gate must be wired under
+    PreToolUse with a matcher that covers Bash, or it cannot block anything."""
     findings = []
     hooks_dir = os.path.join(root, "governance", "hooks")
     if not os.path.isdir(hooks_dir):
@@ -1002,30 +1017,35 @@ def check_hooks(root):
                                     "(nothing Claude Code can install)"))
         if isinstance(data, dict):
             events = data.get("hooks")
-            groups = []
-            if isinstance(events, dict):
-                for entries in events.values():
-                    if isinstance(entries, list):
-                        groups.extend(entries)
             declared = 0
-            for group in groups:
-                if not isinstance(group, dict):
+            pre_bash = 0
+            for event, entries in (events.items() if isinstance(events, dict) else ()):
+                if not isinstance(entries, list):
                     continue
-                for hook in group.get("hooks", []) if isinstance(group.get("hooks"), list) else []:
-                    if not isinstance(hook, dict) or hook.get("type") != "command":
+                for group in entries:
+                    if not isinstance(group, dict):
                         continue
-                    declared += 1
-                    target = _hook_command_target(hook.get("command"), root)
-                    if target is None:
-                        findings.append(Finding("ERROR", rel_snip, None,
-                                                "hook declares no runnable command"))
-                    elif not os.path.isfile(target):
-                        findings.append(Finding("ERROR", rel_snip, None,
-                                                "hook command not found: %s (a named-but-unwired "
-                                                "guard is false safety)" % hook.get("command")))
+                    for hook in group.get("hooks", []) if isinstance(group.get("hooks"), list) else []:
+                        if not isinstance(hook, dict) or hook.get("type") != "command":
+                            continue
+                        declared += 1
+                        if event == "PreToolUse" and _matcher_covers_bash(group.get("matcher")):
+                            pre_bash += 1
+                        target = _hook_command_target(hook.get("command"), root)
+                        if target is None:
+                            findings.append(Finding("ERROR", rel_snip, None,
+                                                    "hook declares no runnable command"))
+                        elif not os.path.isfile(target):
+                            findings.append(Finding("ERROR", rel_snip, None,
+                                                    "hook command not found: %s (a named-but-unwired "
+                                                    "guard is false safety)" % hook.get("command")))
             if declared == 0:
                 findings.append(Finding("WARN", rel_snip, None,
                                         "hook settings snippet declares no command hooks"))
+            elif pre_bash == 0:
+                findings.append(Finding("ERROR", rel_snip, None,
+                                        "no command hook registered under PreToolUse with a matcher "
+                                        "covering Bash — the gate cannot block a command before it runs"))
     if not os.path.isfile(os.path.join(hooks_dir, "review-gate.md")):
         findings.append(Finding("WARN", os.path.join(rel_dir, "review-gate.md"), None,
                                 "hook set has no review-gate.md — the non-Claude degradation (#19) is undocumented"))
