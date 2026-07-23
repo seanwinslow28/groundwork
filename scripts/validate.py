@@ -795,6 +795,59 @@ def check_memory(root):
     return findings
 
 
+def check_constitution(root):
+    """#8 typed-rule checks. Strict where a rule backs a safety invariant; WARN on
+    incomplete thinking. The runnable hook set is a separate artifact (Slice 1.5b)."""
+    findings = []
+    base = os.path.join(root, "governance", "constitution")
+    if not os.path.isdir(base):
+        return findings
+    today = datetime.date.today()
+    for name in sorted(os.listdir(base)):
+        if not name.endswith(".md") or name in {"README.md", "_index.md"}:
+            continue
+        abspath = os.path.join(base, name)
+        rel = os.path.relpath(abspath, root)
+        data, fm = _load_frontmatter(abspath, rel)
+        findings += fm
+        if data is None:
+            continue
+
+        rung = data.get("rung")
+        active = not _blank(rung)
+        if not active:
+            findings.append(Finding("WARN", rel, None, "rule not yet placed on a rung (draft)"))
+        else:
+            if not (isinstance(rung, str) and rung in RUNGS):
+                findings.append(Finding("ERROR", rel, None,
+                                        "invalid rung %r (one of %s)" % (rung, sorted(RUNGS))))
+            if _blank(data.get("owner")):
+                findings.append(Finding("ERROR", rel, None, "active rule has no owner"))
+            ac = data.get("action_class")
+            if not _blank(ac) and not (isinstance(ac, str) and ac in ACTION_CLASSES):
+                findings.append(Finding("ERROR", rel, None,
+                                        "invalid action_class %r (one of %s)" % (ac, sorted(ACTION_CLASSES))))
+            if isinstance(ac, str) and ac == "high-risk" \
+                    and (_blank(data.get("human_appeal")) or _blank(data.get("human_appeal_owner"))):
+                findings.append(Finding("ERROR", rel, None,
+                                        "high-risk rule must carry a human-appeal path with an owner "
+                                        "(there is no rung six)"))
+            sunset = data.get("sunset")
+            if _blank(sunset):
+                findings.append(Finding("WARN", rel, None, "missing sunset date"))
+            else:
+                sd = _parse_date(sunset)
+                if sd is not None and sd < today:
+                    findings.append(Finding("WARN", rel, None, "sunset date has passed"))
+
+        if not _blank(data.get("repeals")):
+            if _blank(data.get("surviving_job")) or _blank(data.get("reassigned_to")):
+                findings.append(Finding("ERROR", rel, None,
+                                        "orphan-prohibition: a repealed ritual's surviving job must be "
+                                        "reassigned ('surviving_job' + 'reassigned_to') before the repeal ships"))
+    return findings
+
+
 _PROV_FORWARD = {
     "observed": {"observed", "confirmed", "superseded"},
     "inferred": {"inferred", "confirmed", "superseded"},
@@ -930,6 +983,7 @@ def validate(root):
     findings += check_ontology(root, ignore)
     findings += check_owner_cards(root, ignore)
     findings += check_memory(root)
+    findings += check_constitution(root)
     return findings
 
 

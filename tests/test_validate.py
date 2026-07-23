@@ -1511,5 +1511,87 @@ class TestDiffCLIWiring(unittest.TestCase):
             self.assertEqual(code, 0)
 
 
+RULE_OK = """---
+owner: Head of IT
+rung: human-decision
+action_class: high-risk
+sunset: 2099-07-01
+value: Least-privilege access protects the company and its customers' data
+value_owner: CISO
+runtime_check: The onboarding agent may propose a grant but halts for a named approver; the provisioning log records who approved
+runtime_check_owner: Head of IT
+human_appeal: A denied or delayed grant escalates to the CISO, who decides within one business day
+human_appeal_owner: CISO
+ritual: IT manually provisioning every access request by ticket
+scarcity: Security-review time — every grant got a human's eyes
+surviving_job: Deciding whether a non-standard grant is warranted
+---
+# Non-standard system access requires human sign-off
+"""
+
+
+class TestConstitution(unittest.TestCase):
+    def _rule(self, d, text=RULE_OK, name="access.md"):
+        _write(d, "governance/constitution/%s" % name, text)
+
+    def test_valid_rule_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d)
+            self.assertEqual([f for f in validate.check_constitution(d) if f.level == "ERROR"], [])
+
+    def test_high_risk_without_appeal_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace(
+                "human_appeal: A denied or delayed grant escalates to the CISO, who decides within one business day\n", "")
+                .replace("human_appeal_owner: CISO\n", ""))
+            errs = [f for f in validate.check_constitution(d) if f.level == "ERROR"]
+            self.assertTrue(any("rung six" in f.message for f in errs))
+
+    def test_invalid_rung_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace("rung: human-decision", "rung: rung-six"))
+            self.assertTrue(any(f.level == "ERROR" and "rung" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_active_rule_without_owner_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace("owner: Head of IT\n", ""))
+            self.assertTrue(any(f.level == "ERROR" and "owner" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_draft_rule_warns_not_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            # no rung → draft; also drop owner (fine while drafting)
+            self._rule(d, RULE_OK.replace("rung: human-decision\n", "").replace("owner: Head of IT\n", ""))
+            findings = validate.check_constitution(d)
+            self.assertTrue(any(f.level == "WARN" and "rung" in f.message for f in findings))
+            self.assertFalse(any(f.level == "ERROR" and "owner" in f.message for f in findings))
+
+    def test_missing_sunset_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace("sunset: 2099-07-01\n", ""))
+            self.assertTrue(any(f.level == "WARN" and "sunset" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_orphan_repeal_without_reassignment_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace(
+                "ritual: IT manually provisioning every access request by ticket",
+                "ritual: IT manually provisioning every access request by ticket\nrepeals: The weekly access-review meeting"))
+            errs = [f for f in validate.check_constitution(d) if f.level == "ERROR"]
+            self.assertTrue(any("orphan" in f.message for f in errs))
+
+    def test_unreadable_rule_errors_not_crashes(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write_bytes(d, "governance/constitution/access.md", b"---\nowner: \xff\xfe\n---\n")
+            self.assertTrue(any(f.level == "ERROR" and "UTF-8" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_validate_wires_constitution(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace("rung: human-decision", "rung: rung-six"))
+            self.assertTrue(any(f.level == "ERROR" and "rung" in f.message for f in validate.validate(d)))
+
+
 if __name__ == "__main__":
     unittest.main()
