@@ -52,7 +52,7 @@ class TestFrontmatter(unittest.TestCase):
 
 class TestZeroDep(unittest.TestCase):
     def test_only_stdlib_imports(self):
-        allowed = {"os", "sys", "re", "ast", "math", "fnmatch", "collections", "pathlib", "datetime"}
+        allowed = {"os", "sys", "re", "ast", "math", "fnmatch", "collections", "pathlib", "datetime", "subprocess"}
         tree = ast.parse((REPO / "scripts" / "validate.py").read_text())
         mods = set()
         for node in ast.walk(tree):
@@ -1219,6 +1219,88 @@ class TestMemoryDiff(unittest.TestCase):
 
     def test_unchanged_record_clean(self):
         self.assertEqual(validate.check_memory_diff(MEM_OK, MEM_OK, "m.md"), [])
+
+
+import subprocess as _sp  # noqa: E402
+
+
+def _git(d, *args):
+    _sp.run(["git", "-C", d, *args], check=True, capture_output=True, text=True)
+
+
+class TestMemoryDiffCLI(unittest.TestCase):
+    def _repo(self, d):
+        _git(d, "init", "-q")
+        _git(d, "config", "user.email", "t@t.t")
+        _git(d, "config", "user.name", "t")
+        _write(d, "memory/onboarding-baseline.md", MEM_OK)
+        _write(d, "memory/_index.md", "# Index\n\n- [b](onboarding-baseline.md)\n")
+        _git(d, "add", "-A")
+        _git(d, "commit", "-qm", "base")
+
+    def test_body_edit_flagged_against_base(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "memory/onboarding-baseline.md",
+                   MEM_OK.replace("Median time-to-day-one-ready: 4 business days.", "Median: 2 days."))
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "body" in f.message for f in findings))
+
+    def test_deleted_record_flagged(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            os.remove(os.path.join(d, "memory", "onboarding-baseline.md"))
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "deleted" in f.message for f in findings))
+
+    def test_new_record_is_fine(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "memory/second.md", MEM_OK)
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertEqual([f for f in findings if "second.md" in f.path], [])
+
+    def test_unchanged_repo_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            self.assertEqual(validate.memory_diff_findings(d, "HEAD"), [])
+
+    def test_not_a_git_repo_errors(self):
+        # A tmpdir under the system temp root is not a git work tree.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/onboarding-baseline.md", MEM_OK)
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "git repository" in f.message
+                                for f in findings))
+
+    def test_unknown_base_ref_errors_not_silently_passes(self):
+        # A typo'd base must not report a clean bill of health.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            findings = validate.memory_diff_findings(d, "no-such-ref")
+            self.assertTrue(any(f.level == "ERROR" and "base ref" in f.message
+                                for f in findings))
+
+    def test_nested_memory_folder_diffed(self):
+        # Records in nested memory folders are inside the diff scope too.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "teams/people/memory/note.md", MEM_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "nested")
+            _write(d, "teams/people/memory/note.md",
+                   MEM_OK.replace("valid_at: 2026-07-15", "valid_at: 2026-07-16"))
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "valid_at" in f.message
+                                and "note.md" in f.path for f in findings))
+
+    def test_non_utf8_record_does_not_crash_diff(self):
+        # The plain run already ERRORs on a non-UTF-8 record; the diff layer
+        # must skip it without raising.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write_bytes(d, "memory/onboarding-baseline.md", b"\xff\xfe")
+            validate.memory_diff_findings(d, "HEAD")  # must not raise
 
 
 if __name__ == "__main__":

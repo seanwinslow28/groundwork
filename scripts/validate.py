@@ -11,6 +11,7 @@ import fnmatch
 import math
 import os
 import re
+import subprocess
 import sys
 from collections import namedtuple
 
@@ -919,9 +920,70 @@ def validate(root):
     return findings
 
 
+def memory_diff_findings(root, base):
+    """Compare working-tree memory records against <base> (a git ref). Scoped to
+    the memory folder. New records are fine; deletions and immutable-field edits
+    are ERRORs."""
+    try:
+        toplevel = subprocess.run(["git", "-C", root, "rev-parse", "--show-toplevel"],
+                                  capture_output=True, text=True, check=True).stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return [Finding("ERROR", root, None, "--diff requires a git repository")]
+    try:
+        subprocess.run(["git", "-C", toplevel, "rev-parse", "--verify", "--quiet",
+                        "%s^{commit}" % base], capture_output=True, check=True)
+    except subprocess.CalledProcessError:
+        # a typo'd base must not report a clean bill of health
+        return [Finding("ERROR", root, None, "--diff base ref not found: %s" % base)]
+    findings = []
+    for abspath in _memory_record_files(root):
+        # git resolves symlinks in --show-toplevel (e.g. macOS /var -> /private/var),
+        # so resolve the record path the same way before computing the in-repo path
+        rel_top = os.path.relpath(os.path.realpath(abspath), toplevel).replace("\\", "/")
+        show = subprocess.run(["git", "-C", toplevel, "show", "%s:%s" % (base, rel_top)],
+                              capture_output=True)
+        if show.returncode != 0:
+            continue  # absent at base = a new record (add) — allowed
+        try:
+            old = show.stdout.decode("utf-8")
+            with open(abspath, encoding="utf-8") as fh:
+                new = fh.read()
+        except (UnicodeError, OSError):
+            continue  # unreadable either side — the stateless run reports it
+        findings += check_memory_diff(old, new, os.path.relpath(abspath, root))
+    # deletions: a record present at base but gone now, scoped to the validated root
+    try:
+        base_files = subprocess.run(["git", "-C", toplevel, "ls-tree", "-r", "--name-only", base],
+                                    capture_output=True, text=True, check=True).stdout.splitlines()
+    except subprocess.CalledProcessError:
+        return findings + [Finding("ERROR", root, None,
+                                   "--diff could not list the base tree for %s" % base)]
+    scope = os.path.relpath(os.path.realpath(os.path.abspath(root)), toplevel).replace("\\", "/")
+    for bf in base_files:
+        if scope != "." and not bf.startswith(scope + "/"):
+            continue
+        parts = bf.split("/")
+        if "memory" in parts and bf.endswith(".md") and os.path.basename(bf) not in {"_index.md", "README.md"}:
+            if not os.path.isfile(os.path.join(toplevel, bf)):
+                findings.append(Finding("ERROR", bf, None,
+                                        "memory record deleted (records are superseded, never deleted)"))
+    return findings
+
+
 def main(argv):
-    root = argv[1] if len(argv) > 1 else "."
+    args = argv[1:]
+    diff_base = None
+    if "--diff" in args:
+        i = args.index("--diff")
+        if i + 1 >= len(args):
+            print("ERROR  --diff requires a <base> git ref")
+            return 2
+        diff_base = args[i + 1]
+        args = args[:i] + args[i + 2:]
+    root = args[0] if args else "."
     findings = validate(root)
+    if diff_base is not None:
+        findings += memory_diff_findings(root, diff_base)
     errors = [f for f in findings if f.level == "ERROR"]
     warns = [f for f in findings if f.level == "WARN"]
     for f in findings:
