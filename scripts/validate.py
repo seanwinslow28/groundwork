@@ -902,6 +902,13 @@ def check_constitution(root, ignore=()):
                     _substantive_line(ln) for ln in rendered.split("\n")):
                 findings.append(Finding("ERROR", rel, None,
                                         "active rule has no rule statement (H1 title + body)"))
+            # Ritual provenance is thinking-quality, not a safety invariant, so
+            # it sits in the WARN tier (1.5a deferral, decided 2026-07-23).
+            for field in ("ritual", "scarcity", "surviving_job"):
+                if _blank(data.get(field)):
+                    findings.append(Finding("WARN", rel, None,
+                                            "missing '%s' (incomplete thinking — the five-question "
+                                            "worksheet's provenance)" % field))
 
         # action_class drives the no-rung-six invariant, so it cannot be
         # optional: a rule that omits it would bypass the safety spine.

@@ -1788,5 +1788,26 @@ class TestConstitution(unittest.TestCase):
             self.assertTrue(any(f.level == "ERROR" and "rung" in f.message for f in validate.validate(d)))
 
 
+class TestConstitutionProvenance(unittest.TestCase):
+    def test_active_rule_missing_provenance_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/constitution/access.md",
+                   RULE_OK.replace("scarcity: Security-review time — every grant got a human's eyes\n", ""))
+            findings = validate.check_constitution(d)
+            self.assertTrue(any(f.level == "WARN" and "scarcity" in f.message for f in findings))
+            self.assertFalse(any(f.level == "ERROR" and "scarcity" in f.message for f in findings))
+
+    def test_complete_rule_has_no_provenance_warn(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/constitution/access.md", RULE_OK)
+            self.assertFalse(any("incomplete thinking" in f.message
+                                 for f in validate.check_constitution(d)))
+
+    def test_worksheets_dir_is_not_scanned_as_rules(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/worksheets/blank.md", "# Blank worksheet\n\nNothing filled in.\n")
+            self.assertEqual(validate.check_constitution(d), [])
+
+
 if __name__ == "__main__":
     unittest.main()
