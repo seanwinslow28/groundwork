@@ -809,5 +809,81 @@ class TestCardDrift(unittest.TestCase):
             self.assertTrue(any("owner" in f.message for f in errs))
 
 
+MEM_OK = """---
+provenance: observed
+owner: Head of People
+valid_at: 2026-07-15
+review_by: 2099-10-15
+source: The People team's Q2 onboarding tracker (12 hires)
+---
+# Onboarding baseline
+Median time-to-day-one-ready: 4 business days.
+"""
+
+
+class TestMemory(unittest.TestCase):
+    def test_valid_record_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/onboarding-baseline.md", MEM_OK)
+            self.assertEqual([f for f in validate.check_memory(d) if f.level == "ERROR"], [])
+
+    def test_bad_provenance_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/x.md", MEM_OK.replace("provenance: observed", "provenance: guessed"))
+            self.assertTrue(any(f.level == "ERROR" and "provenance" in f.message
+                                for f in validate.check_memory(d)))
+
+    def test_missing_owner_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/x.md", MEM_OK.replace("owner: Head of People\n", ""))
+            self.assertTrue(any(f.level == "ERROR" and "owner" in f.message
+                                for f in validate.check_memory(d)))
+
+    def test_unparseable_valid_at_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/x.md", MEM_OK.replace("valid_at: 2026-07-15", "valid_at: last Tuesday"))
+            self.assertTrue(any(f.level == "ERROR" and "valid_at" in f.message
+                                for f in validate.check_memory(d)))
+
+    def test_confirmed_without_source_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            rec = MEM_OK.replace("provenance: observed", "provenance: confirmed").replace(
+                "source: The People team's Q2 onboarding tracker (12 hires)\n", "")
+            _write(d, "memory/x.md", rec)
+            self.assertTrue(any(f.level == "ERROR" and "source" in f.message
+                                for f in validate.check_memory(d)))
+
+    def test_observed_without_source_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            rec = MEM_OK.replace("source: The People team's Q2 onboarding tracker (12 hires)\n", "")
+            _write(d, "memory/x.md", rec)
+            findings = validate.check_memory(d)
+            self.assertTrue(any(f.level == "WARN" and "source" in f.message for f in findings))
+            self.assertFalse(any(f.level == "ERROR" and "source" in f.message for f in findings))
+
+    def test_supersession_fields_on_live_record_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/x.md", MEM_OK.replace("review_by: 2099-10-15",
+                                                    "review_by: 2099-10-15\ninvalid_at: 2026-08-01"))
+            self.assertTrue(any(f.level == "ERROR" and "live record" in f.message
+                                for f in validate.check_memory(d)))
+
+    def test_superseded_missing_pointer_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            rec = MEM_OK.replace("provenance: observed", "provenance: superseded")
+            _write(d, "memory/x.md", rec)  # no invalid_at / superseded_by
+            self.assertTrue(any(f.level == "ERROR" and "supersed" in f.message.lower()
+                                for f in validate.check_memory(d)))
+
+    def test_dangling_superseded_by_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            rec = MEM_OK.replace("provenance: observed", "provenance: superseded")
+            rec = rec.replace("review_by: 2099-10-15",
+                              "review_by: 2099-10-15\ninvalid_at: 2026-08-01\nsuperseded_by: memory/nope.md")
+            _write(d, "memory/x.md", rec)
+            self.assertTrue(any(f.level == "ERROR" and "dangling" in f.message.lower()
+                                for f in validate.check_memory(d)))
+
+
 if __name__ == "__main__":
     unittest.main()

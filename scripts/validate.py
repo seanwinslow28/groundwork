@@ -631,6 +631,71 @@ def check_owner_cards(root, ignore=()):
     return findings
 
 
+def _memory_record_files(root):
+    out = []
+    for abspath in iter_files(root, load_gitignore(root)):
+        rel = os.path.relpath(abspath, root).replace("\\", "/")
+        parts = rel.split("/")
+        if "memory" in parts and abspath.endswith(".md") \
+                and os.path.basename(abspath) not in {"_index.md", "README.md"}:
+            out.append(abspath)
+    return out
+
+
+def check_memory(root):
+    """#7 record-level shape checks. Nothing is silent at record level."""
+    findings = []
+    for abspath in _memory_record_files(root):
+        rel = os.path.relpath(abspath, root)
+        with open(abspath, encoding="utf-8") as fh:
+            data, fm = parse_frontmatter(fh.read(), rel)
+        findings += fm
+
+        prov = data.get("provenance")
+        if _blank(prov):
+            findings.append(Finding("ERROR", rel, None, "missing 'provenance'"))
+        elif not (isinstance(prov, str) and prov in PROVENANCE):
+            findings.append(Finding("ERROR", rel, None,
+                                    "invalid 'provenance' %r (one of %s)" % (prov, sorted(PROVENANCE))))
+
+        if _blank(data.get("owner")):
+            findings.append(Finding("ERROR", rel, None, "missing 'owner' (an unowned memory is ungoverned drift)"))
+
+        if _blank(data.get("valid_at")) or _parse_date(data.get("valid_at")) is None:
+            findings.append(Finding("ERROR", rel, None, "missing or unparseable 'valid_at' (ISO date)"))
+
+        source_blank = _blank(data.get("source"))
+        if source_blank and prov == "confirmed":
+            findings.append(Finding("ERROR", rel, None, "'confirmed' record has no 'source' (confirmation must cite evidence)"))
+        elif source_blank:
+            findings.append(Finding("WARN", rel, None, "missing 'source' (push toward evidence)"))
+
+        if _blank(data.get("review_by")):
+            findings.append(Finding("WARN", rel, None, "missing 'review_by' (staleness)"))
+        else:
+            rb = _parse_date(data.get("review_by"))
+            if rb is not None and rb < datetime.date.today():
+                findings.append(Finding("WARN", rel, None, "'review_by' has passed (staleness)"))
+
+        # supersession invariants
+        is_sup = prov == "superseded"
+        has_sb = not _blank(data.get("superseded_by"))
+        has_ia = not _blank(data.get("invalid_at"))
+        if is_sup and not (has_sb and has_ia):
+            findings.append(Finding("ERROR", rel, None,
+                                    "superseded record must carry both 'superseded_by' and 'invalid_at'"))
+        if not is_sup and (has_sb or has_ia):
+            findings.append(Finding("ERROR", rel, None,
+                                    "supersession fields (invalid_at/superseded_by) are forbidden on a live record"))
+        if has_ia and _parse_date(data.get("invalid_at")) is None:
+            findings.append(Finding("ERROR", rel, None, "unparseable 'invalid_at' (ISO date)"))
+        if has_sb:
+            target = data.get("superseded_by")
+            if isinstance(target, str) and not os.path.isfile(os.path.join(root, target.strip())):
+                findings.append(Finding("ERROR", rel, None, "dangling 'superseded_by' pointer: %s" % target))
+    return findings
+
+
 def load_gitignore(root):
     """Minimal .gitignore reader: exact names and simple globs (e.g. '*.log').
     Enough to skip .env-style files so the gate scans (roughly) what's tracked.
