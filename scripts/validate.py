@@ -801,14 +801,14 @@ _PROV_FORWARD = {
 }
 
 
-def _frontmatter_and_body(text):
-    data, _ = parse_frontmatter(text)
+def _frontmatter_and_body(text, path="<unknown>"):
+    data, findings = parse_frontmatter(text, path)
     lines = text.split("\n")
     if lines and lines[0].strip() == "---":
         for i in range(1, len(lines)):
             if lines[i].strip() == "---":
-                return data, "\n".join(lines[i + 1:])
-    return data, text
+                return data, "\n".join(lines[i + 1:]), findings
+    return data, text, findings
 
 
 def _as_list(v):
@@ -837,8 +837,12 @@ def check_memory_diff(old_text, new_text, path):
     findings = []
     old_text = old_text.replace("\r\n", "\n").replace("\r", "\n")
     new_text = new_text.replace("\r\n", "\n").replace("\r", "\n")
-    old_fm, old_body = _frontmatter_and_body(old_text)
-    new_fm, new_body = _frontmatter_and_body(new_text)
+    old_fm, old_body, _old_parse = _frontmatter_and_body(old_text, path)
+    new_fm, new_body, new_parse = _frontmatter_and_body(new_text, path)
+    # Malformed NEW frontmatter (e.g. a duplicate provenance key) fails closed
+    # here — the diff layer may be the only gate that sees this record. The old
+    # side is committed history; its shape was the stateless gate's job.
+    findings += [f for f in new_parse if f.level == "ERROR"]
 
     if old_body.strip() != new_body.strip():
         findings.append(Finding("ERROR", path, None, "immutable: body changed (frozen at commit)"))
@@ -939,27 +943,26 @@ def _diff_in_workbench_skips(rel_from_root):
     return any("/".join(dirs[:i + 1]) in skip_rel for i in range(len(dirs)))
 
 
-def _isfile_exactcase(abspath):
-    """os.path.isfile plus an exact directory-listing name match, so a
-    case-folding filesystem cannot hide a case-only rename of a record."""
-    if not os.path.isfile(abspath):
-        return False
-    dirname, name = os.path.split(abspath)
-    try:
-        return name in os.listdir(dirname)
-    except OSError:
-        return False
-
-
-def _traverses_symlink(toplevel, parts):
-    """True if any directory component of toplevel/parts is a symlink — a
-    symlinked memory folder must not stand in for the committed one."""
+def _committed_path_status(toplevel, parts):
+    """Walk toplevel/parts verifying each component exists under its EXACT
+    committed name (a case-folding filesystem cannot hide a case-only rename
+    of a record or any ancestor directory) and that no component is a symlink
+    (a symlinked memory folder or record must not stand in for the committed
+    one). Returns 'ok', 'symlink', or 'missing'. Check-then-open is not
+    atomic — a concurrent writer race is a documented non-goal
+    (docs/known-limitations.md)."""
     p = toplevel
-    for part in parts[:-1]:
+    for part in parts:
+        try:
+            entries = os.listdir(p)
+        except OSError:
+            return "missing"
+        if part not in entries:
+            return "missing"
         p = os.path.join(p, part)
         if os.path.islink(p):
-            return True
-    return False
+            return "symlink"
+    return "ok" if os.path.isfile(p) else "missing"
 
 
 def memory_diff_findings(root, base):
@@ -976,8 +979,13 @@ def memory_diff_findings(root, base):
     except (subprocess.CalledProcessError, FileNotFoundError):
         return [Finding("ERROR", root, None, "--diff requires a git repository")]
     rp_lines = os.fsdecode(rp).splitlines()
+    if len(rp_lines) != 2 or not os.path.isdir(rp_lines[0]):
+        # a newline/CR inside the repo path mis-splits this output; a wrong
+        # scope would fail open, so refuse instead
+        return [Finding("ERROR", root, None,
+                        "--diff could not resolve the repository layout (unsupported path)")]
     toplevel = rp_lines[0]
-    scope = (rp_lines[1].strip("/") if len(rp_lines) > 1 else "") or "."
+    scope = rp_lines[1].strip("/") or "."
     try:
         subprocess.run(["git", "-C", toplevel, "rev-parse", "--verify", "--quiet",
                         "%s^{commit}" % base], capture_output=True, check=True)
@@ -1003,15 +1011,12 @@ def memory_diff_findings(root, base):
         if _diff_in_workbench_skips(rel):
             continue
         abspath = os.path.join(toplevel, *parts)
-        if _traverses_symlink(toplevel, parts):
+        status = _committed_path_status(toplevel, parts)
+        if status == "symlink":
             findings.append(Finding("ERROR", bf, None,
-                                    "memory record path traverses a symlink (cannot verify immutability)"))
+                                    "memory record is or sits behind a symlink (cannot verify immutability)"))
             continue
-        if os.path.islink(abspath):
-            findings.append(Finding("ERROR", bf, None,
-                                    "memory record is a symlink at the committed path (cannot verify immutability)"))
-            continue
-        if not _isfile_exactcase(abspath):
+        if status == "missing":
             findings.append(Finding("ERROR", bf, None,
                                     "memory record deleted (records are superseded, never deleted)"))
             continue

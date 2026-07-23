@@ -1220,6 +1220,15 @@ class TestMemoryDiff(unittest.TestCase):
                 self.assertTrue(any(f.level == "ERROR" and "provenance" in f.message
                                     for f in validate.check_memory_diff(MEM_OK, new, "m.md")))
 
+    def test_duplicate_provenance_key_in_new_version_errors(self):
+        # Codex re-review: malformed NEW frontmatter must fail closed in the
+        # diff layer — a duplicate-key trick must not smuggle a transition
+        # past a record the stateless walker never sees.
+        new = MEM_OK.replace("provenance: observed",
+                             "provenance: observed\nprovenance: confirmed")
+        self.assertTrue(any(f.level == "ERROR" and "duplicate" in f.message
+                            for f in validate.check_memory_diff(MEM_OK, new, "m.md")))
+
     def test_supersession_field_set_once(self):
         old = (MEM_OK.replace("provenance: observed", "provenance: superseded")
                .replace("review_by: 2099-10-15",
@@ -1415,6 +1424,31 @@ class TestMemoryDiffCLI(unittest.TestCase):
                    MEM_OK.replace("Median time-to-day-one-ready: 4 business days.", "Median: 2 days."))
             findings = validate.memory_diff_findings(variant, "HEAD")
             self.assertTrue(any(f.level == "ERROR" and "body" in f.message for f in findings))
+
+    def test_ancestor_dir_case_rename_flagged_as_deletion(self):
+        # Codex re-review: a case-only rename of an ANCESTOR directory
+        # (memory/Team -> memory/team) must flag the committed path as gone.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "memory/Team/note.md", MEM_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "cased-dir")
+            os.rename(os.path.join(d, "memory", "Team"),
+                      os.path.join(d, "memory", "team"))
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "deleted" in f.message
+                                and "Team/note.md" in f.path for f in findings))
+
+    def test_newline_in_repo_path_fails_closed(self):
+        # Codex re-review: a newline inside the repo path mis-splits the
+        # rev-parse output; the scan must refuse rather than mis-scope.
+        with tempfile.TemporaryDirectory() as outer:
+            d = os.path.join(outer, "repo\nnewline")
+            os.makedirs(d)
+            self._repo(d)
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "unsupported path" in f.message
+                                for f in findings))
 
     def test_crlf_base_version_of_unchanged_record_is_clean(self):
         # Codex review: a CRLF blob at base vs an LF working read must not
