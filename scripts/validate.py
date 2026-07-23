@@ -71,6 +71,11 @@ def parse_frontmatter(text, path="<unknown>"):
             key, value = key.strip(), value.strip()
             if key == "":
                 findings.append(Finding("ERROR", path, line_no, "empty frontmatter key"))
+            elif key in data:
+                findings.append(Finding(
+                    "ERROR", path, line_no,
+                    "duplicate frontmatter key '%s'" % key))
+                current_key = None
             elif value == "":
                 data[key] = []          # a list is expected to follow
                 current_key = key
@@ -86,6 +91,31 @@ def parse_frontmatter(text, path="<unknown>"):
         findings.append(Finding("ERROR", path, len(lines),
                                 "frontmatter block opened with '---' but never closed"))
     return data, findings
+
+
+def _read_utf8(abspath, relpath):
+    """Read text without letting I/O/encoding failures crash the validator."""
+    try:
+        with open(abspath, encoding="utf-8") as fh:
+            text = fh.read()
+    except UnicodeError:
+        return None, [Finding(
+            "ERROR", relpath, None,
+            "structured file is not valid UTF-8")]
+    except OSError as exc:
+        return None, [Finding(
+            "ERROR", relpath, None,
+            "could not read structured file: %s" % exc)]
+    return text, []
+
+
+def _load_frontmatter(abspath, relpath):
+    """Read and parse one structured Markdown file. None means unreadable."""
+    text, findings = _read_utf8(abspath, relpath)
+    if text is None:
+        return None, findings
+    data, parse_findings = parse_frontmatter(text, relpath)
+    return data, findings + parse_findings
 
 
 SECRET_PATTERNS = [
@@ -213,9 +243,9 @@ def parse_exec_table(text):
 def check_deep_record(abspath, root):
     """#5 machinery-follows checks for one acted-on activity's deep record."""
     rel = os.path.relpath(abspath, root)
-    with open(abspath, encoding="utf-8") as fh:
-        text = fh.read()
-    data, findings = parse_frontmatter(text, rel)
+    data, findings = _load_frontmatter(abspath, rel)
+    if data is None:
+        return findings
     findings = list(findings)
     if not data:
         findings.append(Finding("WARN", rel, None,
@@ -291,9 +321,10 @@ def check_ontology(root, ignore=()):
                 findings.append(Finding("ERROR", os.path.join(rel_fdir, "_executive-view.md"),
                                         None, "function ontology has no executive view (_executive-view.md)"))
         else:
-            with open(exec_path, encoding="utf-8") as fh:
-                rows = parse_exec_table(fh.read())
             rel_exec = os.path.relpath(exec_path, root)
+            exec_text, exec_findings = _read_utf8(exec_path, rel_exec)
+            findings += exec_findings
+            rows = parse_exec_table(exec_text) if exec_text is not None else []
             for activity, direction, link, ln in rows:
                 if direction not in DIRECTIONS:
                     findings.append(Finding("ERROR", rel_exec, ln,
@@ -324,7 +355,8 @@ def _blank(v):
 
 
 def _parse_date(v):
-    if not isinstance(v, str):
+    if not isinstance(v, str) or \
+            re.fullmatch(r"\d{4}-\d{2}-\d{2}", v.strip()) is None:
         return None
     try:
         return datetime.date.fromisoformat(v.strip())
@@ -332,87 +364,268 @@ def _parse_date(v):
         return None
 
 
-def check_owner_cards(root):
+def check_owner_cards(root, ignore=()):
     """#6 checks over skills/<name>/ work packages: required spine, track-2
     trio, freshness, and the card<->skill<->ontology drift checks. Strictness
-    follows the skill's `provisioned` flag."""
+    follows the skill's `provisioned` flag. Honors the same .gitignore
+    patterns as the generic walker."""
     findings = []
     base = os.path.join(root, "skills")
+    if os.path.islink(base):
+        return [Finding(
+            "ERROR", "skills", None,
+            "skills directory must not be a symlink")]
     if not os.path.isdir(base):
         return findings
+    if _ignored("skills", ignore):
+        return findings
     today = datetime.date.today()
+    ontologies_root = os.path.realpath(os.path.join(root, "ontologies"))
     for name in sorted(os.listdir(base)):
         sdir = os.path.join(base, name)
-        skill_path = os.path.join(sdir, "SKILL.md")
-        if not (os.path.isdir(sdir) and os.path.isfile(skill_path)):
+        rel_sdir = os.path.relpath(sdir, root)
+        if _ignored(name, ignore):
             continue
+        if os.path.islink(sdir):
+            findings.append(Finding(
+                "ERROR", rel_sdir, None,
+                "skill package directory must not be a symlink"))
+            continue
+        if not os.path.isdir(sdir):
+            continue
+
+        skill_path = os.path.join(sdir, "SKILL.md")
         rel_skill = os.path.relpath(skill_path, root)
-        with open(skill_path, encoding="utf-8") as fh:
-            skill_fm, sfm_findings = parse_frontmatter(fh.read(), rel_skill)
+        if _ignored("SKILL.md", ignore) or not os.path.isfile(skill_path):
+            findings.append(Finding(
+                "ERROR", rel_sdir, None,
+                "skill package has no usable SKILL.md"))
+            continue
+        if os.path.islink(skill_path):
+            findings.append(Finding(
+                "ERROR", rel_skill, None,
+                "SKILL.md must not be a symlink"))
+            continue
+
+        skill_fm, sfm_findings = _load_frontmatter(skill_path, rel_skill)
         findings += sfm_findings
-        provisioned = isinstance(skill_fm.get("provisioned"), str) and \
-            skill_fm["provisioned"].strip().lower() == "yes"
+        if skill_fm is None:
+            continue
+
+        skill_name = skill_fm.get("name")
+        if not isinstance(skill_name, str) or not skill_name.strip():
+            findings.append(Finding(
+                "ERROR", rel_skill, None,
+                "skill name must be a single non-blank value"))
+        elif skill_name.strip() != name:
+            findings.append(Finding(
+                "ERROR", rel_skill, None,
+                "skill name %r must match package directory %r"
+                % (skill_name, name)))
+
+        description = skill_fm.get("description")
+        if not isinstance(description, str) or not description.strip():
+            findings.append(Finding(
+                "ERROR", rel_skill, None,
+                "skill description must be a single non-blank value"))
+
+        provisioned_value = skill_fm.get("provisioned")
+        if not isinstance(provisioned_value, str) or \
+                provisioned_value.strip().lower() not in {"yes", "no"}:
+            findings.append(Finding(
+                "ERROR", rel_skill, None,
+                "skill provisioned must be a single 'yes' or 'no' value"))
+        provisioned = isinstance(provisioned_value, str) and \
+            provisioned_value.strip().lower() == "yes"
+
         action_class = skill_fm.get("action_class")
-        if isinstance(action_class, str) and action_class not in ACTION_CLASSES:
-            findings.append(Finding("ERROR", rel_skill, None,
-                                    "invalid action_class %r (one of %s)" % (action_class, sorted(ACTION_CLASSES))))
+        if not isinstance(action_class, str):
+            findings.append(Finding(
+                "ERROR", rel_skill, None,
+                "skill action_class must be a single value (one of %s)"
+                % sorted(ACTION_CLASSES)))
+        elif action_class not in ACTION_CLASSES:
+            findings.append(Finding(
+                "ERROR", rel_skill, None,
+                "invalid skill action_class %r (one of %s)"
+                % (action_class, sorted(ACTION_CLASSES))))
+
+        ontology = None
+        ontology_ref = skill_fm.get("ontology")
+        if not isinstance(ontology_ref, str) or not ontology_ref.strip():
+            findings.append(Finding(
+                "ERROR", rel_skill, None,
+                "skill ontology must be a single non-blank reference"))
+        else:
+            ontology_ref = ontology_ref.strip()
+            if "\x00" in ontology_ref:
+                findings.append(Finding(
+                    "ERROR", rel_skill, None,
+                    "ontology reference contains a NUL byte"))
+                ontology_path = None
+            else:
+                try:
+                    ontology_path = os.path.realpath(
+                        os.path.join(root, ontology_ref))
+                except (OSError, ValueError):
+                    ontology_path = None
+                    findings.append(Finding(
+                        "ERROR", rel_skill, None,
+                        "ontology reference is not a valid filesystem path"))
+            if ontology_path is None:
+                under_ontologies = False
+            else:
+                try:
+                    under_ontologies = os.path.commonpath(
+                        (ontologies_root, ontology_path)) == ontologies_root
+                except ValueError:
+                    under_ontologies = False
+            if ontology_path is None:
+                pass
+            elif not under_ontologies:
+                findings.append(Finding(
+                    "ERROR", rel_skill, None,
+                    "ontology reference must stay under ontologies/: %s"
+                    % ontology_ref))
+            elif _ignored(os.path.basename(ontology_path), ignore):
+                findings.append(Finding(
+                    "ERROR", rel_skill, None,
+                    "ontology reference not found or ignored: %s"
+                    % ontology_ref))
+            elif not os.path.isfile(ontology_path):
+                findings.append(Finding(
+                    "ERROR", rel_skill, None,
+                    "ontology reference not found: %s" % ontology_ref))
+            else:
+                ontology, ontology_findings = _load_frontmatter(
+                    ontology_path, os.path.relpath(ontology_path, root))
+                findings += ontology_findings
 
         card_path = os.path.join(sdir, "owner-card.md")
-        if not os.path.isfile(card_path):
-            if provisioned:
-                findings.append(Finding("ERROR", os.path.join(os.path.relpath(sdir, root), "owner-card.md"),
-                                        None, "provisioned skill has no Owner's Card"))
+        if _ignored("owner-card.md", ignore) or not os.path.isfile(card_path):
+            level = "ERROR" if provisioned else "WARN"
+            findings.append(Finding(
+                level,
+                os.path.join(rel_sdir, "owner-card.md"),
+                None,
+                ("%s skill has no Owner's Card"
+                 % ("provisioned" if provisioned else "draft"))))
             continue
         rel_card = os.path.relpath(card_path, root)
-        with open(card_path, encoding="utf-8") as fh:
-            card, cfm_findings = parse_frontmatter(fh.read(), rel_card)
+        if os.path.islink(card_path):
+            findings.append(Finding(
+                "ERROR", rel_card, None,
+                "owner-card.md must not be a symlink"))
+            continue
+        card, cfm_findings = _load_frontmatter(card_path, rel_card)
         findings += cfm_findings
+        if card is None:
+            continue
         miss = "ERROR" if provisioned else "WARN"
 
         for field in CARD_REQUIRED:
-            if _blank(card.get(field)):
-                findings.append(Finding(miss, rel_card, None, "missing required card field '%s'" % field))
+            value = card.get(field)
+            if _blank(value):
+                findings.append(Finding(
+                    miss, rel_card, None,
+                    "missing required card field '%s'" % field))
+            elif not isinstance(value, str):
+                findings.append(Finding(
+                    "ERROR", rel_card, None,
+                    "card field '%s' must be a single value" % field))
 
         is_track2 = isinstance(action_class, str) and action_class in TRACK2_CLASSES
         for field in CARD_TRACK2:
-            if _blank(card.get(field)):
+            value = card.get(field)
+            if _blank(value):
                 level = "ERROR" if (is_track2 and provisioned) else "WARN"
-                findings.append(Finding(level, rel_card, None,
-                                        "track-2 field '%s' blank (required at external-side-effect/high-risk)" % field))
+                findings.append(Finding(
+                    level, rel_card, None,
+                    "track-2 field '%s' blank "
+                    "(required at external-side-effect/high-risk)" % field))
+            elif not isinstance(value, str):
+                findings.append(Finding(
+                    "ERROR", rel_card, None,
+                    "track-2 card field '%s' must be a single value" % field))
 
-        nr = _parse_date(card.get("next_review"))
-        if nr is not None and nr < today:
-            findings.append(Finding("WARN", rel_card, None, "next_review date has passed (freshness)"))
-        lr = _parse_date(card.get("last_reviewed"))
-        if lr is not None and (today - lr).days > 90:
-            findings.append(Finding("WARN", rel_card, None, "last_reviewed is over 90 days old (freshness)"))
+        next_review = _parse_date(card.get("next_review"))
+        if isinstance(card.get("next_review"), str) and next_review is None:
+            findings.append(Finding(
+                miss, rel_card, None,
+                "next_review must be an ISO date (YYYY-MM-DD)"))
+        elif next_review is not None and next_review < today:
+            findings.append(Finding(
+                "WARN", rel_card, None,
+                "next_review date has passed (freshness)"))
+
+        last_reviewed = _parse_date(card.get("last_reviewed"))
+        if isinstance(card.get("last_reviewed"), str) and last_reviewed is None:
+            findings.append(Finding(
+                miss, rel_card, None,
+                "last_reviewed must be an ISO date (YYYY-MM-DD)"))
+        elif last_reviewed is not None and last_reviewed > today:
+            findings.append(Finding(
+                miss, rel_card, None,
+                "last_reviewed cannot be in the future"))
+        elif last_reviewed is not None and (today - last_reviewed).days > 90:
+            findings.append(Finding(
+                "WARN", rel_card, None,
+                "last_reviewed is over 90 days old (freshness)"))
 
         # --- drift: card action_class vs skill action_class ---
-        card_ac = card.get("action_class")
-        if isinstance(action_class, str) and isinstance(card_ac, str) and card_ac.strip() != action_class.strip():
-            findings.append(Finding("ERROR", rel_card, None,
-                                    "card action_class %r drifts from skill action_class %r" % (card_ac, action_class)))
+        card_action_class = card.get("action_class")
+        if not isinstance(card_action_class, str):
+            findings.append(Finding(
+                "ERROR", rel_card, None,
+                "card action_class must be a single value (one of %s)"
+                % sorted(ACTION_CLASSES)))
+        elif card_action_class not in ACTION_CLASSES:
+            findings.append(Finding(
+                "ERROR", rel_card, None,
+                "invalid card action_class %r (one of %s)"
+                % (card_action_class, sorted(ACTION_CLASSES))))
+        elif isinstance(action_class, str) and \
+                action_class in ACTION_CLASSES and \
+                card_action_class != action_class:
+            findings.append(Finding(
+                "ERROR", rel_card, None,
+                "card action_class %r drifts from skill action_class %r"
+                % (card_action_class, action_class)))
+
         # --- drift: card owner / source_of_truth vs the referenced ontology ---
-        ont_ref = skill_fm.get("ontology")
-        if isinstance(ont_ref, str) and ont_ref.strip():
-            ont_abs = os.path.join(root, ont_ref.strip())
-            if not os.path.isfile(ont_abs):
-                findings.append(Finding("ERROR", rel_skill, None,
-                                        "ontology reference not found: %s" % ont_ref.strip()))
+        if ontology is not None:
+            accountable_owner = ontology.get("accountable_owner")
+            if not isinstance(accountable_owner, str) or \
+                    not accountable_owner.strip():
+                findings.append(Finding(
+                    "ERROR", rel_skill, None,
+                    "referenced ontology accountable_owner must be "
+                    "a single non-blank value"))
             else:
-                with open(ont_abs, encoding="utf-8") as fh:
-                    ont, _ = parse_frontmatter(fh.read(), ont_ref.strip())
-                acc = ont.get("accountable_owner")
-                if isinstance(acc, str) and isinstance(card.get("owner"), str) \
-                        and card["owner"].strip() != acc.strip():
-                    findings.append(Finding("ERROR", rel_card, None,
-                                            "card owner %r drifts from ontology accountable_owner %r"
-                                            % (card["owner"], acc)))
-                gsot = ont.get("gate_source_of_truth")
-                if isinstance(gsot, str) and isinstance(card.get("source_of_truth"), str) \
-                        and card["source_of_truth"].strip() != gsot.strip():
-                    findings.append(Finding("ERROR", rel_card, None,
-                                            "card source_of_truth drifts from ontology gate_source_of_truth"))
+                card_owner = card.get("owner")
+                if isinstance(card_owner, str) and \
+                        card_owner.strip() != accountable_owner.strip():
+                    findings.append(Finding(
+                        "ERROR", rel_card, None,
+                        "card owner %r drifts from ontology accountable_owner %r"
+                        % (card_owner, accountable_owner)))
+
+            gate_source_of_truth = ontology.get("gate_source_of_truth")
+            if not isinstance(gate_source_of_truth, str) or \
+                    not gate_source_of_truth.strip():
+                findings.append(Finding(
+                    "ERROR", rel_skill, None,
+                    "referenced ontology gate_source_of_truth must be "
+                    "a single non-blank value"))
+            else:
+                card_source_of_truth = card.get("source_of_truth")
+                if isinstance(card_source_of_truth, str) and \
+                        card_source_of_truth.strip() != \
+                        gate_source_of_truth.strip():
+                    findings.append(Finding(
+                        "ERROR", rel_card, None,
+                        "card source_of_truth drifts from ontology "
+                        "gate_source_of_truth"))
     return findings
 
 
@@ -473,7 +686,7 @@ def validate(root):
         if abspath.endswith(".md"):
             findings += check_links(abspath, text, root)
     findings += check_ontology(root, ignore)
-    findings += check_owner_cards(root)
+    findings += check_owner_cards(root, ignore)
     return findings
 
 
