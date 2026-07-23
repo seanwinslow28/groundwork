@@ -43,8 +43,10 @@ time, run the diff mode to enforce that records are never edited:
 python3 scripts/validate.py --diff <base>   # e.g. --diff main
 ```
 
-It ERRORs on any change to a frozen field (body, `valid_at`), a provenance downgrade,
-a non-append `source` change, an altered supersession field, or a **deleted** record
-(records are superseded, never deleted). The four-verb reconciliation
+It ERRORs on any change to a frozen field (body, `valid_at`), a provenance downgrade
+or removal, a non-append `source` change, an altered supersession field, or a
+**deleted** record (records are superseded, never deleted). Whitespace-only changes
+at the edges of the body (e.g. a trailing newline) are tolerated — they are not
+treated as edits. The four-verb reconciliation
 (add / update / supersede / discard) stays a human review practice; the diff mode is
 its mechanical backstop.

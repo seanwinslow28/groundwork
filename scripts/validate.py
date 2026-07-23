@@ -846,9 +846,11 @@ def check_memory_diff(old_text, new_text, path):
         findings.append(Finding("ERROR", path, None, "immutable: valid_at changed (frozen at commit)"))
 
     op, np = old_fm.get("provenance"), new_fm.get("provenance")
-    if isinstance(op, str) and isinstance(np, str) and op in _PROV_FORWARD and np not in _PROV_FORWARD[op]:
+    if isinstance(op, str) and op in _PROV_FORWARD and (
+            not isinstance(np, str) or np not in _PROV_FORWARD[op]):
+        # a removed/blank/non-scalar new label is as illegal as a downgrade
         findings.append(Finding("ERROR", path, None,
-                                "provenance downgrade / illegal transition: %s -> %s (forward only)" % (op, np)))
+                                "provenance downgrade / illegal transition: %s -> %r (forward only)" % (op, np)))
 
     old_src, new_src = _as_list(old_fm.get("source")), _as_list(new_fm.get("source"))
     if not _source_append_only(old_src, new_src):
@@ -937,17 +939,45 @@ def _diff_in_workbench_skips(rel_from_root):
     return any("/".join(dirs[:i + 1]) in skip_rel for i in range(len(dirs)))
 
 
+def _isfile_exactcase(abspath):
+    """os.path.isfile plus an exact directory-listing name match, so a
+    case-folding filesystem cannot hide a case-only rename of a record."""
+    if not os.path.isfile(abspath):
+        return False
+    dirname, name = os.path.split(abspath)
+    try:
+        return name in os.listdir(dirname)
+    except OSError:
+        return False
+
+
+def _traverses_symlink(toplevel, parts):
+    """True if any directory component of toplevel/parts is a symlink — a
+    symlinked memory folder must not stand in for the committed one."""
+    p = toplevel
+    for part in parts[:-1]:
+        p = os.path.join(p, part)
+        if os.path.islink(p):
+            return True
+    return False
+
+
 def memory_diff_findings(root, base):
     """Compare memory records that existed at <base> (a git ref) against the
     working tree. Scoped to memory folders under root. New records are fine;
     deletions and immutable-field edits are ERRORs. Driven by the BASE file
     list, so no working-tree skip can exempt a committed record."""
-    root_abs = os.path.realpath(os.path.abspath(root))
     try:
-        toplevel = subprocess.run(["git", "-C", root, "rev-parse", "--show-toplevel"],
-                                  capture_output=True, text=True, check=True).stdout.strip()
+        # bytes + os.fsdecode: survives locale-undecodable repo paths; and
+        # --show-prefix gives root's repo-relative path in git's canonical
+        # casing, so a case-variant invocation cannot blind the scope filter
+        rp = subprocess.run(["git", "-C", root, "rev-parse", "--show-toplevel", "--show-prefix"],
+                            capture_output=True, check=True).stdout
     except (subprocess.CalledProcessError, FileNotFoundError):
         return [Finding("ERROR", root, None, "--diff requires a git repository")]
+    rp_lines = os.fsdecode(rp).splitlines()
+    toplevel = rp_lines[0]
+    scope = (rp_lines[1].strip("/") if len(rp_lines) > 1 else "") or "."
     try:
         subprocess.run(["git", "-C", toplevel, "rev-parse", "--verify", "--quiet",
                         "%s^{commit}" % base], capture_output=True, check=True)
@@ -962,18 +992,26 @@ def memory_diff_findings(root, base):
     except subprocess.CalledProcessError:
         return [Finding("ERROR", root, None, "--diff could not list the base tree for %s" % base)]
     findings = []
-    scope = os.path.relpath(root_abs, toplevel).replace("\\", "/")
     for bf in (os.fsdecode(b) for b in raw.split(b"\0") if b):
         if scope != "." and not bf.startswith(scope + "/"):
             continue
-        if "memory" not in bf.split("/") or not bf.endswith(".md") \
-                or os.path.basename(bf) in {"_index.md", "README.md"}:
+        parts = bf.split("/")
+        if "memory" not in parts or not bf.endswith(".md") \
+                or parts[-1] in {"_index.md", "README.md"}:
             continue
-        abspath = os.path.join(toplevel, *bf.split("/"))
-        rel = os.path.relpath(abspath, root_abs).replace("\\", "/")
+        rel = bf if scope == "." else bf[len(scope) + 1:]
         if _diff_in_workbench_skips(rel):
             continue
-        if not os.path.isfile(abspath):
+        abspath = os.path.join(toplevel, *parts)
+        if _traverses_symlink(toplevel, parts):
+            findings.append(Finding("ERROR", bf, None,
+                                    "memory record path traverses a symlink (cannot verify immutability)"))
+            continue
+        if os.path.islink(abspath):
+            findings.append(Finding("ERROR", bf, None,
+                                    "memory record is a symlink at the committed path (cannot verify immutability)"))
+            continue
+        if not _isfile_exactcase(abspath):
             findings.append(Finding("ERROR", bf, None,
                                     "memory record deleted (records are superseded, never deleted)"))
             continue

@@ -1211,6 +1211,15 @@ class TestMemoryDiff(unittest.TestCase):
         self.assertTrue(any(f.level == "ERROR" and "source" in f.message
                             for f in validate.check_memory_diff(old, new, "m.md")))
 
+    def test_provenance_removal_errors(self):
+        # Codex re-review: removing the label (entirely or to a bare key) is as
+        # illegal as a downgrade — forward-only has no exit.
+        for new in (MEM_OK.replace("provenance: observed\n", ""),
+                    MEM_OK.replace("provenance: observed", "provenance:")):
+            with self.subTest(new=new):
+                self.assertTrue(any(f.level == "ERROR" and "provenance" in f.message
+                                    for f in validate.check_memory_diff(MEM_OK, new, "m.md")))
+
     def test_supersession_field_set_once(self):
         old = (MEM_OK.replace("provenance: observed", "provenance: superseded")
                .replace("review_by: 2099-10-15",
@@ -1354,6 +1363,58 @@ class TestMemoryDiffCLI(unittest.TestCase):
             findings = validate.memory_diff_findings(d, "HEAD")
             self.assertTrue(any(f.level == "ERROR" and "deleted" in f.message
                                 and "caf" in f.path for f in findings))
+
+    def test_case_only_rename_flagged_as_deletion(self):
+        # Codex re-review: on a case-folding filesystem os.path.isfile resolves
+        # the renamed file, hiding that the committed path is gone. The exact
+        # directory-listing check must flag it on every platform.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "memory/Foo.md", MEM_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "cased")
+            os.rename(os.path.join(d, "memory", "Foo.md"),
+                      os.path.join(d, "memory", "foo.md"))
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "deleted" in f.message
+                                and "Foo.md" in f.path for f in findings))
+
+    def test_memory_dir_replaced_by_symlink_mirror_fails(self):
+        # Codex re-review: a symlinked memory folder pointing at a
+        # byte-identical mirror must not stand in for the committed one.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            os.rename(os.path.join(d, "memory"), os.path.join(d, "mirror"))
+            os.symlink(os.path.join(d, "mirror"), os.path.join(d, "memory"))
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "symlink" in f.message
+                                for f in findings))
+
+    def test_record_replaced_by_symlink_fails(self):
+        # Codex re-review: a record swapped for a symlink (even to identical
+        # content) is not the committed regular file.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            rec = os.path.join(d, "memory", "onboarding-baseline.md")
+            os.rename(rec, os.path.join(d, "copy.md"))
+            os.symlink(os.path.join(d, "copy.md"), rec)
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "symlink" in f.message
+                                for f in findings))
+
+    def test_case_variant_root_still_diffed(self):
+        # Codex re-review: invoking with a case-variant root (Memory vs memory)
+        # must not blind the scope filter — the scope comes from git's
+        # canonical --show-prefix, not from lexical path math.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            variant = os.path.join(d, "Memory")
+            if not os.path.isdir(variant):
+                self.skipTest("case-sensitive filesystem")
+            _write(d, "memory/onboarding-baseline.md",
+                   MEM_OK.replace("Median time-to-day-one-ready: 4 business days.", "Median: 2 days."))
+            findings = validate.memory_diff_findings(variant, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "body" in f.message for f in findings))
 
     def test_crlf_base_version_of_unchanged_record_is_clean(self):
         # Codex review: a CRLF blob at base vs an LF working read must not
