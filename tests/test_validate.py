@@ -965,6 +965,47 @@ class TestMemory(unittest.TestCase):
                 self.assertTrue(any(f.level == "ERROR" and "symlink" in f.message
                                     for f in findings))
 
+    def test_record_ref_rejects_drive_relative_and_unc_literals(self):
+        # Codex review: Windows drive-relative ('C:..\\repo\\...') and UNC
+        # literals dodge both the POSIX isabs and '../' checks; the guard is
+        # literal and platform-independent, so unit-test the helper directly.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/x.md", MEM_OK)
+            for ref in (r"C:..\%s\memory\x.md" % os.path.basename(d),
+                        "C:memory/x.md",
+                        r"\\server\share\memory\x.md",
+                        "//server/share/memory/x.md"):
+                with self.subTest(ref=ref):
+                    self.assertIsNone(validate._record_ref_realpath(d, ref))
+            self.assertIsNotNone(validate._record_ref_realpath(d, "memory/x.md"))
+
+    def test_valid_supersession_chain_is_clean(self):
+        # A well-formed supersession (both records exist, repo-relative
+        # pointer) must produce zero ERRORs.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/new.md", MEM_OK)
+            sup = MEM_OK.replace("provenance: observed", "provenance: superseded")
+            sup = sup.replace("review_by: 2099-10-15",
+                              "review_by: 2099-10-15\ninvalid_at: 2026-08-01\nsuperseded_by: memory/new.md")
+            _write(d, "memory/old.md", sup)
+            errs = [f for f in validate.check_memory(d) if f.level == "ERROR"]
+            self.assertEqual(errs, [])
+
+    def test_symlinked_record_cannot_be_a_supersession_target(self):
+        # Codex review: a symlinked record is excluded from the allowlist, so
+        # pointing superseded_by at it must be a dangling ERROR.
+        with tempfile.TemporaryDirectory() as d:
+            with tempfile.TemporaryDirectory() as outside:
+                target = _write(outside, "escaped.md", MEM_OK)
+                os.makedirs(os.path.join(d, "memory"))
+                os.symlink(target, os.path.join(d, "memory", "new.md"))
+                sup = MEM_OK.replace("provenance: observed", "provenance: superseded")
+                sup = sup.replace("review_by: 2099-10-15",
+                                  "review_by: 2099-10-15\ninvalid_at: 2026-08-01\nsuperseded_by: memory/new.md")
+                _write(d, "memory/old.md", sup)
+                self.assertTrue(any(f.level == "ERROR" and "dangling" in f.message.lower()
+                                    for f in validate.check_memory(d)))
+
     def test_list_valued_review_by_warns(self):
         with tempfile.TemporaryDirectory() as d:
             _write(d, "memory/x.md",

@@ -666,9 +666,12 @@ def _memory_record_files(root):
 
 def _record_ref_realpath(root, ref):
     """Resolve a memory-record reference. None if the literal path is absolute
-    or escapes the repo root (the schema says repo-relative), or unresolvable."""
+    or escapes the repo root (the schema says repo-relative), or unresolvable.
+    Drive-letter ('C:...') and UNC ('\\\\server') literals are rejected on every
+    platform — a repo-relative record path never looks like either."""
     ref = ref.strip()
-    if os.path.isabs(ref):
+    if os.path.isabs(ref) or ref.startswith(("\\\\", "//")) \
+            or re.match(r"[A-Za-z]:", ref):
         return None
     norm = os.path.normpath(ref).replace("\\", "/")
     if norm == ".." or norm.startswith("../"):
