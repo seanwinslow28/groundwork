@@ -130,7 +130,7 @@ shape: single-agent
 gate_inputs: start date, role, manager, access needs
 gate_output: completed onboarding checklist
 gate_standard: accounts + equipment + schedule ready before start
-gate_source_of_truth: the HRIS record
+gate_source_of_truth: The HRIS record for the hire; the IT provisioning tracker for access state
 gate_exception_path: non-standard role pauses to Head of People
 gate_error_cost: a late day-one, recoverable, not dangerous
 gate_owner: Head of People
@@ -393,6 +393,49 @@ class TestOwnerCard(unittest.TestCase):
             findings = validate.check_owner_cards(d)
             self.assertTrue(any(f.level == "WARN" and "next_review" in f.message for f in findings))
             self.assertFalse(any(f.level == "ERROR" and "next_review" in f.message for f in findings))
+
+
+class TestCardDrift(unittest.TestCase):
+    def _pkg(self, d, skill=SKILL_OK, card=CARD_OK, ont=AUTOMATE_OK):
+        _write(d, "skills/onboarding-orchestration/SKILL.md", skill)
+        _write(d, "skills/onboarding-orchestration/owner-card.md", card)
+        _write(d, "ontologies/people-hr/onboarding-orchestration.md", ont)
+
+    def test_owner_drift_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._pkg(d, card=CARD_OK.replace("owner: Head of People", "owner: Someone Else"))
+            errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
+            self.assertTrue(any("owner" in f.message and "ontology" in f.message for f in errs))
+
+    def test_action_class_drift_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._pkg(d, card=CARD_OK.replace("action_class: external-side-effect", "action_class: read-only"))
+            errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
+            self.assertTrue(any("action_class" in f.message for f in errs))
+
+    def test_source_of_truth_drift_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._pkg(d, card=CARD_OK.replace(
+                "source_of_truth: The HRIS record for the hire; the IT provisioning tracker for access state",
+                "source_of_truth: A spreadsheet"))
+            errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
+            self.assertTrue(any("source_of_truth" in f.message for f in errs))
+
+    def test_unresolved_ontology_ref_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._pkg(d, skill=SKILL_OK.replace("ontology: ontologies/people-hr/onboarding-orchestration.md",
+                                                "ontology: ontologies/people-hr/missing.md"))
+            errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
+            self.assertTrue(any("ontology reference" in f.message for f in errs))
+
+    def test_validate_wires_card_checks(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "skills/x/SKILL.md", SKILL_OK.replace(
+                "ontology: ontologies/people-hr/onboarding-orchestration.md", "ontology: ontologies/people-hr/onboarding-orchestration.md"))
+            _write(d, "skills/x/owner-card.md", CARD_OK.replace("owner: Head of People", "owner: Wrong"))
+            _write(d, "ontologies/people-hr/onboarding-orchestration.md", AUTOMATE_OK)
+            errs = [f for f in validate.validate(d) if f.level == "ERROR"]
+            self.assertTrue(any("owner" in f.message for f in errs))
 
 
 if __name__ == "__main__":

@@ -333,8 +333,9 @@ def _parse_date(v):
 
 
 def check_owner_cards(root):
-    """#6 checks over skills/<name>/ work packages. Strictness follows the
-    skill's `provisioned` flag. Cross-file drift checks are added in Task 3."""
+    """#6 checks over skills/<name>/ work packages: required spine, track-2
+    trio, freshness, and the card<->skill<->ontology drift checks. Strictness
+    follows the skill's `provisioned` flag."""
     findings = []
     base = os.path.join(root, "skills")
     if not os.path.isdir(base):
@@ -385,6 +386,33 @@ def check_owner_cards(root):
         lr = _parse_date(card.get("last_reviewed"))
         if lr is not None and (today - lr).days > 90:
             findings.append(Finding("WARN", rel_card, None, "last_reviewed is over 90 days old (freshness)"))
+
+        # --- drift: card action_class vs skill action_class ---
+        card_ac = card.get("action_class")
+        if isinstance(action_class, str) and isinstance(card_ac, str) and card_ac.strip() != action_class.strip():
+            findings.append(Finding("ERROR", rel_card, None,
+                                    "card action_class %r drifts from skill action_class %r" % (card_ac, action_class)))
+        # --- drift: card owner / source_of_truth vs the referenced ontology ---
+        ont_ref = skill_fm.get("ontology")
+        if isinstance(ont_ref, str) and ont_ref.strip():
+            ont_abs = os.path.join(root, ont_ref.strip())
+            if not os.path.isfile(ont_abs):
+                findings.append(Finding("ERROR", rel_skill, None,
+                                        "ontology reference not found: %s" % ont_ref.strip()))
+            else:
+                with open(ont_abs, encoding="utf-8") as fh:
+                    ont, _ = parse_frontmatter(fh.read(), ont_ref.strip())
+                acc = ont.get("accountable_owner")
+                if isinstance(acc, str) and isinstance(card.get("owner"), str) \
+                        and card["owner"].strip() != acc.strip():
+                    findings.append(Finding("ERROR", rel_card, None,
+                                            "card owner %r drifts from ontology accountable_owner %r"
+                                            % (card["owner"], acc)))
+                gsot = ont.get("gate_source_of_truth")
+                if isinstance(gsot, str) and isinstance(card.get("source_of_truth"), str) \
+                        and card["source_of_truth"].strip() != gsot.strip():
+                    findings.append(Finding("ERROR", rel_card, None,
+                                            "card source_of_truth drifts from ontology gate_source_of_truth"))
     return findings
 
 
@@ -445,6 +473,7 @@ def validate(root):
         if abspath.endswith(".md"):
             findings += check_links(abspath, text, root)
     findings += check_ontology(root, ignore)
+    findings += check_owner_cards(root)
     return findings
 
 
