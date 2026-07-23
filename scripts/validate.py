@@ -6,6 +6,7 @@ Schema-specific checks (#5/#6/#7/#8) live in a later build slice; this module
 is the generic foundation: frontmatter parsing, secrets, context budget,
 referential integrity.
 """
+import datetime
 import fnmatch
 import math
 import os
@@ -304,6 +305,86 @@ def check_ontology(root, ignore=()):
             if df not in linked:
                 findings.append(Finding("WARN", os.path.join(rel_fdir, df), None,
                                         "deep record not listed in the executive view"))
+    return findings
+
+
+ACTION_CLASSES = {"read-only", "reversible-write", "external-side-effect", "high-risk"}
+TRACK2_CLASSES = {"external-side-effect", "high-risk"}
+CARD_REQUIRED = ["owner", "backup_owner", "job",
+                 "allowed_actions", "proposed_only_actions", "forbidden_actions",
+                 "pause_condition", "retirement_condition",
+                 "source_of_truth", "review_cadence", "known_failure_modes",
+                 "last_reviewed", "next_review", "success_standard"]
+CARD_TRACK2 = ["evidence_required", "sources_must_not_use", "review_sample"]
+
+
+def _blank(v):
+    """A field is blank if absent, an empty list (a bare 'key:'), or whitespace."""
+    return v is None or v == [] or (isinstance(v, str) and v.strip() == "")
+
+
+def _parse_date(v):
+    if not isinstance(v, str):
+        return None
+    try:
+        return datetime.date.fromisoformat(v.strip())
+    except ValueError:
+        return None
+
+
+def check_owner_cards(root):
+    """#6 checks over skills/<name>/ work packages. Strictness follows the
+    skill's `provisioned` flag. Cross-file drift checks are added in Task 3."""
+    findings = []
+    base = os.path.join(root, "skills")
+    if not os.path.isdir(base):
+        return findings
+    today = datetime.date.today()
+    for name in sorted(os.listdir(base)):
+        sdir = os.path.join(base, name)
+        skill_path = os.path.join(sdir, "SKILL.md")
+        if not (os.path.isdir(sdir) and os.path.isfile(skill_path)):
+            continue
+        rel_skill = os.path.relpath(skill_path, root)
+        with open(skill_path, encoding="utf-8") as fh:
+            skill_fm, sfm_findings = parse_frontmatter(fh.read(), rel_skill)
+        findings += sfm_findings
+        provisioned = isinstance(skill_fm.get("provisioned"), str) and \
+            skill_fm["provisioned"].strip().lower() == "yes"
+        action_class = skill_fm.get("action_class")
+        if isinstance(action_class, str) and action_class not in ACTION_CLASSES:
+            findings.append(Finding("ERROR", rel_skill, None,
+                                    "invalid action_class %r (one of %s)" % (action_class, sorted(ACTION_CLASSES))))
+
+        card_path = os.path.join(sdir, "owner-card.md")
+        if not os.path.isfile(card_path):
+            if provisioned:
+                findings.append(Finding("ERROR", os.path.join(os.path.relpath(sdir, root), "owner-card.md"),
+                                        None, "provisioned skill has no Owner's Card"))
+            continue
+        rel_card = os.path.relpath(card_path, root)
+        with open(card_path, encoding="utf-8") as fh:
+            card, cfm_findings = parse_frontmatter(fh.read(), rel_card)
+        findings += cfm_findings
+        miss = "ERROR" if provisioned else "WARN"
+
+        for field in CARD_REQUIRED:
+            if _blank(card.get(field)):
+                findings.append(Finding(miss, rel_card, None, "missing required card field '%s'" % field))
+
+        is_track2 = isinstance(action_class, str) and action_class in TRACK2_CLASSES
+        for field in CARD_TRACK2:
+            if _blank(card.get(field)):
+                level = "ERROR" if (is_track2 and provisioned) else "WARN"
+                findings.append(Finding(level, rel_card, None,
+                                        "track-2 field '%s' blank (required at external-side-effect/high-risk)" % field))
+
+        nr = _parse_date(card.get("next_review"))
+        if nr is not None and nr < today:
+            findings.append(Finding("WARN", rel_card, None, "next_review date has passed (freshness)"))
+        lr = _parse_date(card.get("last_reviewed"))
+        if lr is not None and (today - lr).days > 90:
+            findings.append(Finding("WARN", rel_card, None, "last_reviewed is over 90 days old (freshness)"))
     return findings
 
 

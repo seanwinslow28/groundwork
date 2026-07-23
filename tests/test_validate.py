@@ -44,7 +44,7 @@ class TestFrontmatter(unittest.TestCase):
 
 class TestZeroDep(unittest.TestCase):
     def test_only_stdlib_imports(self):
-        allowed = {"os", "sys", "re", "ast", "math", "fnmatch", "collections", "pathlib"}
+        allowed = {"os", "sys", "re", "ast", "math", "fnmatch", "collections", "pathlib", "datetime"}
         tree = ast.parse((REPO / "scripts" / "validate.py").read_text())
         mods = set()
         for node in ast.walk(tree):
@@ -309,6 +309,90 @@ class TestLinks(unittest.TestCase):
             "see [x](https://example.com) and [y](#anchor)",
             str(REPO))
         self.assertEqual(findings, [])
+
+
+SKILL_OK = """---
+name: onboarding-orchestration
+description: Provision a new hire's accounts, equipment, and first-week schedule before day one
+action_class: external-side-effect
+provisioned: yes
+ontology: ontologies/people-hr/onboarding-orchestration.md
+---
+# Onboarding orchestration
+"""
+
+CARD_OK = """---
+owner: Head of People
+backup_owner: People Ops Lead
+job: Provision every new hire before day one
+action_class: external-side-effect
+allowed_actions: create accounts; order standard equipment; send the day-one schedule
+proposed_only_actions: grant non-standard system access
+forbidden_actions: approve compensation; sign offers; delete employee records
+pause_condition: HRIS or IT tracker unreachable, or intake data missing
+retirement_condition: onboarding moves to a dedicated HRIS-native workflow the team trusts
+source_of_truth: The HRIS record for the hire; the IT provisioning tracker for access state
+review_cadence: monthly
+known_failure_modes: none observed yet
+last_reviewed: 2026-07-20
+next_review: 2099-08-20
+success_standard: Every new hire day-one-ready before start, against the pre-provisioning baseline
+evidence_required: The completed checklist with per-item timestamps and the provisioning log
+sources_must_not_use: Personal email or chat threads as a source of truth for access grants
+review_sample: One onboarding per week spot-checked by the hiring manager
+---
+# Owner's Card — Onboarding orchestration
+"""
+
+
+class TestOwnerCard(unittest.TestCase):
+    def _pkg(self, d, skill=SKILL_OK, card=CARD_OK):
+        _write(d, "skills/onboarding-orchestration/SKILL.md", skill)
+        if card is not None:
+            _write(d, "skills/onboarding-orchestration/owner-card.md", card)
+        # the ontology the drift check will look for (present so Task 3 stays green too)
+        _write(d, "ontologies/people-hr/onboarding-orchestration.md", AUTOMATE_OK)
+
+    def test_complete_provisioned_card_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._pkg(d)
+            errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
+            self.assertEqual(errs, [])
+
+    def test_missing_spine_field_errors_when_provisioned(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._pkg(d, card=CARD_OK.replace("pause_condition: HRIS or IT tracker unreachable, or intake data missing\n", ""))
+            errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
+            self.assertTrue(any("pause_condition" in f.message for f in errs))
+
+    def test_blank_required_field_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._pkg(d, card=CARD_OK.replace("backup_owner: People Ops Lead", "backup_owner:"))
+            errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
+            self.assertTrue(any("backup_owner" in f.message for f in errs))
+
+    def test_track2_trio_required_at_external_side_effect(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._pkg(d, card=CARD_OK.replace("review_sample: One onboarding per week spot-checked by the hiring manager\n", ""))
+            errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
+            self.assertTrue(any("review_sample" in f.message for f in errs))
+
+    def test_track2_blank_is_warn_for_read_only(self):
+        with tempfile.TemporaryDirectory() as d:
+            skill = SKILL_OK.replace("action_class: external-side-effect", "action_class: read-only")
+            card = (CARD_OK.replace("action_class: external-side-effect", "action_class: read-only")
+                    .replace("review_sample: One onboarding per week spot-checked by the hiring manager\n", ""))
+            self._pkg(d, skill=skill, card=card)
+            findings = validate.check_owner_cards(d)
+            self.assertFalse(any(f.level == "ERROR" and "review_sample" in f.message for f in findings))
+            self.assertTrue(any(f.level == "WARN" and "review_sample" in f.message for f in findings))
+
+    def test_overdue_next_review_warns_not_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._pkg(d, card=CARD_OK.replace("next_review: 2099-08-20", "next_review: 2020-01-01"))
+            findings = validate.check_owner_cards(d)
+            self.assertTrue(any(f.level == "WARN" and "next_review" in f.message for f in findings))
+            self.assertFalse(any(f.level == "ERROR" and "next_review" in f.message for f in findings))
 
 
 if __name__ == "__main__":
