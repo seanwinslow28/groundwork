@@ -11,6 +11,9 @@ import unittest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "scripts"))
 import validate  # noqa: E402
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "governance" / "hooks"))
+import action_class_gate  # noqa: E402
+
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
 
@@ -1807,6 +1810,40 @@ class TestConstitutionProvenance(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             _write(d, "governance/worksheets/blank.md", "# Blank worksheet\n\nNothing filled in.\n")
             self.assertEqual(validate.check_constitution(d), [])
+
+
+class TestActionClassGate(unittest.TestCase):
+    def test_destructive_delete_blocked(self):
+        cat, _ = action_class_gate.classify("rm -rf /var/data")
+        self.assertEqual(cat, "delete")
+
+    def test_force_push_blocked(self):
+        cat, _ = action_class_gate.classify("git push --force origin main")
+        self.assertEqual(cat, "delete")
+
+    def test_external_send_blocked(self):
+        cat, _ = action_class_gate.classify("curl -X POST https://api.example.com/pay -d '{}'")
+        self.assertEqual(cat, "external-send")
+
+    def test_benign_command_not_blocked(self):
+        self.assertEqual(action_class_gate.classify("npm test")[0], None)
+        self.assertEqual(action_class_gate.classify("git status")[0], None)
+
+    def test_decide_denies_high_risk(self):
+        out = action_class_gate.decide(
+            {"hook_event_name": "PreToolUse", "tool_name": "Bash",
+             "tool_input": {"command": "rm -rf /"}})
+        self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertEqual(out["hookSpecificOutput"]["hookEventName"], "PreToolUse")
+
+    def test_decide_defers_on_benign(self):
+        self.assertIsNone(action_class_gate.decide(
+            {"hook_event_name": "PreToolUse", "tool_name": "Bash",
+             "tool_input": {"command": "ls"}}))
+
+    def test_decide_asks_on_malformed_input(self):
+        out = action_class_gate.decide({"hook_event_name": "PreToolUse", "tool_name": "Bash"})
+        self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "ask")
 
 
 if __name__ == "__main__":
