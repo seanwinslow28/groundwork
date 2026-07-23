@@ -6,6 +6,7 @@ Schema-specific checks (#5/#6/#7/#8) live in a later build slice; this module
 is the generic foundation: frontmatter parsing, secrets, context budget,
 referential integrity.
 """
+import fnmatch
 import math
 import os
 import re
@@ -166,13 +167,176 @@ def check_links(abspath, text, root):
     return findings
 
 
-def iter_files(root):
+DIRECTIONS = {"up", "down"}
+MOTIONS = {"automate", "build", "buy", "hire", "wait"}
+AUTOMATION_MOTIONS = {"automate", "build"}
+WORK_TYPES = {"routing", "sensemaking", "accountability"}
+SHAPES = {"chat", "single-agent", "agent-team", "dont-bother"}
+SCORE_FIELDS = ["score_repetition", "score_risk", "score_judgment",
+                "score_company_specificity", "score_market_maturity"]
+SCORE_VALUES = {"low", "medium", "high"}
+GATE_FIELDS = ["gate_inputs", "gate_output", "gate_standard", "gate_source_of_truth",
+               "gate_exception_path", "gate_error_cost", "gate_owner", "gate_review_gate"]
+
+
+def parse_exec_table(text):
+    """Parse the first markdown table whose header row contains 'Direction'.
+    Returns [(activity, direction_lower, deep_link_or_None, line_no)]."""
+    rows = []
+    lines = text.split("\n")
+    header_idx = None
+    for idx, line in enumerate(lines):
+        if line.lstrip().startswith("|") and "direction" in line.lower():
+            header_idx = idx
+            break
+    if header_idx is None:
+        return rows
+    for j in range(header_idx + 1, len(lines)):
+        line = lines[j]
+        if not line.lstrip().startswith("|"):
+            break
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if not cells or set("".join(cells)) <= set("-: "):
+            continue  # the |---|---| separator row
+        activity = cells[0] if len(cells) > 0 else ""
+        direction = cells[1].lower() if len(cells) > 1 else ""
+        link = None
+        if len(cells) > 2:
+            m = _LINK.search(cells[2])
+            if m:
+                link = m.group(1)
+        rows.append((activity, direction, link, j + 1))
+    return rows
+
+
+def check_deep_record(abspath, root):
+    """#5 machinery-follows checks for one acted-on activity's deep record."""
+    rel = os.path.relpath(abspath, root)
+    with open(abspath, encoding="utf-8") as fh:
+        text = fh.read()
+    data, findings = parse_frontmatter(text, rel)
+    findings = list(findings)
+    if not data:
+        findings.append(Finding("WARN", rel, None,
+                                "acted-on activity has no structured fields yet (incomplete thinking)"))
+        return findings
+
+    motion = data.get("motion")
+    if motion is None or motion == []:
+        findings.append(Finding("WARN", rel, None, "missing 'motion' (incomplete thinking)"))
+    elif not isinstance(motion, str):
+        findings.append(Finding("ERROR", rel, None,
+                                "invalid motion %r — must be a single value (one of %s)"
+                                % (motion, sorted(MOTIONS))))
+    elif motion not in MOTIONS:
+        findings.append(Finding("ERROR", rel, None,
+                                "invalid motion %r (one of %s)" % (motion, sorted(MOTIONS))))
+    on_automation = isinstance(motion, str) and motion in AUTOMATION_MOTIONS
+
+    def require(field, valid=None):
+        v = data.get(field)
+        missing_level = "ERROR" if on_automation else "WARN"
+        if v is None or v == [] or (isinstance(v, str) and v.strip() == ""):
+            findings.append(Finding(missing_level, rel, None, "missing '%s'" % field))
+        elif not isinstance(v, str):
+            findings.append(Finding("ERROR", rel, None,
+                                    "invalid '%s' %r — must be a single value" % (field, v)))
+        elif valid is not None and v not in valid:
+            findings.append(Finding("ERROR", rel, None,
+                                    "invalid '%s' %r (one of %s)" % (field, v, sorted(valid))))
+
+    require("work_type", WORK_TYPES)
+    require("accountable_owner")
+    for sf in SCORE_FIELDS:
+        require(sf, SCORE_VALUES)
+
+    if on_automation:
+        require("substrate")
+        require("shape", SHAPES)
+        for gf in GATE_FIELDS:
+            v = data.get(gf)
+            if not isinstance(v, str):
+                findings.append(Finding("ERROR", rel, None,
+                                        "Describability Gate: '%s' must be a single answered value" % gf))
+            elif v.strip() == "":
+                findings.append(Finding("ERROR", rel, None,
+                                        "Describability Gate: '%s' must be answered ('none' is valid; blank is not)" % gf))
+            elif v.strip().lower() in {"n/a", "na", "tbd"}:
+                findings.append(Finding("ERROR", rel, None,
+                                        "Describability Gate: '%s' is %r — must be answered "
+                                        "('none' is valid; 'N/A' is not, no waiver)" % (gf, v)))
+    return findings
+
+
+def check_ontology(root, ignore=()):
+    """#5 structural checks over ontologies/<function>/ directories.
+    Honors the same .gitignore patterns as the generic walker."""
+    findings = []
+    base = os.path.join(root, "ontologies")
+    if not os.path.isdir(base):
+        return findings
+    for fn in sorted(os.listdir(base)):
+        fdir = os.path.join(base, fn)
+        if not os.path.isdir(fdir) or _ignored(fn, ignore):
+            continue
+        rel_fdir = os.path.relpath(fdir, root)
+        exec_path = os.path.join(fdir, "_executive-view.md")
+        deep_files = sorted(f for f in os.listdir(fdir)
+                            if f.endswith(".md") and f != "_executive-view.md"
+                            and not _ignored(f, ignore))
+        linked = set()
+        if not os.path.isfile(exec_path):
+            if deep_files:
+                findings.append(Finding("ERROR", os.path.join(rel_fdir, "_executive-view.md"),
+                                        None, "function ontology has no executive view (_executive-view.md)"))
+        else:
+            with open(exec_path, encoding="utf-8") as fh:
+                rows = parse_exec_table(fh.read())
+            rel_exec = os.path.relpath(exec_path, root)
+            for activity, direction, link, ln in rows:
+                if direction not in DIRECTIONS:
+                    findings.append(Finding("ERROR", rel_exec, ln,
+                                            "Direction must be 'up' or 'down', got %r" % direction))
+                if link:
+                    linked.add(os.path.basename(link))
+        for df in deep_files:
+            findings += check_deep_record(os.path.join(fdir, df), root)
+            if df not in linked:
+                findings.append(Finding("WARN", os.path.join(rel_fdir, df), None,
+                                        "deep record not listed in the executive view"))
+    return findings
+
+
+def load_gitignore(root):
+    """Minimal .gitignore reader: exact names and simple globs (e.g. '*.log').
+    Enough to skip .env-style files so the gate scans (roughly) what's tracked.
+    NOT full git ignore semantics (no negation, nesting, or path anchoring) —
+    documented in docs/known-limitations.md."""
+    patterns = set()
+    gi = os.path.join(root, ".gitignore")
+    if os.path.isfile(gi):
+        with open(gi, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    patterns.add(line.rstrip("/"))
+    return patterns
+
+
+def _ignored(name, patterns):
+    return any(fnmatch.fnmatch(name, p) for p in patterns)
+
+
+def iter_files(root, ignore=()):
     for dirpath, dirnames, filenames in os.walk(root):
         rel_dir = os.path.relpath(dirpath, root)
         dirnames[:] = [d for d in dirnames
                        if d not in SKIP_DIRS and not d.startswith(".")
-                       and os.path.normpath(os.path.join(rel_dir, d)) not in SKIP_RELPATHS]
+                       and os.path.normpath(os.path.join(rel_dir, d)) not in SKIP_RELPATHS
+                       and not _ignored(d, ignore)]
         for fn in filenames:
+            if _ignored(fn, ignore):
+                continue
             yield os.path.join(dirpath, fn)
 
 
@@ -182,7 +346,8 @@ def validate(root):
     if not os.path.isdir(root):
         return [Finding("ERROR", root, None, "root does not exist or is not a directory")]
     findings = []
-    for abspath in iter_files(root):
+    ignore = load_gitignore(root)
+    for abspath in iter_files(root, ignore):
         rel = os.path.relpath(abspath, root)
         try:
             with open(abspath, "rb") as fh:
@@ -198,6 +363,7 @@ def validate(root):
         findings += check_entropy(text, rel)
         if abspath.endswith(".md"):
             findings += check_links(abspath, text, root)
+    findings += check_ontology(root, ignore)
     return findings
 
 
