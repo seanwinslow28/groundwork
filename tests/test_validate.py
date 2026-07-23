@@ -1607,6 +1607,45 @@ class TestConstitution(unittest.TestCase):
             self.assertTrue(any(f.level == "WARN" and "sunset" in f.message
                                 for f in validate.check_constitution(d)))
 
+    def test_active_rule_missing_action_class_errors(self):
+        # Codex round 2: action_class drives no-rung-six, so an active rule
+        # cannot omit it (a high-risk rule would bypass the safety spine).
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace("action_class: high-risk\n", ""))
+            self.assertTrue(any(f.level == "ERROR" and "action_class" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_draft_missing_action_class_warns_not_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace("rung: human-decision\n", "")
+                .replace("action_class: high-risk\n", ""))
+            findings = validate.check_constitution(d)
+            self.assertTrue(any(f.level == "WARN" and "action_class" in f.message
+                                for f in findings))
+            self.assertFalse(any(f.level == "ERROR" and "action_class" in f.message
+                                 for f in findings))
+
+    def test_list_valued_owner_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace("owner: Head of IT\n",
+                                          "owner:\n  - Head of IT\n  - CISO\n", 1))
+            self.assertTrue(any(f.level == "ERROR" and "single value" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_list_valued_appeal_owner_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace("human_appeal_owner: CISO\n",
+                                          "human_appeal_owner:\n  - CISO\n  - Head of IT\n"))
+            self.assertTrue(any(f.level == "ERROR" and "rung six" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_gitignored_rule_is_skipped(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace("rung: human-decision", "rung: rung-six"))
+            _write(d, ".gitignore", "access.md\n")
+            self.assertEqual(
+                validate.check_constitution(d, validate.load_gitignore(d)), [])
+
     def test_unreadable_rule_errors_not_crashes(self):
         with tempfile.TemporaryDirectory() as d:
             _write_bytes(d, "governance/constitution/access.md", b"---\nowner: \xff\xfe\n---\n")

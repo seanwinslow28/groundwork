@@ -795,16 +795,25 @@ def check_memory(root):
     return findings
 
 
-def check_constitution(root):
+def _scalar(v):
+    """A present, single-valued field (a list defeats one-owner accountability)."""
+    return isinstance(v, str) and v.strip() != ""
+
+
+def check_constitution(root, ignore=()):
     """#8 typed-rule checks. Strict where a rule backs a safety invariant; WARN on
-    incomplete thinking. The runnable hook set is a separate artifact (Slice 1.5b)."""
+    incomplete thinking. The runnable hook set is a separate artifact (Slice 1.5b).
+    Honors the same .gitignore patterns as the generic walker."""
     findings = []
     base = os.path.join(root, "governance", "constitution")
     if not os.path.isdir(base):
         return findings
+    if _ignored("governance", ignore) or _ignored("constitution", ignore):
+        return findings
     today = datetime.date.today()
     for name in sorted(os.listdir(base)):
-        if not name.endswith(".md") or name in {"README.md", "_index.md"}:
+        if not name.endswith(".md") or name in {"README.md", "_index.md"} \
+                or _ignored(name, ignore):
             continue
         abspath = os.path.join(base, name)
         rel = os.path.relpath(abspath, root)
@@ -824,15 +833,24 @@ def check_constitution(root):
             if not (isinstance(rung, str) and rung in RUNGS):
                 findings.append(Finding("ERROR", rel, None,
                                         "invalid rung %r (one of %s)" % (rung, sorted(RUNGS))))
-            if _blank(data.get("owner")):
+            owner = data.get("owner")
+            if _blank(owner):
                 findings.append(Finding("ERROR", rel, None, "active rule has no owner"))
+            elif not isinstance(owner, str):
+                findings.append(Finding("ERROR", rel, None, "'owner' must be a single value"))
 
+        # action_class drives the no-rung-six invariant, so it cannot be
+        # optional: a rule that omits it would bypass the safety spine.
         ac = data.get("action_class")
-        if not _blank(ac) and not (isinstance(ac, str) and ac in ACTION_CLASSES):
+        if _blank(ac):
+            findings.append(Finding(
+                "ERROR" if active else "WARN", rel, None,
+                "missing 'action_class' (one of %s)" % sorted(ACTION_CLASSES)))
+        elif not (isinstance(ac, str) and ac in ACTION_CLASSES):
             findings.append(Finding("ERROR", rel, None,
                                     "invalid action_class %r (one of %s)" % (ac, sorted(ACTION_CLASSES))))
         if isinstance(ac, str) and ac == "high-risk" \
-                and (_blank(data.get("human_appeal")) or _blank(data.get("human_appeal_owner"))):
+                and not (_scalar(data.get("human_appeal")) and _scalar(data.get("human_appeal_owner"))):
             findings.append(Finding("ERROR", rel, None,
                                     "high-risk rule must carry a human-appeal path with an owner "
                                     "(there is no rung six)"))
@@ -990,7 +1008,7 @@ def validate(root):
     findings += check_ontology(root, ignore)
     findings += check_owner_cards(root, ignore)
     findings += check_memory(root)
-    findings += check_constitution(root)
+    findings += check_constitution(root, ignore)
     return findings
 
 
