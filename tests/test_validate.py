@@ -890,6 +890,52 @@ class TestMemory(unittest.TestCase):
             self.assertTrue(any(f.level == "ERROR" and "dangling" in f.message.lower()
                                 for f in validate.check_memory(d)))
 
+    def test_non_utf8_memory_record_errors_instead_of_crashing(self):
+        # Codex review: unreadable records must yield findings, not exceptions.
+        with tempfile.TemporaryDirectory() as d:
+            _write_bytes(d, "memory/x.md", b"\xff\xfe")
+            errs = [f for f in validate.check_memory(d) if f.level == "ERROR"]
+            self.assertTrue(any("UTF-8" in f.message for f in errs))
+
+    def test_non_scalar_owner_errors(self):
+        # Codex review: a list-valued owner must not pass as non-blank.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/x.md",
+                   MEM_OK.replace("owner: Head of People", "owner:\n  - Head of People"))
+            self.assertTrue(any(f.level == "ERROR" and "owner" in f.message
+                                and "single value" in f.message
+                                for f in validate.check_memory(d)))
+
+    def test_unparseable_review_by_warns(self):
+        # Codex review: nothing is silent — a present-but-unparseable review_by WARNs.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/x.md", MEM_OK.replace("review_by: 2099-10-15", "review_by: someday"))
+            self.assertTrue(any(f.level == "WARN" and "review_by" in f.message
+                                and "ISO date" in f.message
+                                for f in validate.check_memory(d)))
+
+    def test_non_scalar_superseded_by_errors(self):
+        # Codex review: a list-valued superseded_by must not satisfy the invariant silently.
+        with tempfile.TemporaryDirectory() as d:
+            rec = MEM_OK.replace("provenance: observed", "provenance: superseded")
+            rec = rec.replace("review_by: 2099-10-15",
+                              "review_by: 2099-10-15\ninvalid_at: 2026-08-01\nsuperseded_by:\n  - memory/new.md")
+            _write(d, "memory/x.md", rec)
+            self.assertTrue(any(f.level == "ERROR" and "superseded_by" in f.message
+                                and "single value" in f.message
+                                for f in validate.check_memory(d)))
+
+    def test_superseded_by_non_memory_target_errors(self):
+        # Codex review: the pointer must resolve to a memory record, not just any file.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "README.md", "# not a memory record\n")
+            rec = MEM_OK.replace("provenance: observed", "provenance: superseded")
+            rec = rec.replace("review_by: 2099-10-15",
+                              "review_by: 2099-10-15\ninvalid_at: 2026-08-01\nsuperseded_by: README.md")
+            _write(d, "memory/x.md", rec)
+            self.assertTrue(any(f.level == "ERROR" and "dangling" in f.message.lower()
+                                for f in validate.check_memory(d)))
+
 
 class TestMemoryIndex(unittest.TestCase):
     def test_live_record_not_in_index_warns(self):
@@ -915,6 +961,14 @@ class TestMemoryIndex(unittest.TestCase):
             _write(d, "memory/old.md", sup)
             self.assertFalse(any("not in the index" in f.message and "old.md" in f.path
                                  for f in validate.check_memory(d)))
+
+    def test_non_utf8_index_errors_instead_of_crashing(self):
+        # Codex review: an unreadable index must yield a finding, not an exception.
+        with tempfile.TemporaryDirectory() as d:
+            _write_bytes(d, "memory/_index.md", b"\xff\xfe")
+            _write(d, "memory/x.md", MEM_OK)
+            findings = validate.check_memory(d)
+            self.assertTrue(any(f.level == "ERROR" and "UTF-8" in f.message for f in findings))
 
     def test_validate_wires_memory(self):
         with tempfile.TemporaryDirectory() as d:
@@ -955,6 +1009,29 @@ class TestProvisioningGate(unittest.TestCase):
             self._pkg(d, SKILL_OK.replace("provisioned: yes", "provisioned: no"))
             errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR" and "baseline" in f.message]
             self.assertEqual(errs, [])
+
+    def test_non_scalar_baseline_errors(self):
+        # Codex review: a list-valued baseline must not pass the gate.
+        with tempfile.TemporaryDirectory() as d:
+            self._pkg(d, SKILL_OK.replace(
+                "provisioned: yes",
+                "provisioned: yes\nbaseline:\n  - memory/onboarding-baseline.md"))
+            _write(d, "memory/onboarding-baseline.md", MEM_OK)
+            errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
+            self.assertTrue(any("baseline" in f.message and "single value" in f.message
+                                for f in errs))
+
+    def test_baseline_must_resolve_to_a_memory_record(self):
+        # Codex review: an existing file outside memory/ (or an escaping path)
+        # does not satisfy the gate.
+        for target in ("README.md", "../outside.md"):
+            with self.subTest(target=target), tempfile.TemporaryDirectory() as d:
+                _write(d, "README.md", "# not a memory record\n")
+                self._pkg(d, SKILL_OK.replace("provisioned: yes",
+                                              "provisioned: yes\nbaseline: %s" % target))
+                errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
+                self.assertTrue(any("baseline" in f.message and "not found" in f.message
+                                    for f in errs))
 
 
 if __name__ == "__main__":

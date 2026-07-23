@@ -383,6 +383,7 @@ def check_owner_cards(root, ignore=()):
         return findings
     today = datetime.date.today()
     ontologies_root = os.path.realpath(os.path.join(root, "ontologies"))
+    memory_record_realpaths = None
     for name in sorted(os.listdir(base)):
         sdir = os.path.join(base, name)
         rel_sdir = os.path.relpath(sdir, root)
@@ -445,9 +446,23 @@ def check_owner_cards(root, ignore=()):
             if _blank(baseline):
                 findings.append(Finding("ERROR", rel_skill, None,
                                         "provisioned skill must cite a captured 'baseline' (#5 provisioning gate)"))
-            elif isinstance(baseline, str) and not os.path.isfile(os.path.join(root, baseline.strip())):
+            elif not isinstance(baseline, str):
                 findings.append(Finding("ERROR", rel_skill, None,
-                                        "baseline record not found: %s" % baseline.strip()))
+                                        "skill baseline must be a single value"))
+            else:
+                if memory_record_realpaths is None:
+                    memory_record_realpaths = {
+                        os.path.realpath(p) for p in _memory_record_files(root)}
+                try:
+                    baseline_real = os.path.realpath(
+                        os.path.join(root, baseline.strip()))
+                except (OSError, ValueError):
+                    baseline_real = None
+                if baseline_real not in memory_record_realpaths:
+                    findings.append(Finding(
+                        "ERROR", rel_skill, None,
+                        "baseline record not found (must resolve to a memory record): %s"
+                        % baseline.strip()))
 
         action_class = skill_fm.get("action_class")
         if not isinstance(action_class, str):
@@ -654,11 +669,14 @@ def _memory_record_files(root):
 def check_memory(root):
     """#7 record-level shape checks. Nothing is silent at record level."""
     findings = []
-    for abspath in _memory_record_files(root):
+    records = _memory_record_files(root)
+    record_realpaths = {os.path.realpath(p) for p in records}
+    for abspath in records:
         rel = os.path.relpath(abspath, root)
-        with open(abspath, encoding="utf-8") as fh:
-            data, fm = parse_frontmatter(fh.read(), rel)
+        data, fm = _load_frontmatter(abspath, rel)
         findings += fm
+        if data is None:
+            continue
 
         prov = data.get("provenance")
         if _blank(prov):
@@ -667,8 +685,11 @@ def check_memory(root):
             findings.append(Finding("ERROR", rel, None,
                                     "invalid 'provenance' %r (one of %s)" % (prov, sorted(PROVENANCE))))
 
-        if _blank(data.get("owner")):
+        owner = data.get("owner")
+        if _blank(owner):
             findings.append(Finding("ERROR", rel, None, "missing 'owner' (an unowned memory is ungoverned drift)"))
+        elif not isinstance(owner, str):
+            findings.append(Finding("ERROR", rel, None, "'owner' must be a single value"))
 
         if _blank(data.get("valid_at")) or _parse_date(data.get("valid_at")) is None:
             findings.append(Finding("ERROR", rel, None, "missing or unparseable 'valid_at' (ISO date)"))
@@ -683,7 +704,10 @@ def check_memory(root):
             findings.append(Finding("WARN", rel, None, "missing 'review_by' (staleness)"))
         else:
             rb = _parse_date(data.get("review_by"))
-            if rb is not None and rb < datetime.date.today():
+            if rb is None:
+                findings.append(Finding("WARN", rel, None,
+                                        "'review_by' is not an ISO date (YYYY-MM-DD)"))
+            elif rb < datetime.date.today():
                 findings.append(Finding("WARN", rel, None, "'review_by' has passed (staleness)"))
 
         # supersession invariants
@@ -700,8 +724,17 @@ def check_memory(root):
             findings.append(Finding("ERROR", rel, None, "unparseable 'invalid_at' (ISO date)"))
         if has_sb:
             target = data.get("superseded_by")
-            if isinstance(target, str) and not os.path.isfile(os.path.join(root, target.strip())):
-                findings.append(Finding("ERROR", rel, None, "dangling 'superseded_by' pointer: %s" % target))
+            if not isinstance(target, str):
+                findings.append(Finding("ERROR", rel, None, "'superseded_by' must be a single value"))
+            else:
+                try:
+                    target_real = os.path.realpath(os.path.join(root, target.strip()))
+                except (OSError, ValueError):
+                    target_real = None
+                if target_real not in record_realpaths:
+                    findings.append(Finding(
+                        "ERROR", rel, None,
+                        "dangling 'superseded_by' pointer (must resolve to a memory record): %s" % target))
 
     # index cross-check: live records must appear in their memory/_index.md
     for abspath in iter_files(root, load_gitignore(root)):
@@ -711,16 +744,19 @@ def check_memory(root):
         if "memory" not in rel.split("/"):
             continue
         mem_dir = os.path.dirname(abspath)
-        with open(abspath, encoding="utf-8") as fh:
-            index_text = fh.read()
+        index_text, idx_findings = _read_utf8(abspath, rel)
+        findings += idx_findings
+        if index_text is None:
+            continue
         linked = {os.path.normpath(os.path.join(mem_dir, t.split("#", 1)[0]))
                   for t in _LINK.findall(index_text)
                   if not t.startswith(("http://", "https://", "mailto:", "#"))}
-        for rec in _memory_record_files(root):
+        for rec in records:
             if os.path.dirname(rec) != mem_dir and not rec.startswith(mem_dir + os.sep):
                 continue
-            with open(rec, encoding="utf-8") as fh:
-                data, _ = parse_frontmatter(fh.read(), rec)
+            data, _discard = _load_frontmatter(rec, os.path.relpath(rec, root))
+            if data is None:
+                continue  # unreadable — already reported in the record pass
             if data.get("provenance") == "superseded":
                 continue  # history, silent
             if os.path.normpath(rec) not in linked:
