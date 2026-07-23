@@ -795,18 +795,34 @@ def check_memory(root):
     return findings
 
 
-def _scalar(v):
-    """A present, single-valued field (a list defeats one-owner accountability)."""
-    return isinstance(v, str) and v.strip() != ""
-
-
 # Explicit unanswered values must not satisfy a safety invariant: a generated
 # worksheet that writes `human_appeal: none` has NOT provided an appeal path.
 _PLACEHOLDERS = {"none", "n/a", "na", "tbd", "todo", "unknown", "pending", "-", "?"}
 
 
 def _answered(v):
-    return _scalar(v) and v.strip().lower() not in _PLACEHOLDERS
+    """A present, single-valued, non-placeholder answer. A list defeats
+    one-owner accountability; quoting a placeholder does not answer it."""
+    if not isinstance(v, str):
+        return False
+    s = v.strip()
+    if len(s) >= 2 and s[0] == s[-1] and s[0] in "\"'":
+        s = s[1:-1].strip()
+    return s != "" and s.lower() not in _PLACEHOLDERS
+
+
+_SEPARATOR_LINE = re.compile(r"[-*_=]{3,}")
+
+
+def _substantive_line(ln):
+    """A body line that carries actual rule content: not blank, not a heading,
+    not a horizontal rule, not an HTML comment, not a bare placeholder."""
+    s = ln.strip()
+    if not s or s.startswith("#") or _SEPARATOR_LINE.fullmatch(s):
+        return False
+    if s.startswith("<!--") and s.endswith("-->"):
+        return False
+    return s.strip("*_ \t").lower() not in _PLACEHOLDERS
 
 
 # The four owned governance objects of §5.1 minus the rule statement itself
@@ -872,10 +888,10 @@ def check_constitution(root, ignore=()):
                 elif not _answered(v):
                     findings.append(Finding("ERROR", rel, None,
                                             "'%s' is a placeholder, not an answer" % field))
-            # the rule statement is the H1 plus a substantive body, not a bare title
+            # the rule statement is the H1 plus a substantive body, not a bare
+            # title over placeholders, separators, or comments
             if _H1.search(body) is None or not any(
-                    ln.strip() and not ln.lstrip().startswith("#")
-                    for ln in body.split("\n")):
+                    _substantive_line(ln) for ln in body.split("\n")):
                 findings.append(Finding("ERROR", rel, None,
                                         "active rule has no rule statement (H1 title + body)"))
 
@@ -905,7 +921,11 @@ def check_constitution(root, ignore=()):
             elif sd < today:
                 findings.append(Finding("WARN", rel, None, "sunset date has passed"))
 
-        if not _blank(data.get("repeals")):
+        # `repeals: none` is an explicit no-repeal answer, not a repeal; a
+        # non-empty list of repealed rituals declares one.
+        repeals = data.get("repeals")
+        repeal_declared = bool(repeals) if isinstance(repeals, list) else _answered(repeals)
+        if repeal_declared:
             if not _answered(data.get("surviving_job")) or not _answered(data.get("reassigned_to")):
                 findings.append(Finding("ERROR", rel, None,
                                         "orphan-prohibition: a repealed ritual's surviving job must be "

@@ -1727,6 +1727,34 @@ class TestConstitution(unittest.TestCase):
             self.assertTrue(any(f.level == "ERROR" and "rule statement" in f.message
                                 for f in validate.check_constitution(d)))
 
+    def test_quoted_placeholder_appeal_errors(self):
+        # Codex round 5: quoting a placeholder does not answer it.
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace(
+                "human_appeal: A denied or delayed grant escalates to the CISO, who decides within one business day",
+                'human_appeal: "TBD"')
+                .replace("human_appeal_owner: CISO", 'human_appeal_owner: "TBD"'))
+            self.assertTrue(any(f.level == "ERROR" and "rung six" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_repeals_none_is_not_a_repeal(self):
+        # Codex round 5: `repeals: none` is an explicit no-repeal answer and
+        # must not demand reassignment fields.
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace(
+                "ritual: IT manually provisioning every access request by ticket",
+                "ritual: IT manually provisioning every access request by ticket\nrepeals: none"))
+            self.assertFalse(any("orphan" in f.message
+                                 for f in validate.check_constitution(d)))
+
+    def test_placeholder_only_body_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace(
+                "An agent may propose a grant; a named human approves it and is logged.",
+                "TBD\n\n---\n\n<!-- fill in -->"))
+            self.assertTrue(any(f.level == "ERROR" and "rule statement" in f.message
+                                for f in validate.check_constitution(d)))
+
     def test_unreadable_rule_errors_not_crashes(self):
         with tempfile.TemporaryDirectory() as d:
             _write_bytes(d, "governance/constitution/access.md", b"---\nowner: \xff\xfe\n---\n")
