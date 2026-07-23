@@ -339,6 +339,8 @@ def check_ontology(root, ignore=()):
     return findings
 
 
+PROVENANCE = {"observed", "inferred", "confirmed", "superseded"}
+
 ACTION_CLASSES = {"read-only", "reversible-write", "external-side-effect", "high-risk"}
 TRACK2_CLASSES = {"external-side-effect", "high-risk"}
 CARD_REQUIRED = ["owner", "backup_owner", "job",
