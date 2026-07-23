@@ -1,5 +1,7 @@
 import ast
+import contextlib
 import datetime
+import io
 import os
 import pathlib
 import sys
@@ -1294,13 +1296,110 @@ class TestMemoryDiffCLI(unittest.TestCase):
             self.assertTrue(any(f.level == "ERROR" and "valid_at" in f.message
                                 and "note.md" in f.path for f in findings))
 
-    def test_non_utf8_record_does_not_crash_diff(self):
-        # The plain run already ERRORs on a non-UTF-8 record; the diff layer
-        # must skip it without raising.
+    def test_non_utf8_record_fails_closed_without_crashing(self):
+        # Codex review: an unreadable working-tree record must yield an ERROR
+        # (immutability cannot be verified), not a crash or a silent pass.
         with tempfile.TemporaryDirectory() as d:
             self._repo(d)
             _write_bytes(d, "memory/onboarding-baseline.md", b"\xff\xfe")
-            validate.memory_diff_findings(d, "HEAD")  # must not raise
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "cannot verify" in f.message
+                                for f in findings))
+
+    def test_non_utf8_base_version_fails_closed(self):
+        # Codex review: replacing a committed non-UTF-8 record with a valid one
+        # must not report clean — the base version is unverifiable.
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write_bytes(d, "memory/x.md", b"\xff\xfe")
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "base")
+            _write(d, "memory/x.md", MEM_OK)
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "cannot verify" in f.message
+                                for f in findings))
+
+    def test_gitignored_committed_record_still_diffed(self):
+        # Codex review: a .gitignore entry must not exempt a committed record
+        # from the immutability check (the base list drives the scan).
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, ".gitignore", "onboarding-baseline.md\n")
+            _write(d, "memory/onboarding-baseline.md",
+                   MEM_OK.replace("Median time-to-day-one-ready: 4 business days.", "Median: 2 days."))
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "body" in f.message for f in findings))
+
+    def test_root_inside_memory_folder_still_diffed(self):
+        # Codex review: running with root = the memory folder itself must not
+        # blind the check (memory-ness is judged repo-relative).
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "memory/onboarding-baseline.md",
+                   MEM_OK.replace("valid_at: 2026-07-15", "valid_at: 2026-07-16"))
+            findings = validate.memory_diff_findings(os.path.join(d, "memory"), "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "valid_at" in f.message for f in findings))
+
+    def test_non_ascii_record_name_deletion_flagged(self):
+        # Codex review: core.quotePath C-quotes non-ASCII names in porcelain
+        # output; the -z path list must still see the deletion.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "memory/café.md", MEM_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "accent")
+            os.remove(os.path.join(d, "memory", "café.md"))
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "deleted" in f.message
+                                and "caf" in f.path for f in findings))
+
+    def test_crlf_base_version_of_unchanged_record_is_clean(self):
+        # Codex review: a CRLF blob at base vs an LF working read must not
+        # report a phantom body edit.
+        crlf = MEM_OK.replace("\n", "\r\n")
+        self.assertEqual(validate.check_memory_diff(crlf, MEM_OK, "m.md"), [])
+
+
+class TestDiffCLIWiring(unittest.TestCase):
+    def _main(self, argv):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = validate.main(["validate.py"] + argv)
+        return code, out.getvalue()
+
+    def _repo(self, d):
+        TestMemoryDiffCLI._repo(self, d)
+
+    def test_missing_base_arg_exits_2(self):
+        code, out = self._main(["--diff"])
+        self.assertEqual(code, 2)
+        self.assertIn("--diff requires", out)
+
+    def test_clean_repo_diff_exits_0(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            code, _ = self._main([d, "--diff", "HEAD"])
+            self.assertEqual(code, 0)
+
+    def test_frozen_edit_fails_the_gate(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "memory/onboarding-baseline.md",
+                   MEM_OK.replace("Median time-to-day-one-ready: 4 business days.", "Median: 2 days."))
+            code, out = self._main([d, "--diff", "HEAD"])
+            self.assertEqual(code, 1)
+            self.assertIn("body changed", out)
+
+    def test_plain_run_ignores_diff_findings(self):
+        # The stateless default: the same edited repo passes without --diff.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "memory/onboarding-baseline.md",
+                   MEM_OK.replace("Median time-to-day-one-ready: 4 business days.", "Median: 2 days."))
+            code, _ = self._main([d])
+            self.assertEqual(code, 0)
 
 
 if __name__ == "__main__":

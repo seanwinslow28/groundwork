@@ -830,8 +830,13 @@ def _source_append_only(old_src, new_src):
 
 def check_memory_diff(old_text, new_text, path):
     """#7 immutability rules between a record's base version and its new version.
-    Pure (no git). All findings are ERROR — an immutable field changed."""
+    Pure (no git). All findings are ERROR — an immutable field changed.
+    Line endings are normalized first (a git blob keeps CRLF as committed while
+    text-mode reads translate it), and edge whitespace around the body is
+    tolerated — whitespace-only differences are not treated as edits."""
     findings = []
+    old_text = old_text.replace("\r\n", "\n").replace("\r", "\n")
+    new_text = new_text.replace("\r\n", "\n").replace("\r", "\n")
     old_fm, old_body = _frontmatter_and_body(old_text)
     new_fm, new_body = _frontmatter_and_body(new_text)
 
@@ -920,10 +925,24 @@ def validate(root):
     return findings
 
 
+def _diff_in_workbench_skips(rel_from_root):
+    """Mirror iter_files' directory skips (SKIP_DIRS, dot-dirs, SKIP_RELPATHS)
+    for a base-tree path, so the diff scope matches the stateless walker's —
+    deliberately WITHOUT .gitignore: ignoring a committed record must not
+    waive its immutability."""
+    dirs = rel_from_root.split("/")[:-1]
+    if any(d in SKIP_DIRS or d.startswith(".") for d in dirs):
+        return True
+    skip_rel = {p.replace(os.sep, "/") for p in SKIP_RELPATHS}
+    return any("/".join(dirs[:i + 1]) in skip_rel for i in range(len(dirs)))
+
+
 def memory_diff_findings(root, base):
-    """Compare working-tree memory records against <base> (a git ref). Scoped to
-    the memory folder. New records are fine; deletions and immutable-field edits
-    are ERRORs."""
+    """Compare memory records that existed at <base> (a git ref) against the
+    working tree. Scoped to memory folders under root. New records are fine;
+    deletions and immutable-field edits are ERRORs. Driven by the BASE file
+    list, so no working-tree skip can exempt a committed record."""
+    root_abs = os.path.realpath(os.path.abspath(root))
     try:
         toplevel = subprocess.run(["git", "-C", root, "rev-parse", "--show-toplevel"],
                                   capture_output=True, text=True, check=True).stdout.strip()
@@ -935,38 +954,51 @@ def memory_diff_findings(root, base):
     except subprocess.CalledProcessError:
         # a typo'd base must not report a clean bill of health
         return [Finding("ERROR", root, None, "--diff base ref not found: %s" % base)]
+    try:
+        # -z: NUL-terminated, unquoted paths (immune to core.quotePath mangling
+        # of non-ASCII names); os.fsdecode round-trips odd bytes losslessly
+        raw = subprocess.run(["git", "-C", toplevel, "ls-tree", "-r", "--name-only", "-z", base],
+                             capture_output=True, check=True).stdout
+    except subprocess.CalledProcessError:
+        return [Finding("ERROR", root, None, "--diff could not list the base tree for %s" % base)]
     findings = []
-    for abspath in _memory_record_files(root):
-        # git resolves symlinks in --show-toplevel (e.g. macOS /var -> /private/var),
-        # so resolve the record path the same way before computing the in-repo path
-        rel_top = os.path.relpath(os.path.realpath(abspath), toplevel).replace("\\", "/")
-        show = subprocess.run(["git", "-C", toplevel, "show", "%s:%s" % (base, rel_top)],
+    scope = os.path.relpath(root_abs, toplevel).replace("\\", "/")
+    for bf in (os.fsdecode(b) for b in raw.split(b"\0") if b):
+        if scope != "." and not bf.startswith(scope + "/"):
+            continue
+        if "memory" not in bf.split("/") or not bf.endswith(".md") \
+                or os.path.basename(bf) in {"_index.md", "README.md"}:
+            continue
+        abspath = os.path.join(toplevel, *bf.split("/"))
+        rel = os.path.relpath(abspath, root_abs).replace("\\", "/")
+        if _diff_in_workbench_skips(rel):
+            continue
+        if not os.path.isfile(abspath):
+            findings.append(Finding("ERROR", bf, None,
+                                    "memory record deleted (records are superseded, never deleted)"))
+            continue
+        show = subprocess.run(["git", "-C", toplevel, "show", "%s:%s" % (base, bf)],
                               capture_output=True)
         if show.returncode != 0:
-            continue  # absent at base = a new record (add) — allowed
+            # the base LIST says it exists, so a fetch failure is never "new" —
+            # fail closed rather than silently passing
+            findings.append(Finding("ERROR", bf, None,
+                                    "--diff could not read the base version of this record"))
+            continue
         try:
             old = show.stdout.decode("utf-8")
+        except UnicodeError:
+            findings.append(Finding("ERROR", bf, None,
+                                    "cannot verify immutability: base version is not valid UTF-8"))
+            continue
+        try:
             with open(abspath, encoding="utf-8") as fh:
                 new = fh.read()
         except (UnicodeError, OSError):
-            continue  # unreadable either side — the stateless run reports it
-        findings += check_memory_diff(old, new, os.path.relpath(abspath, root))
-    # deletions: a record present at base but gone now, scoped to the validated root
-    try:
-        base_files = subprocess.run(["git", "-C", toplevel, "ls-tree", "-r", "--name-only", base],
-                                    capture_output=True, text=True, check=True).stdout.splitlines()
-    except subprocess.CalledProcessError:
-        return findings + [Finding("ERROR", root, None,
-                                   "--diff could not list the base tree for %s" % base)]
-    scope = os.path.relpath(os.path.realpath(os.path.abspath(root)), toplevel).replace("\\", "/")
-    for bf in base_files:
-        if scope != "." and not bf.startswith(scope + "/"):
+            findings.append(Finding("ERROR", rel, None,
+                                    "cannot verify immutability: working-tree record is unreadable or not valid UTF-8"))
             continue
-        parts = bf.split("/")
-        if "memory" in parts and bf.endswith(".md") and os.path.basename(bf) not in {"_index.md", "README.md"}:
-            if not os.path.isfile(os.path.join(toplevel, bf)):
-                findings.append(Finding("ERROR", bf, None,
-                                        "memory record deleted (records are superseded, never deleted)"))
+        findings += check_memory_diff(old, new, rel)
     return findings
 
 
