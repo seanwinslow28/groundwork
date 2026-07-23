@@ -1755,6 +1755,27 @@ class TestConstitution(unittest.TestCase):
             self.assertTrue(any(f.level == "ERROR" and "rule statement" in f.message
                                 for f in validate.check_constitution(d)))
 
+    def test_markup_placeholder_appeal_errors(self):
+        # Codex round 6: markdown/comment formatting must not launder a placeholder.
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace(
+                "human_appeal: A denied or delayed grant escalates to the CISO, who decides within one business day",
+                "human_appeal: **TBD**")
+                .replace("human_appeal_owner: CISO", "human_appeal_owner: # TODO"))
+            self.assertTrue(any(f.level == "ERROR" and "rung six" in f.message
+                                for f in validate.check_constitution(d)))
+
+    def test_comment_only_body_errors(self):
+        # Codex round 6: a commented-out template body (including its heading)
+        # renders nothing and is not a rule statement.
+        with tempfile.TemporaryDirectory() as d:
+            self._rule(d, RULE_OK.replace(
+                "# Non-standard system access requires human sign-off\n\n"
+                "An agent may propose a grant; a named human approves it and is logged.",
+                "<!--\n# Non-standard system access requires human sign-off\nTODO: write the rule\n-->"))
+            self.assertTrue(any(f.level == "ERROR" and "rule statement" in f.message
+                                for f in validate.check_constitution(d)))
+
     def test_unreadable_rule_errors_not_crashes(self):
         with tempfile.TemporaryDirectory() as d:
             _write_bytes(d, "governance/constitution/access.md", b"---\nowner: \xff\xfe\n---\n")

@@ -802,13 +802,20 @@ _PLACEHOLDERS = {"none", "n/a", "na", "tbd", "todo", "unknown", "pending", "-", 
 
 def _answered(v):
     """A present, single-valued, non-placeholder answer. A list defeats
-    one-owner accountability; quoting a placeholder does not answer it."""
+    one-owner accountability; quoting or formatting a placeholder (\"TBD\",
+    **TBD**, # TODO, `none`) does not answer it."""
     if not isinstance(v, str):
         return False
     s = v.strip()
     if len(s) >= 2 and s[0] == s[-1] and s[0] in "\"'":
-        s = s[1:-1].strip()
+        s = s[1:-1]
+    s = s.strip().strip("*_`#> \t").strip()
     return s != "" and s.lower() not in _PLACEHOLDERS
+
+
+# Multiline HTML comments (template leftovers) render nothing: neither a
+# commented-out heading nor the comment delimiters count as rule content.
+_HTML_COMMENT = re.compile(r"<!--.*?(?:-->|\Z)", re.S)
 
 
 _SEPARATOR_LINE = re.compile(r"[-*_=]{3,}")
@@ -890,8 +897,9 @@ def check_constitution(root, ignore=()):
                                             "'%s' is a placeholder, not an answer" % field))
             # the rule statement is the H1 plus a substantive body, not a bare
             # title over placeholders, separators, or comments
-            if _H1.search(body) is None or not any(
-                    _substantive_line(ln) for ln in body.split("\n")):
+            rendered = _HTML_COMMENT.sub("", body)
+            if _H1.search(rendered) is None or not any(
+                    _substantive_line(ln) for ln in rendered.split("\n")):
                 findings.append(Finding("ERROR", rel, None,
                                         "active rule has no rule statement (H1 title + body)"))
 
