@@ -11,7 +11,9 @@ import fnmatch
 import math
 import os
 import re
+import subprocess
 import sys
+import unicodedata
 from collections import namedtuple
 
 Finding = namedtuple("Finding", ["level", "path", "line", "message"])
@@ -792,6 +794,82 @@ def check_memory(root):
     return findings
 
 
+_PROV_FORWARD = {
+    "observed": {"observed", "confirmed", "superseded"},
+    "inferred": {"inferred", "confirmed", "superseded"},
+    "confirmed": {"confirmed", "superseded"},
+    "superseded": {"superseded"},
+}
+
+
+def _frontmatter_and_body(text, path="<unknown>"):
+    data, findings = parse_frontmatter(text, path)
+    lines = text.split("\n")
+    if lines and lines[0].strip() == "---":
+        for i in range(1, len(lines)):
+            if lines[i].strip() == "---":
+                return data, "\n".join(lines[i + 1:]), findings
+    return data, text, findings
+
+
+def _as_list(v):
+    if v is None or v == []:
+        return []
+    return v if isinstance(v, list) else [v]
+
+
+def _source_append_only(old_src, new_src):
+    """Append-only: every existing entry is preserved in order; only the FINAL
+    existing entry may be extended in place (a scalar source grows by suffix);
+    new entries may follow. Removal or alteration of earlier entries fails."""
+    if not old_src:
+        return True
+    return (len(new_src) >= len(old_src)
+            and new_src[:len(old_src) - 1] == old_src[:-1]
+            and new_src[len(old_src) - 1].startswith(old_src[-1]))
+
+
+def check_memory_diff(old_text, new_text, path):
+    """#7 immutability rules between a record's base version and its new version.
+    Pure (no git). All findings are ERROR — an immutable field changed.
+    Line endings are normalized first (a git blob keeps CRLF as committed while
+    text-mode reads translate it), and edge whitespace around the body is
+    tolerated — whitespace-only differences are not treated as edits."""
+    findings = []
+    old_text = old_text.replace("\r\n", "\n").replace("\r", "\n")
+    new_text = new_text.replace("\r\n", "\n").replace("\r", "\n")
+    old_fm, old_body, _old_parse = _frontmatter_and_body(old_text, path)
+    new_fm, new_body, new_parse = _frontmatter_and_body(new_text, path)
+    # Malformed NEW frontmatter (e.g. a duplicate provenance key) fails closed
+    # here — the diff layer may be the only gate that sees this record. The old
+    # side is committed history; its shape was the stateless gate's job.
+    findings += [f for f in new_parse if f.level == "ERROR"]
+
+    if old_body.strip() != new_body.strip():
+        findings.append(Finding("ERROR", path, None, "immutable: body changed (frozen at commit)"))
+    if old_fm.get("valid_at") != new_fm.get("valid_at"):
+        findings.append(Finding("ERROR", path, None, "immutable: valid_at changed (frozen at commit)"))
+
+    op, np = old_fm.get("provenance"), new_fm.get("provenance")
+    if isinstance(op, str) and op in _PROV_FORWARD and (
+            not isinstance(np, str) or np not in _PROV_FORWARD[op]):
+        # a removed/blank/non-scalar new label is as illegal as a downgrade
+        findings.append(Finding("ERROR", path, None,
+                                "provenance downgrade / illegal transition: %s -> %r (forward only)" % (op, np)))
+
+    old_src, new_src = _as_list(old_fm.get("source")), _as_list(new_fm.get("source"))
+    if not _source_append_only(old_src, new_src):
+        findings.append(Finding("ERROR", path, None,
+                                "source is append-only (existing entries cannot be altered or removed)"))
+
+    for field in ("invalid_at", "superseded_by"):
+        ov = old_fm.get(field)
+        if not _blank(ov) and new_fm.get(field) != ov:
+            findings.append(Finding("ERROR", path, None,
+                                    "supersession field '%s' is set once and cannot change" % field))
+    return findings
+
+
 def load_gitignore(root):
     """Minimal .gitignore reader: exact names and simple globs (e.g. '*.log').
     Enough to skip .env-style files so the gate scans (roughly) what's tracked.
@@ -854,9 +932,142 @@ def validate(root):
     return findings
 
 
+def _diff_in_workbench_skips(rel_from_root):
+    """Mirror iter_files' directory skips (SKIP_DIRS, dot-dirs, SKIP_RELPATHS)
+    for a base-tree path, so the diff scope matches the stateless walker's —
+    deliberately WITHOUT .gitignore: ignoring a committed record must not
+    waive its immutability."""
+    dirs = rel_from_root.split("/")[:-1]
+    if any(d in SKIP_DIRS or d.startswith(".") for d in dirs):
+        return True
+    skip_rel = {p.replace(os.sep, "/") for p in SKIP_RELPATHS}
+    return any("/".join(dirs[:i + 1]) in skip_rel for i in range(len(dirs)))
+
+
+def _committed_path_status(toplevel, parts, cache=None):
+    """Walk toplevel/parts verifying each component exists under its EXACT
+    committed name (a case-folding filesystem cannot hide a case-only rename
+    of a record or any ancestor directory) and that no component is a symlink
+    (a symlinked memory folder or record must not stand in for the committed
+    one). Names are NFC-normalized on both sides — git core.precomposeunicode
+    reports NFC while a mac filesystem may list NFD, and that mismatch must
+    not fake a deletion. Returns 'ok', 'symlink', or 'missing'. Pass a dict as
+    `cache` to reuse directory listings across records. Check-then-open is not
+    atomic — a concurrent writer race is a documented non-goal
+    (docs/known-limitations.md)."""
+    if cache is None:
+        cache = {}
+    p = toplevel
+    for part in parts:
+        if p not in cache:
+            try:
+                cache[p] = {unicodedata.normalize("NFC", e) for e in os.listdir(p)}
+            except OSError:
+                cache[p] = None
+        entries = cache[p]
+        if entries is None or unicodedata.normalize("NFC", part) not in entries:
+            return "missing"
+        p = os.path.join(p, part)
+        if os.path.islink(p):
+            return "symlink"
+    return "ok" if os.path.isfile(p) else "missing"
+
+
+def memory_diff_findings(root, base):
+    """Compare memory records that existed at <base> (a git ref) against the
+    working tree. Scoped to memory folders under root. New records are fine;
+    deletions and immutable-field edits are ERRORs. Driven by the BASE file
+    list, so no working-tree skip can exempt a committed record."""
+    try:
+        # bytes + os.fsdecode: survives locale-undecodable repo paths; and
+        # --show-prefix gives root's repo-relative path in git's canonical
+        # casing, so a case-variant invocation cannot blind the scope filter
+        rp = subprocess.run(["git", "-C", root, "rev-parse", "--show-toplevel", "--show-prefix"],
+                            capture_output=True, check=True).stdout
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return [Finding("ERROR", root, None, "--diff requires a git repository")]
+    rp_lines = os.fsdecode(rp).splitlines()
+    if len(rp_lines) != 2 or not os.path.isdir(rp_lines[0]):
+        # a newline/CR inside the repo path mis-splits this output; a wrong
+        # scope would fail open, so refuse instead
+        return [Finding("ERROR", root, None,
+                        "--diff could not resolve the repository layout (unsupported path)")]
+    toplevel = rp_lines[0]
+    scope = rp_lines[1].strip("/") or "."
+    try:
+        subprocess.run(["git", "-C", toplevel, "rev-parse", "--verify", "--quiet",
+                        "%s^{commit}" % base], capture_output=True, check=True)
+    except subprocess.CalledProcessError:
+        # a typo'd base must not report a clean bill of health
+        return [Finding("ERROR", root, None, "--diff base ref not found: %s" % base)]
+    try:
+        # -z: NUL-terminated, unquoted paths (immune to core.quotePath mangling
+        # of non-ASCII names); os.fsdecode round-trips odd bytes losslessly
+        raw = subprocess.run(["git", "-C", toplevel, "ls-tree", "-r", "--name-only", "-z", base],
+                             capture_output=True, check=True).stdout
+    except subprocess.CalledProcessError:
+        return [Finding("ERROR", root, None, "--diff could not list the base tree for %s" % base)]
+    findings = []
+    listdir_cache = {}
+    for bf in (os.fsdecode(b) for b in raw.split(b"\0") if b):
+        if scope != "." and not bf.startswith(scope + "/"):
+            continue
+        parts = bf.split("/")
+        if "memory" not in parts or not bf.endswith(".md") \
+                or parts[-1] in {"_index.md", "README.md"}:
+            continue
+        rel = bf if scope == "." else bf[len(scope) + 1:]
+        if _diff_in_workbench_skips(rel):
+            continue
+        abspath = os.path.join(toplevel, *parts)
+        status = _committed_path_status(toplevel, parts, listdir_cache)
+        if status == "symlink":
+            findings.append(Finding("ERROR", bf, None,
+                                    "memory record is or sits behind a symlink (cannot verify immutability)"))
+            continue
+        if status == "missing":
+            findings.append(Finding("ERROR", bf, None,
+                                    "memory record deleted (records are superseded, never deleted)"))
+            continue
+        show = subprocess.run(["git", "-C", toplevel, "show", "%s:%s" % (base, bf)],
+                              capture_output=True)
+        if show.returncode != 0:
+            # the base LIST says it exists, so a fetch failure is never "new" —
+            # fail closed rather than silently passing
+            findings.append(Finding("ERROR", bf, None,
+                                    "--diff could not read the base version of this record"))
+            continue
+        try:
+            old = show.stdout.decode("utf-8")
+        except UnicodeError:
+            findings.append(Finding("ERROR", bf, None,
+                                    "cannot verify immutability: base version is not valid UTF-8"))
+            continue
+        try:
+            with open(abspath, encoding="utf-8") as fh:
+                new = fh.read()
+        except (UnicodeError, OSError):
+            findings.append(Finding("ERROR", rel, None,
+                                    "cannot verify immutability: working-tree record is unreadable or not valid UTF-8"))
+            continue
+        findings += check_memory_diff(old, new, rel)
+    return findings
+
+
 def main(argv):
-    root = argv[1] if len(argv) > 1 else "."
+    args = argv[1:]
+    diff_base = None
+    if "--diff" in args:
+        i = args.index("--diff")
+        if i + 1 >= len(args):
+            print("ERROR  --diff requires a <base> git ref")
+            return 2
+        diff_base = args[i + 1]
+        args = args[:i] + args[i + 2:]
+    root = args[0] if args else "."
     findings = validate(root)
+    if diff_base is not None:
+        findings += memory_diff_findings(root, diff_base)
     errors = [f for f in findings if f.level == "ERROR"]
     warns = [f for f in findings if f.level == "WARN"]
     for f in findings:

@@ -1,5 +1,7 @@
 import ast
+import contextlib
 import datetime
+import io
 import os
 import pathlib
 import sys
@@ -52,7 +54,8 @@ class TestFrontmatter(unittest.TestCase):
 
 class TestZeroDep(unittest.TestCase):
     def test_only_stdlib_imports(self):
-        allowed = {"os", "sys", "re", "ast", "math", "fnmatch", "collections", "pathlib", "datetime"}
+        allowed = {"os", "sys", "re", "ast", "math", "fnmatch", "collections", "pathlib",
+                   "datetime", "subprocess", "unicodedata"}
         tree = ast.parse((REPO / "scripts" / "validate.py").read_text())
         mods = set()
         for node in ast.walk(tree):
@@ -1139,6 +1142,373 @@ class TestProvisioningGate(unittest.TestCase):
                 errs = [f for f in validate.check_owner_cards(d) if f.level == "ERROR"]
                 self.assertTrue(any("baseline" in f.message and "not found" in f.message
                                     for f in errs))
+
+
+class TestMemoryDiff(unittest.TestCase):
+    def test_body_frozen(self):
+        new = MEM_OK.replace("Median time-to-day-one-ready: 4 business days.", "Median: 2 days.")
+        self.assertTrue(any(f.level == "ERROR" and "body" in f.message
+                            for f in validate.check_memory_diff(MEM_OK, new, "m.md")))
+
+    def test_valid_at_frozen(self):
+        new = MEM_OK.replace("valid_at: 2026-07-15", "valid_at: 2026-07-16")
+        self.assertTrue(any(f.level == "ERROR" and "valid_at" in f.message
+                            for f in validate.check_memory_diff(MEM_OK, new, "m.md")))
+
+    def test_provenance_forward_ok(self):
+        new = MEM_OK.replace("provenance: observed", "provenance: confirmed")
+        self.assertEqual([f for f in validate.check_memory_diff(MEM_OK, new, "m.md")
+                          if "provenance" in f.message], [])
+
+    def test_provenance_downgrade_errors(self):
+        old = MEM_OK.replace("provenance: observed", "provenance: confirmed")
+        new = MEM_OK.replace("provenance: observed", "provenance: inferred")
+        self.assertTrue(any(f.level == "ERROR" and "provenance" in f.message
+                            for f in validate.check_memory_diff(old, new, "m.md")))
+
+    def test_source_append_ok(self):
+        new = MEM_OK.replace("source: The People team's Q2 onboarding tracker (12 hires)",
+                             "source: The People team's Q2 onboarding tracker (12 hires); plus the IT log")
+        self.assertEqual([f for f in validate.check_memory_diff(MEM_OK, new, "m.md")
+                          if "source" in f.message], [])
+
+    def test_source_alteration_errors(self):
+        new = MEM_OK.replace("source: The People team's Q2 onboarding tracker (12 hires)",
+                             "source: A different tracker")
+        self.assertTrue(any(f.level == "ERROR" and "source" in f.message
+                            for f in validate.check_memory_diff(MEM_OK, new, "m.md")))
+
+    def test_source_list_append_ok(self):
+        # Regression (plan fix): appending a NEW list entry is an append.
+        new = MEM_OK.replace(
+            "source: The People team's Q2 onboarding tracker (12 hires)",
+            "source:\n  - The People team's Q2 onboarding tracker (12 hires)\n  - The IT provisioning log")
+        old = MEM_OK.replace(
+            "source: The People team's Q2 onboarding tracker (12 hires)",
+            "source:\n  - The People team's Q2 onboarding tracker (12 hires)")
+        self.assertEqual([f for f in validate.check_memory_diff(old, new, "m.md")
+                          if "source" in f.message], [])
+
+    def test_source_entry_removal_errors(self):
+        # Regression (plan fix): dropping an existing entry is not an append.
+        old = MEM_OK.replace(
+            "source: The People team's Q2 onboarding tracker (12 hires)",
+            "source:\n  - The People team's Q2 onboarding tracker (12 hires)\n  - The IT provisioning log")
+        new = MEM_OK.replace(
+            "source: The People team's Q2 onboarding tracker (12 hires)",
+            "source:\n  - The People team's Q2 onboarding tracker (12 hires)")
+        self.assertTrue(any(f.level == "ERROR" and "source" in f.message
+                            for f in validate.check_memory_diff(old, new, "m.md")))
+
+    def test_source_earlier_entry_alteration_errors(self):
+        # Regression (plan fix): only the FINAL existing entry may be extended
+        # in place; earlier entries are frozen.
+        old = MEM_OK.replace(
+            "source: The People team's Q2 onboarding tracker (12 hires)",
+            "source:\n  - The People team's Q2 onboarding tracker (12 hires)\n  - The IT provisioning log")
+        new = MEM_OK.replace(
+            "source: The People team's Q2 onboarding tracker (12 hires)",
+            "source:\n  - The People team's Q2 onboarding tracker (12 hires); edited\n  - The IT provisioning log")
+        self.assertTrue(any(f.level == "ERROR" and "source" in f.message
+                            for f in validate.check_memory_diff(old, new, "m.md")))
+
+    def test_provenance_removal_errors(self):
+        # Codex re-review: removing the label (entirely or to a bare key) is as
+        # illegal as a downgrade — forward-only has no exit.
+        for new in (MEM_OK.replace("provenance: observed\n", ""),
+                    MEM_OK.replace("provenance: observed", "provenance:")):
+            with self.subTest(new=new):
+                self.assertTrue(any(f.level == "ERROR" and "provenance" in f.message
+                                    for f in validate.check_memory_diff(MEM_OK, new, "m.md")))
+
+    def test_duplicate_provenance_key_in_new_version_errors(self):
+        # Codex re-review: malformed NEW frontmatter must fail closed in the
+        # diff layer — a duplicate-key trick must not smuggle a transition
+        # past a record the stateless walker never sees.
+        new = MEM_OK.replace("provenance: observed",
+                             "provenance: observed\nprovenance: confirmed")
+        self.assertTrue(any(f.level == "ERROR" and "duplicate" in f.message
+                            for f in validate.check_memory_diff(MEM_OK, new, "m.md")))
+
+    def test_supersession_field_set_once(self):
+        old = (MEM_OK.replace("provenance: observed", "provenance: superseded")
+               .replace("review_by: 2099-10-15",
+                        "review_by: 2099-10-15\ninvalid_at: 2026-08-01\nsuperseded_by: memory/new.md"))
+        new = old.replace("invalid_at: 2026-08-01", "invalid_at: 2026-09-01")
+        self.assertTrue(any(f.level == "ERROR" and "invalid_at" in f.message
+                            for f in validate.check_memory_diff(old, new, "m.md")))
+
+    def test_unchanged_record_clean(self):
+        self.assertEqual(validate.check_memory_diff(MEM_OK, MEM_OK, "m.md"), [])
+
+
+import subprocess as _sp  # noqa: E402
+
+
+def _git(d, *args):
+    _sp.run(["git", "-C", d, *args], check=True, capture_output=True, text=True)
+
+
+class TestMemoryDiffCLI(unittest.TestCase):
+    def _repo(self, d):
+        _git(d, "init", "-q")
+        _git(d, "config", "user.email", "t@t.t")
+        _git(d, "config", "user.name", "t")
+        _write(d, "memory/onboarding-baseline.md", MEM_OK)
+        _write(d, "memory/_index.md", "# Index\n\n- [b](onboarding-baseline.md)\n")
+        _git(d, "add", "-A")
+        _git(d, "commit", "-qm", "base")
+
+    def test_body_edit_flagged_against_base(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "memory/onboarding-baseline.md",
+                   MEM_OK.replace("Median time-to-day-one-ready: 4 business days.", "Median: 2 days."))
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "body" in f.message for f in findings))
+
+    def test_deleted_record_flagged(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            os.remove(os.path.join(d, "memory", "onboarding-baseline.md"))
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "deleted" in f.message for f in findings))
+
+    def test_new_record_is_fine(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "memory/second.md", MEM_OK)
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertEqual([f for f in findings if "second.md" in f.path], [])
+
+    def test_unchanged_repo_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            self.assertEqual(validate.memory_diff_findings(d, "HEAD"), [])
+
+    def test_not_a_git_repo_errors(self):
+        # A tmpdir under the system temp root is not a git work tree.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/onboarding-baseline.md", MEM_OK)
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "git repository" in f.message
+                                for f in findings))
+
+    def test_unknown_base_ref_errors_not_silently_passes(self):
+        # A typo'd base must not report a clean bill of health.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            findings = validate.memory_diff_findings(d, "no-such-ref")
+            self.assertTrue(any(f.level == "ERROR" and "base ref" in f.message
+                                for f in findings))
+
+    def test_nested_memory_folder_diffed(self):
+        # Records in nested memory folders are inside the diff scope too.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "teams/people/memory/note.md", MEM_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "nested")
+            _write(d, "teams/people/memory/note.md",
+                   MEM_OK.replace("valid_at: 2026-07-15", "valid_at: 2026-07-16"))
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "valid_at" in f.message
+                                and "note.md" in f.path for f in findings))
+
+    def test_non_utf8_record_fails_closed_without_crashing(self):
+        # Codex review: an unreadable working-tree record must yield an ERROR
+        # (immutability cannot be verified), not a crash or a silent pass.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write_bytes(d, "memory/onboarding-baseline.md", b"\xff\xfe")
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "cannot verify" in f.message
+                                for f in findings))
+
+    def test_non_utf8_base_version_fails_closed(self):
+        # Codex review: replacing a committed non-UTF-8 record with a valid one
+        # must not report clean — the base version is unverifiable.
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write_bytes(d, "memory/x.md", b"\xff\xfe")
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "base")
+            _write(d, "memory/x.md", MEM_OK)
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "cannot verify" in f.message
+                                for f in findings))
+
+    def test_gitignored_committed_record_still_diffed(self):
+        # Codex review: a .gitignore entry must not exempt a committed record
+        # from the immutability check (the base list drives the scan).
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, ".gitignore", "onboarding-baseline.md\n")
+            _write(d, "memory/onboarding-baseline.md",
+                   MEM_OK.replace("Median time-to-day-one-ready: 4 business days.", "Median: 2 days."))
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "body" in f.message for f in findings))
+
+    def test_root_inside_memory_folder_still_diffed(self):
+        # Codex review: running with root = the memory folder itself must not
+        # blind the check (memory-ness is judged repo-relative).
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "memory/onboarding-baseline.md",
+                   MEM_OK.replace("valid_at: 2026-07-15", "valid_at: 2026-07-16"))
+            findings = validate.memory_diff_findings(os.path.join(d, "memory"), "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "valid_at" in f.message for f in findings))
+
+    def test_non_ascii_record_name_deletion_flagged(self):
+        # Codex review: core.quotePath C-quotes non-ASCII names in porcelain
+        # output; the -z path list must still see the deletion.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "memory/café.md", MEM_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "accent")
+            os.remove(os.path.join(d, "memory", "café.md"))
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "deleted" in f.message
+                                and "caf" in f.path for f in findings))
+
+    def test_case_only_rename_flagged_as_deletion(self):
+        # Codex re-review: on a case-folding filesystem os.path.isfile resolves
+        # the renamed file, hiding that the committed path is gone. The exact
+        # directory-listing check must flag it on every platform.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "memory/Foo.md", MEM_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "cased")
+            os.rename(os.path.join(d, "memory", "Foo.md"),
+                      os.path.join(d, "memory", "foo.md"))
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "deleted" in f.message
+                                and "Foo.md" in f.path for f in findings))
+
+    def test_memory_dir_replaced_by_symlink_mirror_fails(self):
+        # Codex re-review: a symlinked memory folder pointing at a
+        # byte-identical mirror must not stand in for the committed one.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            os.rename(os.path.join(d, "memory"), os.path.join(d, "mirror"))
+            os.symlink(os.path.join(d, "mirror"), os.path.join(d, "memory"))
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "symlink" in f.message
+                                for f in findings))
+
+    def test_record_replaced_by_symlink_fails(self):
+        # Codex re-review: a record swapped for a symlink (even to identical
+        # content) is not the committed regular file.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            rec = os.path.join(d, "memory", "onboarding-baseline.md")
+            os.rename(rec, os.path.join(d, "copy.md"))
+            os.symlink(os.path.join(d, "copy.md"), rec)
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "symlink" in f.message
+                                for f in findings))
+
+    def test_case_variant_root_still_diffed(self):
+        # Codex re-review: invoking with a case-variant root (Memory vs memory)
+        # must not blind the scope filter — the scope comes from git's
+        # canonical --show-prefix, not from lexical path math.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            variant = os.path.join(d, "Memory")
+            if not os.path.isdir(variant):
+                self.skipTest("case-sensitive filesystem")
+            _write(d, "memory/onboarding-baseline.md",
+                   MEM_OK.replace("Median time-to-day-one-ready: 4 business days.", "Median: 2 days."))
+            findings = validate.memory_diff_findings(variant, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "body" in f.message for f in findings))
+
+    def test_ancestor_dir_case_rename_flagged_as_deletion(self):
+        # Codex re-review: a case-only rename of an ANCESTOR directory
+        # (memory/Team -> memory/team) must flag the committed path as gone.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "memory/Team/note.md", MEM_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "cased-dir")
+            os.rename(os.path.join(d, "memory", "Team"),
+                      os.path.join(d, "memory", "team"))
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "deleted" in f.message
+                                and "Team/note.md" in f.path for f in findings))
+
+    def test_newline_in_repo_path_fails_closed(self):
+        # Codex re-review: a newline inside the repo path mis-splits the
+        # rev-parse output; the scan must refuse rather than mis-scope.
+        with tempfile.TemporaryDirectory() as outer:
+            d = os.path.join(outer, "repo\nnewline")
+            os.makedirs(d)
+            self._repo(d)
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "unsupported path" in f.message
+                                for f in findings))
+
+    def test_nfd_on_disk_nfc_in_git_unchanged_record_is_clean(self):
+        # Codex final pass: git core.precomposeunicode reports NFC names while
+        # the filesystem may list NFD entries; an UNCHANGED record must not be
+        # falsely reported as deleted.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _git(d, "config", "core.precomposeunicode", "true")
+            _write(d, "memory/cafe\u0301.md", MEM_OK)  # explicit NFD on disk
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "nfd")
+            findings = validate.memory_diff_findings(d, "HEAD")
+            self.assertEqual([f for f in findings if "deleted" in f.message], [])
+
+    def test_crlf_base_version_of_unchanged_record_is_clean(self):
+        # Codex review: a CRLF blob at base vs an LF working read must not
+        # report a phantom body edit.
+        crlf = MEM_OK.replace("\n", "\r\n")
+        self.assertEqual(validate.check_memory_diff(crlf, MEM_OK, "m.md"), [])
+
+
+class TestDiffCLIWiring(unittest.TestCase):
+    def _main(self, argv):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = validate.main(["validate.py"] + argv)
+        return code, out.getvalue()
+
+    def _repo(self, d):
+        TestMemoryDiffCLI._repo(self, d)
+
+    def test_missing_base_arg_exits_2(self):
+        code, out = self._main(["--diff"])
+        self.assertEqual(code, 2)
+        self.assertIn("--diff requires", out)
+
+    def test_clean_repo_diff_exits_0(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            code, _ = self._main([d, "--diff", "HEAD"])
+            self.assertEqual(code, 0)
+
+    def test_frozen_edit_fails_the_gate(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "memory/onboarding-baseline.md",
+                   MEM_OK.replace("Median time-to-day-one-ready: 4 business days.", "Median: 2 days."))
+            code, out = self._main([d, "--diff", "HEAD"])
+            self.assertEqual(code, 1)
+            self.assertIn("body changed", out)
+
+    def test_plain_run_ignores_diff_findings(self):
+        # The stateless default: the same edited repo passes without --diff.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "memory/onboarding-baseline.md",
+                   MEM_OK.replace("Median time-to-day-one-ready: 4 business days.", "Median: 2 days."))
+            code, _ = self._main([d])
+            self.assertEqual(code, 0)
 
 
 if __name__ == "__main__":
