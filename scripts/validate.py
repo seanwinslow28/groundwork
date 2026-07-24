@@ -957,6 +957,10 @@ def _hook_command_target(command, root):
     and resolves ${CLAUDE_PROJECT_DIR} to root."""
     if not isinstance(command, str) or not command.strip():
         return None
+    # pipelines, redirections, and command chaining can discard the decision
+    # JSON — the hook would run but Claude would never receive the deny
+    if re.search(r"[|;&<>]", command):
+        return None
     try:
         parts = shlex.split(command)
     except ValueError:  # unbalanced quoting — not a runnable command
@@ -994,9 +998,14 @@ def check_hooks(root):
     PreToolUse with a matcher that covers Bash, or it cannot block anything."""
     findings = []
     hooks_dir = os.path.join(root, "governance", "hooks")
-    if not os.path.isdir(hooks_dir):
-        return findings
     rel_dir = os.path.relpath(hooks_dir, root)
+    if not os.path.isdir(hooks_dir):
+        # a dangling symlink (or one to a file) is not an absent hook set
+        if os.path.islink(hooks_dir):
+            findings.append(Finding("ERROR", rel_dir, None,
+                                    "governance/hooks is a symlink to nothing usable — "
+                                    "not an absent hook set, a broken one"))
+        return findings
     # a symlinked artifact is not the committed, auditable file the claim names
     if os.path.islink(hooks_dir):
         findings.append(Finding("ERROR", rel_dir, None,

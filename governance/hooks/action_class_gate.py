@@ -32,17 +32,22 @@ HIGH_RISK_PATTERNS = [
     # short clusters may carry -R (uppercase recursive); long spellings are named
     # explicitly so a benign long flag containing 'r' (--verbose) does not match;
     # the prefix accepts value-bearing options (--preserve-root=all)
+    # GNU argument permutation allows flags after operands (rm /a -rf /b), so
+    # scan the whole segment; a standalone `--` ends option parsing, so the
+    # tempered scan stops there (rm -- -rf deletes a file literally named -rf)
     ("delete", "recursive/forced file deletion",
-     re.compile(r"\brm\s+(?:-\S+\s+)*(?:(?<!-)-[A-Za-z]*[rRf][A-Za-z]*(?![\w-])|--(?:recursive|force)\b)")),
+     re.compile(r"\brm\b(?:(?!\s--(?:\s|$))[^;&|\n])*?"
+                r"\s(?:-[A-Za-z]*[rRf][A-Za-z]*(?![\w-])|--(?:recursive|force)\b)")),
     # a leading-plus refspec (git push origin +main, possibly quoted) is git's
     # documented force-update syntax — a force push without --force; -f may sit
     # inside a short-option cluster (git push -fu)
     ("delete", "force push (rewrites shared history)",
      re.compile(r"\bgit" + _OPTS + r"\s+push\b[^\n]*"
                 r"(--force\b|(?<![\w-])-[A-Za-z]*f[A-Za-z]*(?![\w-])|\s[\"']?\+\S+)")),
-    # git accepts reset options before --hard (git reset -q --hard HEAD)
+    # git intersperses reset options and revisions freely (git reset -q --hard,
+    # git reset HEAD~1 --hard) — scan the whole segment after `reset`
     ("delete", "hard reset (discards work)",
-     re.compile(r"\bgit" + _OPTS + r"\s+reset" + _OPTS + r"\s+--hard\b")),
+     re.compile(r"\bgit" + _OPTS + r"\s+reset\b[^;&|\n]*\s--hard\b")),
     # No dry-run exemption: it was laundered three review rounds running (a
     # later command's -n, comment text, --exclude=--dry-run). A denied dry run
     # fails safe onto the human path; a laundered force-clean deletes files.
@@ -69,9 +74,10 @@ HIGH_RISK_PATTERNS = [
      re.compile(r"\bwget\b[^\n]*(?:--post-(?:data|file)\b|--body-(?:data|file)\b"
                 r"|--method[\s=]*[\"']?(?:POST|PUT|PATCH|DELETE)\b)")),
     # plain `mail` sends email too, but only in command position (start of
-    # string, after a pipe/;/&, or path-invoked) so `cat mail.log` stays benign
+    # string or line, after a pipe/;/&, or path-invoked) so `cat mail.log`
+    # stays benign
     ("external-send", "outbound mail",
-     re.compile(r"\b(sendmail|mailx|mutt)\b|(?:^|[|;&]\s*|/)mail\b")),
+     re.compile(r"\b(sendmail|mailx|mutt)\b|(?:^|[|;&\n]\s*|/)mail\b")),
     ("spend", "infrastructure apply/destroy (changes billable resources)",
      re.compile(r"\bterraform" + _OPTS + r"\s+(apply|destroy)\b")),
     # action-based: only mutating subcommands are spend; list/retrieve are

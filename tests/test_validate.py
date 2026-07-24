@@ -2038,6 +2038,22 @@ class TestActionClassGate(unittest.TestCase):
         self.assertEqual(action_class_gate.classify("mail -s hi user@example.com")[0], "external-send")
         self.assertEqual(action_class_gate.classify("cat mail.log")[0], None)
 
+    def test_mail_after_newline_blocked(self):
+        # Codex round 8 (P1): a newline is a command boundary in a multiline
+        # Bash payload.
+        self.assertEqual(action_class_gate.classify("echo ready\nmail -s hi user@example.com")[0],
+                         "external-send")
+
+    def test_reset_hard_after_revision_blocked(self):
+        # Codex round 8 (P1): git accepts the revision before --hard.
+        self.assertEqual(action_class_gate.classify("git reset HEAD~1 --hard")[0], "delete")
+
+    def test_rm_flags_after_operands_blocked(self):
+        # Codex round 8 (P1): GNU argument permutation makes trailing -rf
+        # options; after a standalone `--` they are operands.
+        self.assertEqual(action_class_gate.classify("rm /tmp/cache -rf /tmp/data")[0], "delete")
+        self.assertEqual(action_class_gate.classify("rm -- -rf")[0], None)
+
     def test_decide_asks_on_blank_command(self):
         # Codex round 2 (P2): a blank command string is unusable input, not a
         # benign command — fail loud, don't defer.
@@ -2170,6 +2186,26 @@ class TestHooks(unittest.TestCase):
             self._set(d, snippet=snip)
             _write(d, "governance/hooks/other.py", "# other\n")
             self.assertTrue(any(f.level == "ERROR" and "PreToolUse" in f.message
+                                for f in validate.check_hooks(d)))
+
+    def test_redirected_hook_command_errors(self):
+        # Codex round 8 (P2): a redirection discards the decision JSON — the
+        # hook runs but Claude never receives a deny.
+        with tempfile.TemporaryDirectory() as d:
+            self._set(d, snippet=SNIPPET_OK.replace(
+                "action_class_gate.py",
+                "action_class_gate.py >/dev/null"))
+            self.assertTrue(any(f.level == "ERROR" and "runnable command" in f.message
+                                for f in validate.check_hooks(d)))
+
+    def test_dangling_hooks_dir_symlink_errors(self):
+        # Codex round 8 (P2): a dangling governance/hooks symlink must not be
+        # treated as an absent hook set.
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "governance"))
+            os.symlink(os.path.join(d, "no-such-target"),
+                       os.path.join(d, "governance", "hooks"))
+            self.assertTrue(any(f.level == "ERROR" and "symlink" in f.message
                                 for f in validate.check_hooks(d)))
 
     def test_symlinked_gate_script_errors(self):
