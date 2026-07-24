@@ -999,8 +999,10 @@ def check_hooks(root):
     rel_dir = os.path.relpath(hooks_dir, root)
     snippet = os.path.join(hooks_dir, "settings.snippet.json")
     if not os.path.isfile(snippet):
-        findings.append(Finding("WARN", os.path.join(rel_dir, "settings.snippet.json"), None,
-                                "hook set has no settings.snippet.json (nothing to install)"))
+        # the most unwired guard of all: nothing can be installed
+        findings.append(Finding("ERROR", os.path.join(rel_dir, "settings.snippet.json"), None,
+                                "hook set has no settings.snippet.json (nothing to install — "
+                                "a named-but-unwired guard is false safety)"))
     else:
         rel_snip = os.path.relpath(snippet, root)
         data, parsed = None, False
@@ -1029,9 +1031,12 @@ def check_hooks(root):
                         if not isinstance(hook, dict) or hook.get("type") != "command":
                             continue
                         declared += 1
-                        if event == "PreToolUse" and _matcher_covers_bash(group.get("matcher")):
-                            pre_bash += 1
                         target = _hook_command_target(hook.get("command"), root)
+                        # only the gate script itself counts as the Bash registration —
+                        # an unrelated PreToolUse hook must not front for an unwired gate
+                        if event == "PreToolUse" and _matcher_covers_bash(group.get("matcher")) \
+                                and target == os.path.normpath(os.path.join(hooks_dir, "action_class_gate.py")):
+                            pre_bash += 1
                         if target is None:
                             findings.append(Finding("ERROR", rel_snip, None,
                                                     "hook declares no runnable command"))
@@ -1045,8 +1050,9 @@ def check_hooks(root):
             # independent of `declared`: an empty hook set is still an unwired guard
             if pre_bash == 0:
                 findings.append(Finding("ERROR", rel_snip, None,
-                                        "no command hook registered under PreToolUse with a matcher "
-                                        "covering Bash — the gate cannot block a command before it runs"))
+                                        "no PreToolUse hook with a matcher covering Bash targets "
+                                        "action_class_gate.py — the gate cannot block a command "
+                                        "before it runs"))
     if not os.path.isfile(os.path.join(hooks_dir, "review-gate.md")):
         findings.append(Finding("WARN", os.path.join(rel_dir, "review-gate.md"), None,
                                 "hook set has no review-gate.md — the non-Claude degradation (#19) is undocumented"))

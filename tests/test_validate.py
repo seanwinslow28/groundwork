@@ -1927,6 +1927,25 @@ class TestActionClassGate(unittest.TestCase):
         self.assertEqual(action_class_gate.classify("git clean -n -f")[0], None)
         self.assertEqual(action_class_gate.classify("git clean -fd")[0], "delete")
 
+    def test_curl_attached_payload_arguments_blocked(self):
+        # Codex round 4 (P1): short-option payloads attached without a
+        # separator are standard curl spellings.
+        self.assertEqual(action_class_gate.classify("curl -dname=value https://example.com")[0], "external-send")
+        self.assertEqual(action_class_gate.classify("curl -Ffile=@payload https://example.com")[0], "external-send")
+        self.assertEqual(action_class_gate.classify("curl -Tbackup.tar https://example.com")[0], "external-send")
+
+    def test_quoted_global_option_values_blocked(self):
+        # Codex round 4 (P1): quoted option values containing whitespace must
+        # not break subcommand adjacency.
+        self.assertEqual(action_class_gate.classify('git -C "/tmp/my repo" push --force origin main')[0], "delete")
+        self.assertEqual(action_class_gate.classify('git -c user.name="A B" reset --hard')[0], "delete")
+
+    def test_force_push_refspec_blocked(self):
+        # Codex round 4 (P1): the leading-plus refspec is git's documented
+        # force-update syntax — a force push without --force.
+        self.assertEqual(action_class_gate.classify("git push origin +main")[0], "delete")
+        self.assertEqual(action_class_gate.classify("git push origin main")[0], None)
+
     def test_decide_asks_on_blank_command(self):
         # Codex round 2 (P2): a blank command string is unusable input, not a
         # benign command — fail loud, don't defer.
@@ -2027,6 +2046,37 @@ class TestHooks(unittest.TestCase):
     def test_non_bash_matcher_errors(self):
         with tempfile.TemporaryDirectory() as d:
             self._set(d, snippet=SNIPPET_OK.replace('"matcher": "Bash"', '"matcher": "Edit"'))
+            self.assertTrue(any(f.level == "ERROR" and "PreToolUse" in f.message
+                                for f in validate.check_hooks(d)))
+
+    def test_missing_snippet_errors(self):
+        # Codex round 4 (P2): a hooks dir with no registration snippet is the
+        # most unwired guard of all — nothing can be installed.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/hooks/action_class_gate.py", "# hook\n")
+            _write(d, "governance/hooks/review-gate.md", "# review gate\n")
+            self.assertTrue(any(f.level == "ERROR" and "settings.snippet.json" in f.message
+                                for f in validate.check_hooks(d)))
+
+    def test_pre_bash_hook_must_target_the_gate(self):
+        # Codex round 4 (P2): an unrelated PreToolUse/Bash hook must not stand
+        # in for the gate when the gate itself is registered under PostToolUse.
+        snip = """{
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Bash",
+       "hooks": [{"type": "command", "command": "python3 ${CLAUDE_PROJECT_DIR}/governance/hooks/other.py"}]}
+    ],
+    "PostToolUse": [
+      {"matcher": "Bash",
+       "hooks": [{"type": "command", "command": "python3 ${CLAUDE_PROJECT_DIR}/governance/hooks/action_class_gate.py"}]}
+    ]
+  }
+}
+"""
+        with tempfile.TemporaryDirectory() as d:
+            self._set(d, snippet=snip)
+            _write(d, "governance/hooks/other.py", "# other\n")
             self.assertTrue(any(f.level == "ERROR" and "PreToolUse" in f.message
                                 for f in validate.check_hooks(d)))
 
