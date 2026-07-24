@@ -1946,6 +1946,27 @@ class TestActionClassGate(unittest.TestCase):
         self.assertEqual(action_class_gate.classify("git push origin +main")[0], "delete")
         self.assertEqual(action_class_gate.classify("git push origin main")[0], None)
 
+    def test_line_continuations_normalized_before_matching(self):
+        # Codex round 5 (P1): bash joins backslash-newline continuations before
+        # executing — classify what runs, not the raw text.
+        self.assertEqual(action_class_gate.classify("rm \\\n -rf /tmp/x")[0], "delete")
+        self.assertEqual(action_class_gate.classify("git push \\\n --force origin main")[0], "delete")
+
+    def test_curl_json_option_blocked(self):
+        # Codex round 5 (P1): --json implies an HTTP POST.
+        self.assertEqual(action_class_gate.classify("curl --json '{}' https://example.com")[0], "external-send")
+
+    def test_reset_hard_after_other_options_blocked(self):
+        # Codex round 5 (P1): git accepts reset options before --hard.
+        self.assertEqual(action_class_gate.classify("git reset -q --hard HEAD")[0], "delete")
+        self.assertEqual(action_class_gate.classify("git reset --soft HEAD~1")[0], None)
+
+    def test_clean_dry_run_exemption_ignores_comments(self):
+        # Codex round 5 (P1): '--dry-run' inside a shell comment must not
+        # launder a real force-clean.
+        self.assertEqual(action_class_gate.classify("git clean -fd # not a --dry-run")[0], "delete")
+        self.assertEqual(action_class_gate.classify("git clean -n -f # cleanup")[0], None)
+
     def test_decide_asks_on_blank_command(self):
         # Codex round 2 (P2): a blank command string is unusable input, not a
         # benign command — fail loud, don't defer.
