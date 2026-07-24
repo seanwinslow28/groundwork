@@ -22,7 +22,9 @@ import sys
 # terraform -chdir=infra apply). Standard automation forms, not obfuscation.
 # A token may contain quoted spans holding whitespace (git -C "/tmp/my repo",
 # -c user.name="A B"), so "one token" means a run of non-space chars or quotes.
-_TOKEN_CHARS = r"(?:[^\s\"']|\"[^\"]*\"|'[^']*')+"
+# a token char is a plain char, a backslash-escaped char (my\ repo), or a
+# quoted span ("a b", 'a b')
+_TOKEN_CHARS = r"(?:[^\s\"'\\]|\\.|\"[^\"]*\"|'[^']*')+"
 _OPTS = r"(?:\s+-" + _TOKEN_CHARS + r"(?:\s+(?![-\s])" + _TOKEN_CHARS + r")?)*"
 
 # (category, human-readable action, pattern). Curated and auditable — add with care.
@@ -33,30 +35,36 @@ HIGH_RISK_PATTERNS = [
     ("delete", "recursive/forced file deletion",
      re.compile(r"\brm\s+(?:-\S+\s+)*(?:(?<!-)-[A-Za-z]*[rRf][A-Za-z]*(?![\w-])|--(?:recursive|force)\b)")),
     # a leading-plus refspec (git push origin +main) is git's documented
-    # force-update syntax — a force push without --force
+    # force-update syntax — a force push without --force; -f may sit inside a
+    # short-option cluster (git push -fu)
     ("delete", "force push (rewrites shared history)",
-     re.compile(r"\bgit" + _OPTS + r"\s+push\b[^\n]*(--force\b|(?<!\w)-f\b|\s\+\S+)")),
+     re.compile(r"\bgit" + _OPTS + r"\s+push\b[^\n]*"
+                r"(--force\b|(?<![\w-])-[A-Za-z]*f[A-Za-z]*(?![\w-])|\s\+\S+)")),
     # git accepts reset options before --hard (git reset -q --hard HEAD)
     ("delete", "hard reset (discards work)",
      re.compile(r"\bgit" + _OPTS + r"\s+reset" + _OPTS + r"\s+--hard\b")),
-    # -n / --dry-run forces a dry run even alongside -f, so it is read-only; the
-    # scan stays inside one pipeline segment and stops at '#' so neither a later
-    # command's -n nor comment text can launder a real clean
+    # -n / --dry-run forces a dry run even alongside -f, so it is read-only.
+    # Asymmetric scan windows, each failing safe: the dry-run EXEMPTION stops at
+    # '#' (comment text must not launder a real clean — worst case we deny a dry
+    # run), while the FORCE scan does not (a '#' inside an argument like
+    # --exclude=#keep must not hide -f — worst case we deny a commented mention).
     ("delete", "force-clean untracked files",
      re.compile(r"\bgit" + _OPTS + r"\s+clean\b"
                 r"(?![^;&|#\n]*(?:(?<![\w-])-[A-Za-z]*n[A-Za-z]*(?![\w-])|--dry-run\b))"
-                r"[^;&|#\n]*-\w*f")),
+                r"[^;&|\n]*-\w*f")),
     ("delete", "destructive database statement", re.compile(r"\b(DROP\s+(TABLE|DATABASE|SCHEMA)|TRUNCATE\s+TABLE)\b", re.I)),
-    ("delete", "raw disk write", re.compile(r"\b(mkfs(\.\w+)?|dd\s+[^\n]*\bof=/dev/)")),
+    ("delete", "raw disk write", re.compile(r"\b(mkfs(\.\w+)?|dd\s+[^\n]*\bof=[\"']?/dev/)")),
     # request/body options in their standard spellings: -X POST / -XPOST /
-    # --request=DELETE, -d/-F/-T with the payload spaced OR attached
-    # (-d'{}', -dname=value, -Ffile=@x, -Tbackup.tar)
+    # --request=DELETE; -d/-F/-T with the payload spaced or attached (-d'{}',
+    # -dname=value, -Ffile=@x, -Tbackup.tar) or ending a short-option cluster
+    # (-sd x=1, -sTbackup.tar) — cluster letters before the payload flag may
+    # err toward deny (a value spelling like -od also matches; deny fails safe)
     ("external-send", "outbound write request",
      re.compile(r"\bcurl\b[^\n]*(?:(?:-X|--request)[\s=]*(?:POST|PUT|PATCH|DELETE)\b"
-                r"|--data(?:-\w+)?\b|(?<![\w-])-d"
+                r"|--data(?:-\w+)?\b|(?<![\w-])-[A-Za-z]*d"
                 r"|--json\b"
-                r"|--form\b|(?<![\w-])-F"
-                r"|--upload-file\b|(?<![\w-])-T)")),
+                r"|--form\b|(?<![\w-])-[A-Za-z]*F"
+                r"|--upload-file\b|(?<![\w-])-[A-Za-z]*T)")),
     ("external-send", "outbound post", re.compile(r"\bwget\b[^\n]*--post-(data|file)\b")),
     ("external-send", "outbound mail", re.compile(r"\b(sendmail|mailx|mutt)\b")),
     ("spend", "infrastructure apply (provisions billable resources)",

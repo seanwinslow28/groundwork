@@ -1967,6 +1967,31 @@ class TestActionClassGate(unittest.TestCase):
         self.assertEqual(action_class_gate.classify("git clean -fd # not a --dry-run")[0], "delete")
         self.assertEqual(action_class_gate.classify("git clean -n -f # cleanup")[0], None)
 
+    def test_hash_in_clean_argument_does_not_hide_force(self):
+        # Codex round 6 (P1): '#' inside an argument is data, not a comment —
+        # it must not truncate the force scan (that would fail open).
+        self.assertEqual(action_class_gate.classify("git clean --exclude=#keep -fd")[0], "delete")
+        self.assertEqual(action_class_gate.classify('git clean -e "#keep" -fd')[0], "delete")
+
+    def test_clustered_push_force_blocked(self):
+        # Codex round 6 (P1): git accepts -f inside a short-option cluster.
+        self.assertEqual(action_class_gate.classify("git push -fu origin main")[0], "delete")
+        self.assertEqual(action_class_gate.classify("git push -u origin main")[0], None)
+
+    def test_quoted_dd_device_blocked(self):
+        # Codex round 6 (P1): quoting the device is a standard spelling.
+        self.assertEqual(action_class_gate.classify('dd if=image.iso of="/dev/sda"')[0], "delete")
+        self.assertEqual(action_class_gate.classify("dd if=image.iso of='/dev/sda'")[0], "delete")
+
+    def test_curl_clustered_payload_flags_blocked(self):
+        # Codex round 6 (P1): payload flags may end a short-option cluster.
+        self.assertEqual(action_class_gate.classify("curl -sd x=1 https://example.com")[0], "external-send")
+        self.assertEqual(action_class_gate.classify("curl -sTbackup.tar https://example.com")[0], "external-send")
+
+    def test_backslash_escaped_spaces_in_option_values(self):
+        # Codex round 6 (P1): shell-escaped spaces keep the value one token.
+        self.assertEqual(action_class_gate.classify("git -C /tmp/my\\ repo push --force origin main")[0], "delete")
+
     def test_decide_asks_on_blank_command(self):
         # Codex round 2 (P2): a blank command string is unusable input, not a
         # benign command — fail loud, don't defer.
