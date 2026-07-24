@@ -1921,11 +1921,14 @@ class TestActionClassGate(unittest.TestCase):
         # disable detection.
         self.assertEqual(action_class_gate.classify("rm --preserve-root=all -rf /var/data")[0], "delete")
 
-    def test_git_clean_dry_run_not_blocked(self):
-        # Codex round 3 (P2): -n forces a dry run even with -f present.
-        self.assertEqual(action_class_gate.classify("git clean -nf")[0], None)
-        self.assertEqual(action_class_gate.classify("git clean -n -f")[0], None)
+    def test_git_clean_force_always_blocked(self):
+        # Codex rounds 3→7: the dry-run exemption was laundered three times
+        # (later command's -n, comment text, --exclude=--dry-run). Removed —
+        # a denied dry run fails safe; a laundered force-clean does not.
         self.assertEqual(action_class_gate.classify("git clean -fd")[0], "delete")
+        self.assertEqual(action_class_gate.classify("git clean -nf")[0], "delete")
+        self.assertEqual(action_class_gate.classify("git clean --exclude=--dry-run -f")[0], "delete")
+        self.assertEqual(action_class_gate.classify("git clean -n")[0], None)
 
     def test_curl_attached_payload_arguments_blocked(self):
         # Codex round 4 (P1): short-option payloads attached without a
@@ -1963,9 +1966,10 @@ class TestActionClassGate(unittest.TestCase):
 
     def test_clean_dry_run_exemption_ignores_comments(self):
         # Codex round 5 (P1): '--dry-run' inside a shell comment must not
-        # launder a real force-clean.
+        # launder a real force-clean. (Round 7 removed the exemption entirely,
+        # so a dry-run force-clean now also denies — fail safe.)
         self.assertEqual(action_class_gate.classify("git clean -fd # not a --dry-run")[0], "delete")
-        self.assertEqual(action_class_gate.classify("git clean -n -f # cleanup")[0], None)
+        self.assertEqual(action_class_gate.classify("git clean -n -f # cleanup")[0], "delete")
 
     def test_hash_in_clean_argument_does_not_hide_force(self):
         # Codex round 6 (P1): '#' inside an argument is data, not a comment —
@@ -1991,6 +1995,48 @@ class TestActionClassGate(unittest.TestCase):
     def test_backslash_escaped_spaces_in_option_values(self):
         # Codex round 6 (P1): shell-escaped spaces keep the value one token.
         self.assertEqual(action_class_gate.classify("git -C /tmp/my\\ repo push --force origin main")[0], "delete")
+
+    def test_terraform_destroy_blocked(self):
+        # Codex round 7 (P1): destroy is the delete class, plainly.
+        self.assertEqual(action_class_gate.classify("terraform destroy -auto-approve")[0], "spend")
+        self.assertEqual(action_class_gate.classify("terraform plan")[0], None)
+
+    def test_quoted_force_refspec_blocked(self):
+        # Codex round 7 (P1): the shell strips quotes before git sees +main.
+        self.assertEqual(action_class_gate.classify("git push origin '+main'")[0], "delete")
+
+    def test_quoted_curl_methods_blocked(self):
+        # Codex round 7 (P1): quoting the method is a standard spelling.
+        self.assertEqual(action_class_gate.classify('curl -X "DELETE" https://example.com/item')[0], "external-send")
+        self.assertEqual(action_class_gate.classify("curl --request='POST' https://example.com")[0], "external-send")
+
+    def test_truncate_without_table_keyword_blocked(self):
+        # Codex round 7 (P1): TABLE is optional in PostgreSQL.
+        self.assertEqual(action_class_gate.classify("psql -c 'TRUNCATE users'")[0], "delete")
+        self.assertEqual(action_class_gate.classify("truncate -s 0 app.log")[0], None)
+
+    def test_stripe_global_options_and_post_blocked(self):
+        # Codex round 7 (P1): global options precede the resource; the generic
+        # post command is a raw API mutation.
+        self.assertEqual(
+            action_class_gate.classify('stripe --api-key "$KEY" refunds create --charge ch_1')[0], "spend")
+        self.assertEqual(action_class_gate.classify("stripe post /v1/charges -d amount=100")[0], "spend")
+
+    def test_wget_method_write_requests_blocked(self):
+        # Codex round 7 (P1): --method/--body-* are wget's standard write forms.
+        self.assertEqual(action_class_gate.classify("wget --method=DELETE https://example.com/x")[0], "external-send")
+        self.assertEqual(
+            action_class_gate.classify("wget --method=POST --body-data=x https://example.com")[0], "external-send")
+        self.assertEqual(action_class_gate.classify("wget https://example.com/file.tar.gz")[0], None)
+
+    def test_mail_binary_blocked_in_command_position(self):
+        # Codex round 7 (P1): plain `mail` sends email; matched only in command
+        # position so text mentioning mail (cat mail.log) stays benign.
+        self.assertEqual(
+            action_class_gate.classify("printf body | /usr/bin/mail -s subject user@example.com")[0],
+            "external-send")
+        self.assertEqual(action_class_gate.classify("mail -s hi user@example.com")[0], "external-send")
+        self.assertEqual(action_class_gate.classify("cat mail.log")[0], None)
 
     def test_decide_asks_on_blank_command(self):
         # Codex round 2 (P2): a blank command string is unusable input, not a
@@ -2124,6 +2170,18 @@ class TestHooks(unittest.TestCase):
             self._set(d, snippet=snip)
             _write(d, "governance/hooks/other.py", "# other\n")
             self.assertTrue(any(f.level == "ERROR" and "PreToolUse" in f.message
+                                for f in validate.check_hooks(d)))
+
+    def test_symlinked_gate_script_errors(self):
+        # Codex round 7 (P2): a symlinked artifact is not the committed,
+        # auditable file the enforcement claim names.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/hooks/settings.snippet.json", SNIPPET_OK)
+            _write(d, "governance/hooks/review-gate.md", "# review gate\n")
+            _write(d, "elsewhere.py", "# external\n")
+            os.symlink(os.path.join(d, "elsewhere.py"),
+                       os.path.join(d, "governance", "hooks", "action_class_gate.py"))
+            self.assertTrue(any(f.level == "ERROR" and "symlink" in f.message
                                 for f in validate.check_hooks(d)))
 
     def test_empty_hooks_object_errors(self):

@@ -34,25 +34,24 @@ HIGH_RISK_PATTERNS = [
     # the prefix accepts value-bearing options (--preserve-root=all)
     ("delete", "recursive/forced file deletion",
      re.compile(r"\brm\s+(?:-\S+\s+)*(?:(?<!-)-[A-Za-z]*[rRf][A-Za-z]*(?![\w-])|--(?:recursive|force)\b)")),
-    # a leading-plus refspec (git push origin +main) is git's documented
-    # force-update syntax — a force push without --force; -f may sit inside a
-    # short-option cluster (git push -fu)
+    # a leading-plus refspec (git push origin +main, possibly quoted) is git's
+    # documented force-update syntax — a force push without --force; -f may sit
+    # inside a short-option cluster (git push -fu)
     ("delete", "force push (rewrites shared history)",
      re.compile(r"\bgit" + _OPTS + r"\s+push\b[^\n]*"
-                r"(--force\b|(?<![\w-])-[A-Za-z]*f[A-Za-z]*(?![\w-])|\s\+\S+)")),
+                r"(--force\b|(?<![\w-])-[A-Za-z]*f[A-Za-z]*(?![\w-])|\s[\"']?\+\S+)")),
     # git accepts reset options before --hard (git reset -q --hard HEAD)
     ("delete", "hard reset (discards work)",
      re.compile(r"\bgit" + _OPTS + r"\s+reset" + _OPTS + r"\s+--hard\b")),
-    # -n / --dry-run forces a dry run even alongside -f, so it is read-only.
-    # Asymmetric scan windows, each failing safe: the dry-run EXEMPTION stops at
-    # '#' (comment text must not launder a real clean — worst case we deny a dry
-    # run), while the FORCE scan does not (a '#' inside an argument like
-    # --exclude=#keep must not hide -f — worst case we deny a commented mention).
+    # No dry-run exemption: it was laundered three review rounds running (a
+    # later command's -n, comment text, --exclude=--dry-run). A denied dry run
+    # fails safe onto the human path; a laundered force-clean deletes files.
     ("delete", "force-clean untracked files",
-     re.compile(r"\bgit" + _OPTS + r"\s+clean\b"
-                r"(?![^;&|#\n]*(?:(?<![\w-])-[A-Za-z]*n[A-Za-z]*(?![\w-])|--dry-run\b))"
-                r"[^;&|\n]*-\w*f")),
-    ("delete", "destructive database statement", re.compile(r"\b(DROP\s+(TABLE|DATABASE|SCHEMA)|TRUNCATE\s+TABLE)\b", re.I)),
+     re.compile(r"\bgit" + _OPTS + r"\s+clean\b[^;&|\n]*-\w*f")),
+    # TABLE is optional in PostgreSQL's TRUNCATE; the target must look like an
+    # identifier so coreutils `truncate -s 0 file` stays benign
+    ("delete", "destructive database statement",
+     re.compile(r"\b(DROP\s+(TABLE|DATABASE|SCHEMA)|TRUNCATE\s+(TABLE\s+)?[\"'\w])", re.I)),
     ("delete", "raw disk write", re.compile(r"\b(mkfs(\.\w+)?|dd\s+[^\n]*\bof=[\"']?/dev/)")),
     # request/body options in their standard spellings: -X POST / -XPOST /
     # --request=DELETE; -d/-F/-T with the payload spaced or attached (-d'{}',
@@ -60,18 +59,27 @@ HIGH_RISK_PATTERNS = [
     # (-sd x=1, -sTbackup.tar) — cluster letters before the payload flag may
     # err toward deny (a value spelling like -od also matches; deny fails safe)
     ("external-send", "outbound write request",
-     re.compile(r"\bcurl\b[^\n]*(?:(?:-X|--request)[\s=]*(?:POST|PUT|PATCH|DELETE)\b"
+     re.compile(r"\bcurl\b[^\n]*(?:(?:-X|--request)[\s=]*[\"']?(?:POST|PUT|PATCH|DELETE)\b"
                 r"|--data(?:-\w+)?\b|(?<![\w-])-[A-Za-z]*d"
                 r"|--json\b"
                 r"|--form\b|(?<![\w-])-[A-Za-z]*F"
                 r"|--upload-file\b|(?<![\w-])-[A-Za-z]*T)")),
-    ("external-send", "outbound post", re.compile(r"\bwget\b[^\n]*--post-(data|file)\b")),
-    ("external-send", "outbound mail", re.compile(r"\b(sendmail|mailx|mutt)\b")),
-    ("spend", "infrastructure apply (provisions billable resources)",
-     re.compile(r"\bterraform" + _OPTS + r"\s+apply\b")),
-    # action-based: only mutating subcommands are spend; list/retrieve are read-only
+    # wget writes via --post-*, --body-*, or --method with a mutating verb
+    ("external-send", "outbound post",
+     re.compile(r"\bwget\b[^\n]*(?:--post-(?:data|file)\b|--body-(?:data|file)\b"
+                r"|--method[\s=]*[\"']?(?:POST|PUT|PATCH|DELETE)\b)")),
+    # plain `mail` sends email too, but only in command position (start of
+    # string, after a pipe/;/&, or path-invoked) so `cat mail.log` stays benign
+    ("external-send", "outbound mail",
+     re.compile(r"\b(sendmail|mailx|mutt)\b|(?:^|[|;&]\s*|/)mail\b")),
+    ("spend", "infrastructure apply/destroy (changes billable resources)",
+     re.compile(r"\bterraform" + _OPTS + r"\s+(apply|destroy)\b")),
+    # action-based: only mutating subcommands are spend; list/retrieve are
+    # read-only. Global options may precede the resource; `stripe post` is a
+    # raw API mutation.
     ("spend", "payments CLI",
-     re.compile(r"\bstripe\s+(charges?|payment_intents?|payouts?|refunds?)\s+(create|update|capture|confirm|cancel)\b")),
+     re.compile(r"\bstripe" + _OPTS + r"\s+(?:(?:charges?|payment_intents?|payouts?|refunds?)\s+"
+                r"(?:create|update|capture|confirm|cancel)|post)\b")),
 ]
 
 _DENY_REASON = (

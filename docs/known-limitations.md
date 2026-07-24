@@ -21,7 +21,9 @@ Honest limits of the current build. This file grows as the product does (brief �
   may be denied. This is deliberate: a false positive fails safe (a human runs or approves
   the command), while teaching the gate to skip quoted or non-command positions would
   require a real shell parser and open genuine bypass holes (`sh -c "..."`, `env` prefixes).
-  The gate errs toward deny.
+  The gate errs toward deny. For the same reason, option *semantics* are not parsed:
+  a dry-run `git clean -n -f` is denied like a real force-clean (the exemption was
+  laundered three review rounds running and was removed — a denied dry run fails safe).
 - **Hooks are Claude-Code-only.** Codex, Cursor, and Gemini CLI silently ignore hook
   configuration. On those harnesses the same rule ships as a review-gate *instruction*
   (`governance/hooks/review-gate.md`) — an instruction is not enforcement. Cross-harness

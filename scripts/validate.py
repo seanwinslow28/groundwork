@@ -997,7 +997,15 @@ def check_hooks(root):
     if not os.path.isdir(hooks_dir):
         return findings
     rel_dir = os.path.relpath(hooks_dir, root)
+    # a symlinked artifact is not the committed, auditable file the claim names
+    if os.path.islink(hooks_dir):
+        findings.append(Finding("ERROR", rel_dir, None,
+                                "governance/hooks is a symlink — the hook set must be the "
+                                "committed artifact, not an external alias"))
     snippet = os.path.join(hooks_dir, "settings.snippet.json")
+    if os.path.isfile(snippet) and os.path.islink(snippet):
+        findings.append(Finding("ERROR", os.path.join(rel_dir, "settings.snippet.json"), None,
+                                "hook settings snippet is a symlink — not the committed artifact"))
     if not os.path.isfile(snippet):
         # the most unwired guard of all: nothing can be installed
         findings.append(Finding("ERROR", os.path.join(rel_dir, "settings.snippet.json"), None,
@@ -1044,6 +1052,10 @@ def check_hooks(root):
                             findings.append(Finding("ERROR", rel_snip, None,
                                                     "hook command not found: %s (a named-but-unwired "
                                                     "guard is false safety)" % hook.get("command")))
+                        elif os.path.islink(target):
+                            findings.append(Finding("ERROR", rel_snip, None,
+                                                    "hook command target is a symlink: %s (not the "
+                                                    "committed, auditable artifact)" % hook.get("command")))
             if declared == 0:
                 findings.append(Finding("WARN", rel_snip, None,
                                         "hook settings snippet declares no command hooks"))
