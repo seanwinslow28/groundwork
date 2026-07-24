@@ -8,9 +8,11 @@ referential integrity.
 """
 import datetime
 import fnmatch
+import json
 import math
 import os
 import re
+import shlex
 import subprocess
 import sys
 import unicodedata
@@ -902,6 +904,13 @@ def check_constitution(root, ignore=()):
                     _substantive_line(ln) for ln in rendered.split("\n")):
                 findings.append(Finding("ERROR", rel, None,
                                         "active rule has no rule statement (H1 title + body)"))
+            # Ritual provenance is thinking-quality, not a safety invariant, so
+            # it sits in the WARN tier (1.5a deferral, decided 2026-07-23).
+            for field in ("ritual", "scarcity", "surviving_job"):
+                if _blank(data.get(field)):
+                    findings.append(Finding("WARN", rel, None,
+                                            "missing '%s' (incomplete thinking — the five-question "
+                                            "worksheet's provenance)" % field))
 
         # action_class drives the no-rung-six invariant, so it cannot be
         # optional: a rule that omits it would bypass the safety spine.
@@ -938,6 +947,136 @@ def check_constitution(root, ignore=()):
                 findings.append(Finding("ERROR", rel, None,
                                         "orphan-prohibition: a repealed ritual's surviving job must be "
                                         "reassigned ('surviving_job' + 'reassigned_to') before the repeal ships"))
+    return findings
+
+
+def _hook_command_target(command, root):
+    """Best-effort: pull the script path out of a hook command string.
+    Splits with shell quoting rules (the shipped snippet quotes the path so
+    roots with spaces survive word-splitting), strips a leading interpreter,
+    and resolves ${CLAUDE_PROJECT_DIR} to root."""
+    if not isinstance(command, str) or not command.strip():
+        return None
+    # pipelines, redirections, and command chaining can discard the decision
+    # JSON — the hook would run but Claude would never receive the deny
+    if re.search(r"[|;&<>]", command):
+        return None
+    try:
+        parts = shlex.split(command)
+    except ValueError:  # unbalanced quoting — not a runnable command
+        return None
+    if not parts:
+        return None
+    # drop a leading interpreter (python3, python, bash, sh, node, ...)
+    if parts and os.path.basename(parts[0]) in {"python3", "python", "bash", "sh", "node"}:
+        parts = parts[1:]
+    if not parts:
+        return None
+    target = parts[0].replace("${CLAUDE_PROJECT_DIR}", root).replace("$CLAUDE_PROJECT_DIR", root)
+    if not os.path.isabs(target):
+        target = os.path.join(root, target)
+    return os.path.normpath(target)
+
+
+def _matcher_covers_bash(matcher):
+    """Claude Code matchers are tool-name regexes; an absent/empty/'*' matcher
+    matches every tool. An invalid regex covers nothing (fail closed)."""
+    if matcher is None or matcher in ("", "*"):
+        return True
+    if not isinstance(matcher, str):
+        return False
+    try:
+        return re.fullmatch(matcher, "Bash") is not None
+    except re.error:
+        return False
+
+
+def check_hooks(root):
+    """Existence-check the enforcement claim: a hook set whose command path does not
+    resolve is a named-but-unwired guard — false safety, worse than an admitted gap.
+    The registration itself is part of the claim: the gate must be wired under
+    PreToolUse with a matcher that covers Bash, or it cannot block anything."""
+    findings = []
+    hooks_dir = os.path.join(root, "governance", "hooks")
+    rel_dir = os.path.relpath(hooks_dir, root)
+    if not os.path.isdir(hooks_dir):
+        # a dangling symlink (or one to a file) is not an absent hook set
+        if os.path.islink(hooks_dir):
+            findings.append(Finding("ERROR", rel_dir, None,
+                                    "governance/hooks is a symlink to nothing usable — "
+                                    "not an absent hook set, a broken one"))
+        return findings
+    # a symlinked artifact is not the committed, auditable file the claim names
+    if os.path.islink(hooks_dir):
+        findings.append(Finding("ERROR", rel_dir, None,
+                                "governance/hooks is a symlink — the hook set must be the "
+                                "committed artifact, not an external alias"))
+    snippet = os.path.join(hooks_dir, "settings.snippet.json")
+    if os.path.isfile(snippet) and os.path.islink(snippet):
+        findings.append(Finding("ERROR", os.path.join(rel_dir, "settings.snippet.json"), None,
+                                "hook settings snippet is a symlink — not the committed artifact"))
+    if not os.path.isfile(snippet):
+        # the most unwired guard of all: nothing can be installed
+        findings.append(Finding("ERROR", os.path.join(rel_dir, "settings.snippet.json"), None,
+                                "hook set has no settings.snippet.json (nothing to install — "
+                                "a named-but-unwired guard is false safety)"))
+    else:
+        rel_snip = os.path.relpath(snippet, root)
+        data, parsed = None, False
+        try:
+            with open(snippet, encoding="utf-8") as fh:
+                data = json.load(fh)
+            parsed = True
+        except (ValueError, OSError) as exc:
+            findings.append(Finding("ERROR", rel_snip, None,
+                                    "hook settings snippet is not valid JSON (%s)" % exc))
+        if parsed and not isinstance(data, dict):
+            findings.append(Finding("ERROR", rel_snip, None,
+                                    "hook settings snippet is not a JSON object "
+                                    "(nothing Claude Code can install)"))
+        if isinstance(data, dict):
+            events = data.get("hooks")
+            declared = 0
+            pre_bash = 0
+            for event, entries in (events.items() if isinstance(events, dict) else ()):
+                if not isinstance(entries, list):
+                    continue
+                for group in entries:
+                    if not isinstance(group, dict):
+                        continue
+                    for hook in group.get("hooks", []) if isinstance(group.get("hooks"), list) else []:
+                        if not isinstance(hook, dict) or hook.get("type") != "command":
+                            continue
+                        declared += 1
+                        target = _hook_command_target(hook.get("command"), root)
+                        # only the gate script itself counts as the Bash registration —
+                        # an unrelated PreToolUse hook must not front for an unwired gate
+                        if event == "PreToolUse" and _matcher_covers_bash(group.get("matcher")) \
+                                and target == os.path.normpath(os.path.join(hooks_dir, "action_class_gate.py")):
+                            pre_bash += 1
+                        if target is None:
+                            findings.append(Finding("ERROR", rel_snip, None,
+                                                    "hook declares no runnable command"))
+                        elif not os.path.isfile(target):
+                            findings.append(Finding("ERROR", rel_snip, None,
+                                                    "hook command not found: %s (a named-but-unwired "
+                                                    "guard is false safety)" % hook.get("command")))
+                        elif os.path.islink(target):
+                            findings.append(Finding("ERROR", rel_snip, None,
+                                                    "hook command target is a symlink: %s (not the "
+                                                    "committed, auditable artifact)" % hook.get("command")))
+            if declared == 0:
+                findings.append(Finding("WARN", rel_snip, None,
+                                        "hook settings snippet declares no command hooks"))
+            # independent of `declared`: an empty hook set is still an unwired guard
+            if pre_bash == 0:
+                findings.append(Finding("ERROR", rel_snip, None,
+                                        "no PreToolUse hook with a matcher covering Bash targets "
+                                        "action_class_gate.py — the gate cannot block a command "
+                                        "before it runs"))
+    if not os.path.isfile(os.path.join(hooks_dir, "review-gate.md")):
+        findings.append(Finding("WARN", os.path.join(rel_dir, "review-gate.md"), None,
+                                "hook set has no review-gate.md — the non-Claude degradation (#19) is undocumented"))
     return findings
 
 
@@ -1077,6 +1216,7 @@ def validate(root):
     findings += check_owner_cards(root, ignore)
     findings += check_memory(root)
     findings += check_constitution(root, ignore)
+    findings += check_hooks(root)
     return findings
 
 

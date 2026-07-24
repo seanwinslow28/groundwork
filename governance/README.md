@@ -39,3 +39,11 @@ job** must be reassigned before the repeal ships (orphan-prohibition).
 - **WARN:** a missing, unparseable, or overdue `sunset`; a rule not yet placed on a
   rung (draft). The safety-spine ERRORs above apply to drafts too — only the `owner`
   requirement waits for provisioning (rung placement).
+
+## Where worksheets live (and why it matters)
+
+Blank and in-progress five-question worksheets live in `governance/worksheets/`.
+Kept, compiled rules live in `governance/constitution/`. The validator checks only
+`governance/constitution/` — so an unfinished worksheet for a ritual nobody has acted
+on is silent, exactly as the doctrine requires, while every file that *is* a rule is
+held to the full contract. Silence is decided by **location**, not by leniency.

@@ -11,6 +11,9 @@ import unittest
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "scripts"))
 import validate  # noqa: E402
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "governance" / "hooks"))
+import action_class_gate  # noqa: E402
+
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
 
@@ -55,7 +58,7 @@ class TestFrontmatter(unittest.TestCase):
 class TestZeroDep(unittest.TestCase):
     def test_only_stdlib_imports(self):
         allowed = {"os", "sys", "re", "ast", "math", "fnmatch", "collections", "pathlib",
-                   "datetime", "subprocess", "unicodedata"}
+                   "datetime", "subprocess", "unicodedata", "json", "shlex"}
         tree = ast.parse((REPO / "scripts" / "validate.py").read_text())
         mods = set()
         for node in ast.walk(tree):
@@ -66,6 +69,23 @@ class TestZeroDep(unittest.TestCase):
                 mods.add(node.module.split(".")[0])
         extra = mods - allowed
         self.assertEqual(extra, set(), "non-stdlib imports: %s" % extra)
+
+    def test_shipped_hook_scripts_only_stdlib(self):
+        allowed = {"os", "sys", "re", "ast", "math", "fnmatch", "collections",
+                   "pathlib", "datetime", "subprocess", "unicodedata", "json"}
+        hooks_dir = REPO / "governance" / "hooks"
+        if not hooks_dir.is_dir():
+            self.skipTest("no shipped hooks")
+        for py in sorted(hooks_dir.glob("*.py")):
+            tree = ast.parse(py.read_text())
+            mods = set()
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for n in node.names:
+                        mods.add(n.name.split(".")[0])
+                elif isinstance(node, ast.ImportFrom) and node.module:
+                    mods.add(node.module.split(".")[0])
+            self.assertEqual(mods - allowed, set(), "%s imports non-stdlib: %s" % (py.name, mods - allowed))
 
 
 class TestSecrets(unittest.TestCase):
@@ -1786,6 +1806,440 @@ class TestConstitution(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             self._rule(d, RULE_OK.replace("rung: human-decision", "rung: rung-six"))
             self.assertTrue(any(f.level == "ERROR" and "rung" in f.message for f in validate.validate(d)))
+
+
+class TestConstitutionProvenance(unittest.TestCase):
+    def test_active_rule_missing_provenance_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/constitution/access.md",
+                   RULE_OK.replace("scarcity: Security-review time — every grant got a human's eyes\n", ""))
+            findings = validate.check_constitution(d)
+            self.assertTrue(any(f.level == "WARN" and "scarcity" in f.message for f in findings))
+            self.assertFalse(any(f.level == "ERROR" and "scarcity" in f.message for f in findings))
+
+    def test_complete_rule_has_no_provenance_warn(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/constitution/access.md", RULE_OK)
+            self.assertFalse(any("incomplete thinking" in f.message
+                                 for f in validate.check_constitution(d)))
+
+    def test_worksheets_dir_is_not_scanned_as_rules(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/worksheets/blank.md", "# Blank worksheet\n\nNothing filled in.\n")
+            self.assertEqual(validate.check_constitution(d), [])
+
+
+class TestActionClassGate(unittest.TestCase):
+    def test_destructive_delete_blocked(self):
+        cat, _ = action_class_gate.classify("rm -rf /var/data")
+        self.assertEqual(cat, "delete")
+
+    def test_force_push_blocked(self):
+        cat, _ = action_class_gate.classify("git push --force origin main")
+        self.assertEqual(cat, "delete")
+
+    def test_external_send_blocked(self):
+        cat, _ = action_class_gate.classify("curl -X POST https://api.example.com/pay -d '{}'")
+        self.assertEqual(cat, "external-send")
+
+    def test_benign_command_not_blocked(self):
+        self.assertEqual(action_class_gate.classify("npm test")[0], None)
+        self.assertEqual(action_class_gate.classify("git status")[0], None)
+
+    def test_decide_denies_high_risk(self):
+        out = action_class_gate.decide(
+            {"hook_event_name": "PreToolUse", "tool_name": "Bash",
+             "tool_input": {"command": "rm -rf /"}})
+        self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertEqual(out["hookSpecificOutput"]["hookEventName"], "PreToolUse")
+
+    def test_decide_defers_on_benign(self):
+        self.assertIsNone(action_class_gate.decide(
+            {"hook_event_name": "PreToolUse", "tool_name": "Bash",
+             "tool_input": {"command": "ls"}}))
+
+    def test_decide_asks_on_malformed_input(self):
+        out = action_class_gate.decide({"hook_event_name": "PreToolUse", "tool_name": "Bash"})
+        self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "ask")
+
+    def test_rm_standard_spellings_blocked(self):
+        # Codex round 1 (P1): -R / --recursive / --force are standard forms, not
+        # obfuscation — the hard-block must catch them.
+        self.assertEqual(action_class_gate.classify("rm -R /var/data")[0], "delete")
+        self.assertEqual(action_class_gate.classify("rm --recursive /var/data")[0], "delete")
+        self.assertEqual(action_class_gate.classify("rm --force stale.lock")[0], "delete")
+        self.assertEqual(action_class_gate.classify("rm --preserve-root -rf /")[0], "delete")
+        self.assertEqual(action_class_gate.classify("rm -rv /var/data")[0], "delete")
+
+    def test_rm_benign_forms_not_blocked(self):
+        self.assertEqual(action_class_gate.classify("rm notes.txt")[0], None)
+        self.assertEqual(action_class_gate.classify("rm -i notes.txt")[0], None)
+        self.assertEqual(action_class_gate.classify("rm --verbose notes.txt")[0], None)
+
+    def test_stripe_read_only_not_blocked(self):
+        # Codex round 1 (P2): the taxonomy is action-based — read-only payment
+        # queries are not spend.
+        self.assertEqual(action_class_gate.classify("stripe charges list")[0], None)
+        self.assertEqual(action_class_gate.classify("stripe refunds retrieve re_123")[0], None)
+
+    def test_stripe_mutating_blocked(self):
+        self.assertEqual(action_class_gate.classify("stripe charges create --amount 100")[0], "spend")
+        self.assertEqual(action_class_gate.classify("stripe payment_intents confirm pi_123")[0], "spend")
+        self.assertEqual(action_class_gate.classify("stripe refunds create --charge ch_1")[0], "spend")
+
+    def test_decide_asks_when_bash_payload_has_no_command(self):
+        # Codex round 1 (P2): the shipped snippet matches Bash only, so a Bash
+        # payload without a command string is unexpected input — fail loud.
+        out = action_class_gate.decide(
+            {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {}})
+        self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "ask")
+        out = action_class_gate.decide(
+            {"hook_event_name": "PreToolUse", "tool_name": "Bash",
+             "tool_input": {"command": None}})
+        self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "ask")
+
+    def test_global_options_before_subcommand_blocked(self):
+        # Codex round 3 (P1): global CLI options are standard automation forms,
+        # not obfuscation — they must not break the subcommand match.
+        self.assertEqual(action_class_gate.classify("git -C repo push --force origin main")[0], "delete")
+        self.assertEqual(action_class_gate.classify("git -c user.name=x reset --hard")[0], "delete")
+        self.assertEqual(action_class_gate.classify("terraform -chdir=infra apply")[0], "spend")
+
+    def test_curl_write_option_forms_blocked(self):
+        # Codex round 3 (P1): attached short args and long request/body options
+        # are standard curl spellings.
+        self.assertEqual(action_class_gate.classify("curl -d'{}' https://example.com")[0], "external-send")
+        self.assertEqual(action_class_gate.classify("curl --request DELETE https://example.com/item")[0], "external-send")
+        self.assertEqual(action_class_gate.classify("curl --data-raw '{}' https://example.com")[0], "external-send")
+
+    def test_curl_read_only_not_blocked(self):
+        self.assertEqual(action_class_gate.classify("curl https://example.com")[0], None)
+        self.assertEqual(action_class_gate.classify("curl -sSL -o out.html https://example.com")[0], None)
+
+    def test_rm_value_bearing_safety_option_blocked(self):
+        # Codex round 3 (P1): a value-bearing option before -rf must not
+        # disable detection.
+        self.assertEqual(action_class_gate.classify("rm --preserve-root=all -rf /var/data")[0], "delete")
+
+    def test_git_clean_force_always_blocked(self):
+        # Codex rounds 3→7: the dry-run exemption was laundered three times
+        # (later command's -n, comment text, --exclude=--dry-run). Removed —
+        # a denied dry run fails safe; a laundered force-clean does not.
+        self.assertEqual(action_class_gate.classify("git clean -fd")[0], "delete")
+        self.assertEqual(action_class_gate.classify("git clean -nf")[0], "delete")
+        self.assertEqual(action_class_gate.classify("git clean --exclude=--dry-run -f")[0], "delete")
+        self.assertEqual(action_class_gate.classify("git clean -n")[0], None)
+
+    def test_curl_attached_payload_arguments_blocked(self):
+        # Codex round 4 (P1): short-option payloads attached without a
+        # separator are standard curl spellings.
+        self.assertEqual(action_class_gate.classify("curl -dname=value https://example.com")[0], "external-send")
+        self.assertEqual(action_class_gate.classify("curl -Ffile=@payload https://example.com")[0], "external-send")
+        self.assertEqual(action_class_gate.classify("curl -Tbackup.tar https://example.com")[0], "external-send")
+
+    def test_quoted_global_option_values_blocked(self):
+        # Codex round 4 (P1): quoted option values containing whitespace must
+        # not break subcommand adjacency.
+        self.assertEqual(action_class_gate.classify('git -C "/tmp/my repo" push --force origin main')[0], "delete")
+        self.assertEqual(action_class_gate.classify('git -c user.name="A B" reset --hard')[0], "delete")
+
+    def test_force_push_refspec_blocked(self):
+        # Codex round 4 (P1): the leading-plus refspec is git's documented
+        # force-update syntax — a force push without --force.
+        self.assertEqual(action_class_gate.classify("git push origin +main")[0], "delete")
+        self.assertEqual(action_class_gate.classify("git push origin main")[0], None)
+
+    def test_line_continuations_normalized_before_matching(self):
+        # Codex round 5 (P1): bash joins backslash-newline continuations before
+        # executing — classify what runs, not the raw text.
+        self.assertEqual(action_class_gate.classify("rm \\\n -rf /tmp/x")[0], "delete")
+        self.assertEqual(action_class_gate.classify("git push \\\n --force origin main")[0], "delete")
+
+    def test_curl_json_option_blocked(self):
+        # Codex round 5 (P1): --json implies an HTTP POST.
+        self.assertEqual(action_class_gate.classify("curl --json '{}' https://example.com")[0], "external-send")
+
+    def test_reset_hard_after_other_options_blocked(self):
+        # Codex round 5 (P1): git accepts reset options before --hard.
+        self.assertEqual(action_class_gate.classify("git reset -q --hard HEAD")[0], "delete")
+        self.assertEqual(action_class_gate.classify("git reset --soft HEAD~1")[0], None)
+
+    def test_clean_dry_run_exemption_ignores_comments(self):
+        # Codex round 5 (P1): '--dry-run' inside a shell comment must not
+        # launder a real force-clean. (Round 7 removed the exemption entirely,
+        # so a dry-run force-clean now also denies — fail safe.)
+        self.assertEqual(action_class_gate.classify("git clean -fd # not a --dry-run")[0], "delete")
+        self.assertEqual(action_class_gate.classify("git clean -n -f # cleanup")[0], "delete")
+
+    def test_hash_in_clean_argument_does_not_hide_force(self):
+        # Codex round 6 (P1): '#' inside an argument is data, not a comment —
+        # it must not truncate the force scan (that would fail open).
+        self.assertEqual(action_class_gate.classify("git clean --exclude=#keep -fd")[0], "delete")
+        self.assertEqual(action_class_gate.classify('git clean -e "#keep" -fd')[0], "delete")
+
+    def test_clustered_push_force_blocked(self):
+        # Codex round 6 (P1): git accepts -f inside a short-option cluster.
+        self.assertEqual(action_class_gate.classify("git push -fu origin main")[0], "delete")
+        self.assertEqual(action_class_gate.classify("git push -u origin main")[0], None)
+
+    def test_quoted_dd_device_blocked(self):
+        # Codex round 6 (P1): quoting the device is a standard spelling.
+        self.assertEqual(action_class_gate.classify('dd if=image.iso of="/dev/sda"')[0], "delete")
+        self.assertEqual(action_class_gate.classify("dd if=image.iso of='/dev/sda'")[0], "delete")
+
+    def test_curl_clustered_payload_flags_blocked(self):
+        # Codex round 6 (P1): payload flags may end a short-option cluster.
+        self.assertEqual(action_class_gate.classify("curl -sd x=1 https://example.com")[0], "external-send")
+        self.assertEqual(action_class_gate.classify("curl -sTbackup.tar https://example.com")[0], "external-send")
+
+    def test_backslash_escaped_spaces_in_option_values(self):
+        # Codex round 6 (P1): shell-escaped spaces keep the value one token.
+        self.assertEqual(action_class_gate.classify("git -C /tmp/my\\ repo push --force origin main")[0], "delete")
+
+    def test_terraform_destroy_blocked(self):
+        # Codex round 7 (P1): destroy is the delete class, plainly.
+        self.assertEqual(action_class_gate.classify("terraform destroy -auto-approve")[0], "spend")
+        self.assertEqual(action_class_gate.classify("terraform plan")[0], None)
+
+    def test_quoted_force_refspec_blocked(self):
+        # Codex round 7 (P1): the shell strips quotes before git sees +main.
+        self.assertEqual(action_class_gate.classify("git push origin '+main'")[0], "delete")
+
+    def test_quoted_curl_methods_blocked(self):
+        # Codex round 7 (P1): quoting the method is a standard spelling.
+        self.assertEqual(action_class_gate.classify('curl -X "DELETE" https://example.com/item')[0], "external-send")
+        self.assertEqual(action_class_gate.classify("curl --request='POST' https://example.com")[0], "external-send")
+
+    def test_truncate_without_table_keyword_blocked(self):
+        # Codex round 7 (P1): TABLE is optional in PostgreSQL.
+        self.assertEqual(action_class_gate.classify("psql -c 'TRUNCATE users'")[0], "delete")
+        self.assertEqual(action_class_gate.classify("truncate -s 0 app.log")[0], None)
+
+    def test_stripe_global_options_and_post_blocked(self):
+        # Codex round 7 (P1): global options precede the resource; the generic
+        # post command is a raw API mutation.
+        self.assertEqual(
+            action_class_gate.classify('stripe --api-key "$KEY" refunds create --charge ch_1')[0], "spend")
+        self.assertEqual(action_class_gate.classify("stripe post /v1/charges -d amount=100")[0], "spend")
+
+    def test_wget_method_write_requests_blocked(self):
+        # Codex round 7 (P1): --method/--body-* are wget's standard write forms.
+        self.assertEqual(action_class_gate.classify("wget --method=DELETE https://example.com/x")[0], "external-send")
+        self.assertEqual(
+            action_class_gate.classify("wget --method=POST --body-data=x https://example.com")[0], "external-send")
+        self.assertEqual(action_class_gate.classify("wget https://example.com/file.tar.gz")[0], None)
+
+    def test_mail_binary_blocked_in_command_position(self):
+        # Codex round 7 (P1): plain `mail` sends email; matched only in command
+        # position so text mentioning mail (cat mail.log) stays benign.
+        self.assertEqual(
+            action_class_gate.classify("printf body | /usr/bin/mail -s subject user@example.com")[0],
+            "external-send")
+        self.assertEqual(action_class_gate.classify("mail -s hi user@example.com")[0], "external-send")
+        self.assertEqual(action_class_gate.classify("cat mail.log")[0], None)
+
+    def test_mail_after_newline_blocked(self):
+        # Codex round 8 (P1): a newline is a command boundary in a multiline
+        # Bash payload.
+        self.assertEqual(action_class_gate.classify("echo ready\nmail -s hi user@example.com")[0],
+                         "external-send")
+
+    def test_reset_hard_after_revision_blocked(self):
+        # Codex round 8 (P1): git accepts the revision before --hard.
+        self.assertEqual(action_class_gate.classify("git reset HEAD~1 --hard")[0], "delete")
+
+    def test_rm_flags_after_operands_blocked(self):
+        # Codex round 8 (P1): GNU argument permutation makes trailing -rf
+        # options; after a standalone `--` they are operands.
+        self.assertEqual(action_class_gate.classify("rm /tmp/cache -rf /tmp/data")[0], "delete")
+        self.assertEqual(action_class_gate.classify("rm -- -rf")[0], None)
+
+    def test_decide_asks_on_blank_command(self):
+        # Codex round 2 (P2): a blank command string is unusable input, not a
+        # benign command — fail loud, don't defer.
+        for cmd in ("", "   "):
+            out = action_class_gate.decide(
+                {"hook_event_name": "PreToolUse", "tool_name": "Bash",
+                 "tool_input": {"command": cmd}})
+            self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "ask",
+                             "no ask for command %r" % cmd)
+
+
+SNIPPET_OK = """{
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Bash",
+       "hooks": [{"type": "command",
+                  "command": "python3 ${CLAUDE_PROJECT_DIR}/governance/hooks/action_class_gate.py"}]}
+    ]
+  }
+}
+"""
+
+SNIPPET_QUOTED = """{
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Bash",
+       "hooks": [{"type": "command",
+                  "command": "python3 \\"${CLAUDE_PROJECT_DIR}/governance/hooks/action_class_gate.py\\""}]}
+    ]
+  }
+}
+"""
+
+
+class TestHooks(unittest.TestCase):
+    def _set(self, d, snippet=SNIPPET_OK, script=True, review=True):
+        _write(d, "governance/hooks/settings.snippet.json", snippet)
+        if script:
+            _write(d, "governance/hooks/action_class_gate.py", "# hook\n")
+        if review:
+            _write(d, "governance/hooks/review-gate.md", "# review gate\n")
+
+    def test_wired_hook_set_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._set(d)
+            self.assertEqual([f for f in validate.check_hooks(d) if f.level == "ERROR"], [])
+
+    def test_unwired_command_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._set(d, script=False)
+            errs = [f for f in validate.check_hooks(d) if f.level == "ERROR"]
+            self.assertTrue(any("not found" in f.message for f in errs))
+
+    def test_invalid_json_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._set(d, snippet="{ not json ")
+            self.assertTrue(any(f.level == "ERROR" and "JSON" in f.message
+                                for f in validate.check_hooks(d)))
+
+    def test_missing_review_gate_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._set(d, review=False)
+            findings = validate.check_hooks(d)
+            self.assertTrue(any(f.level == "WARN" and "review-gate" in f.message for f in findings))
+            self.assertFalse(any(f.level == "ERROR" and "review-gate" in f.message for f in findings))
+
+    def test_no_hooks_dir_is_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(validate.check_hooks(d), [])
+
+    def test_non_object_snippet_json_errors(self):
+        # Codex round 1 (P2): valid JSON with a non-object top level parsed
+        # clean — a completely unusable snippet must not pass silently.
+        for payload in ("[]\n", "null\n", '"hooks"\n'):
+            with tempfile.TemporaryDirectory() as d:
+                self._set(d, snippet=payload)
+                self.assertTrue(any(f.level == "ERROR" and "JSON object" in f.message
+                                    for f in validate.check_hooks(d)),
+                                "no ERROR for snippet %r" % payload)
+
+    def test_quoted_command_resolves_in_root_with_spaces(self):
+        # Codex round 1 (P1): the shipped snippet quotes ${CLAUDE_PROJECT_DIR};
+        # the checker must parse shell quoting, and a root with spaces must work.
+        with tempfile.TemporaryDirectory() as d:
+            root = os.path.join(d, "my company os")
+            os.makedirs(root)
+            self._set(root, snippet=SNIPPET_QUOTED)
+            self.assertEqual([f for f in validate.check_hooks(root) if f.level == "ERROR"], [])
+
+    def test_wrong_event_registration_errors(self):
+        # Codex round 2 (P2): a gate registered under PostToolUse cannot block
+        # a command before it runs — the registration itself is the claim.
+        with tempfile.TemporaryDirectory() as d:
+            self._set(d, snippet=SNIPPET_OK.replace("PreToolUse", "PostToolUse"))
+            self.assertTrue(any(f.level == "ERROR" and "PreToolUse" in f.message
+                                for f in validate.check_hooks(d)))
+
+    def test_non_bash_matcher_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._set(d, snippet=SNIPPET_OK.replace('"matcher": "Bash"', '"matcher": "Edit"'))
+            self.assertTrue(any(f.level == "ERROR" and "PreToolUse" in f.message
+                                for f in validate.check_hooks(d)))
+
+    def test_missing_snippet_errors(self):
+        # Codex round 4 (P2): a hooks dir with no registration snippet is the
+        # most unwired guard of all — nothing can be installed.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/hooks/action_class_gate.py", "# hook\n")
+            _write(d, "governance/hooks/review-gate.md", "# review gate\n")
+            self.assertTrue(any(f.level == "ERROR" and "settings.snippet.json" in f.message
+                                for f in validate.check_hooks(d)))
+
+    def test_pre_bash_hook_must_target_the_gate(self):
+        # Codex round 4 (P2): an unrelated PreToolUse/Bash hook must not stand
+        # in for the gate when the gate itself is registered under PostToolUse.
+        snip = """{
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Bash",
+       "hooks": [{"type": "command", "command": "python3 ${CLAUDE_PROJECT_DIR}/governance/hooks/other.py"}]}
+    ],
+    "PostToolUse": [
+      {"matcher": "Bash",
+       "hooks": [{"type": "command", "command": "python3 ${CLAUDE_PROJECT_DIR}/governance/hooks/action_class_gate.py"}]}
+    ]
+  }
+}
+"""
+        with tempfile.TemporaryDirectory() as d:
+            self._set(d, snippet=snip)
+            _write(d, "governance/hooks/other.py", "# other\n")
+            self.assertTrue(any(f.level == "ERROR" and "PreToolUse" in f.message
+                                for f in validate.check_hooks(d)))
+
+    def test_redirected_hook_command_errors(self):
+        # Codex round 8 (P2): a redirection discards the decision JSON — the
+        # hook runs but Claude never receives a deny.
+        with tempfile.TemporaryDirectory() as d:
+            self._set(d, snippet=SNIPPET_OK.replace(
+                "action_class_gate.py",
+                "action_class_gate.py >/dev/null"))
+            self.assertTrue(any(f.level == "ERROR" and "runnable command" in f.message
+                                for f in validate.check_hooks(d)))
+
+    def test_dangling_hooks_dir_symlink_errors(self):
+        # Codex round 8 (P2): a dangling governance/hooks symlink must not be
+        # treated as an absent hook set.
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "governance"))
+            os.symlink(os.path.join(d, "no-such-target"),
+                       os.path.join(d, "governance", "hooks"))
+            self.assertTrue(any(f.level == "ERROR" and "symlink" in f.message
+                                for f in validate.check_hooks(d)))
+
+    def test_symlinked_gate_script_errors(self):
+        # Codex round 7 (P2): a symlinked artifact is not the committed,
+        # auditable file the enforcement claim names.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/hooks/settings.snippet.json", SNIPPET_OK)
+            _write(d, "governance/hooks/review-gate.md", "# review gate\n")
+            _write(d, "elsewhere.py", "# external\n")
+            os.symlink(os.path.join(d, "elsewhere.py"),
+                       os.path.join(d, "governance", "hooks", "action_class_gate.py"))
+            self.assertTrue(any(f.level == "ERROR" and "symlink" in f.message
+                                for f in validate.check_hooks(d)))
+
+    def test_empty_hooks_object_errors(self):
+        # Codex round 3 (P2): a snippet with no command hooks at all is a
+        # completely unwired guard — an ERROR, not just a WARN.
+        with tempfile.TemporaryDirectory() as d:
+            self._set(d, snippet='{"hooks": {}}\n')
+            self.assertTrue(any(f.level == "ERROR" and "PreToolUse" in f.message
+                                for f in validate.check_hooks(d)))
+
+    def test_regex_matcher_covering_bash_is_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._set(d, snippet=SNIPPET_OK.replace('"matcher": "Bash"', '"matcher": "Bash|Edit"'))
+            self.assertEqual([f for f in validate.check_hooks(d) if f.level == "ERROR"], [])
+
+    def test_unbalanced_quote_in_command_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._set(d, snippet=SNIPPET_OK.replace(
+                "python3 ${CLAUDE_PROJECT_DIR}/governance/hooks/action_class_gate.py",
+                "python3 \\\"unclosed"))
+            self.assertTrue(any(f.level == "ERROR" and "no runnable command" in f.message
+                                for f in validate.check_hooks(d)))
 
 
 if __name__ == "__main__":
