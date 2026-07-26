@@ -27,6 +27,8 @@ SKIP_DIRS = {".git", ".remember", "__pycache__"}
 # Everything else is checked at full strictness.
 SKIP_RELPATHS = {"tests", os.path.join("docs", "superpowers")}
 
+SCHEMA_VERSION = 1  # bumped ONLY on a breaking schema change (#21). Never on additive commits.
+
 
 def parse_frontmatter(text, path="<unknown>"):
     """Parse a restricted frontmatter block. Returns (dict, list[Finding]).
@@ -1088,6 +1090,51 @@ _PROV_FORWARD = {
 }
 
 
+def check_version_pin(root):
+    """#21 skew gate. A company root carries groundwork.pin; skew = engine - pinned.
+    Pull never ERRORs content for being old; a breaking gap is one migration ERROR."""
+    findings = []
+    for abspath in iter_files(root, load_gitignore(root)):
+        if os.path.basename(abspath) != "groundwork.pin":
+            continue
+        rel = os.path.relpath(abspath, root)
+        data, fm = _load_frontmatter(abspath, rel)
+        findings += fm
+        if data is None:
+            continue  # unreadable pin already ERRORed via _read_utf8
+
+        sv = data.get("schema_version")
+        if _blank(sv):
+            findings.append(Finding("ERROR", rel, None, "version pin missing 'schema_version'"))
+            continue
+        if not isinstance(sv, str):
+            findings.append(Finding("ERROR", rel, None,
+                                    "version pin 'schema_version' must be a single integer"))
+            continue
+        try:
+            pinned = int(sv.strip())
+        except ValueError:
+            findings.append(Finding("ERROR", rel, None,
+                                    "version pin 'schema_version' is not an integer: %r" % sv))
+            continue
+
+        if _blank(data.get("generated_by_commit")):
+            findings.append(Finding("WARN", rel, None,
+                                    "version pin missing 'generated_by_commit' (provenance)"))
+
+        skew = SCHEMA_VERSION - pinned
+        if skew >= 1:
+            findings.append(Finding("ERROR", rel, None,
+                                    "content is schema v%d, engine is v%d — see MIGRATIONS.md for v%d->v%d"
+                                    % (pinned, SCHEMA_VERSION, pinned, SCHEMA_VERSION)))
+        elif skew < 0:
+            findings.append(Finding("WARN", rel, None,
+                                    "engine is schema v%d but this content is pinned at v%d — pull the engine; "
+                                    "validity is not asserted against a newer schema" % (SCHEMA_VERSION, pinned)))
+        # skew == 0: content is current; each check's own severity stands (silent here)
+    return findings
+
+
 def _frontmatter_and_body(text, path="<unknown>"):
     data, findings = parse_frontmatter(text, path)
     lines = text.split("\n")
@@ -1217,6 +1264,7 @@ def validate(root):
     findings += check_memory(root)
     findings += check_constitution(root, ignore)
     findings += check_hooks(root)
+    findings += check_version_pin(root)
     return findings
 
 

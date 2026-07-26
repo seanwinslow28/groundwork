@@ -2242,5 +2242,69 @@ class TestHooks(unittest.TestCase):
                                 for f in validate.check_hooks(d)))
 
 
+PIN_OK = """---
+schema_version: 1
+generated_by_commit: 0123456789abcdef0123456789abcdef01234567
+---
+"""
+
+
+class TestVersionPin(unittest.TestCase):
+    def test_current_pin_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "your-company/groundwork.pin", PIN_OK)
+            self.assertEqual([f for f in validate.check_version_pin(d) if f.level == "ERROR"], [])
+
+    def test_skew_forward_is_migration_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "your-company/groundwork.pin", PIN_OK.replace("schema_version: 1", "schema_version: 0"))
+            errs = [f for f in validate.check_version_pin(d) if f.level == "ERROR"]
+            self.assertTrue(any("MIGRATIONS" in f.message for f in errs))
+
+    def test_reverse_skew_warns_not_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "your-company/groundwork.pin", PIN_OK.replace("schema_version: 1", "schema_version: 2"))
+            findings = validate.check_version_pin(d)
+            self.assertTrue(any(f.level == "WARN" and "pull the engine" in f.message for f in findings))
+            self.assertFalse(any(f.level == "ERROR" for f in findings))
+
+    def test_missing_schema_version_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "your-company/groundwork.pin",
+                   "---\ngenerated_by_commit: abc123\n---\n")
+            self.assertTrue(any(f.level == "ERROR" and "schema_version" in f.message
+                                for f in validate.check_version_pin(d)))
+
+    def test_non_integer_schema_version_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "your-company/groundwork.pin", PIN_OK.replace("schema_version: 1", "schema_version: v1"))
+            self.assertTrue(any(f.level == "ERROR" and "integer" in f.message
+                                for f in validate.check_version_pin(d)))
+
+    def test_list_schema_version_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "your-company/groundwork.pin",
+                   "---\nschema_version:\n- 1\n- 2\n---\n")
+            self.assertTrue(any(f.level == "ERROR" and "integer" in f.message
+                                for f in validate.check_version_pin(d)))
+
+    def test_non_utf8_pin_errors_not_crashes(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write_bytes(d, "your-company/groundwork.pin", b"---\nschema_version: 1\n---\n\xff\xfe")
+            self.assertTrue(any(f.level == "ERROR" for f in validate.check_version_pin(d)))
+
+    def test_missing_commit_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "your-company/groundwork.pin", "---\nschema_version: 1\n---\n")
+            findings = validate.check_version_pin(d)
+            self.assertTrue(any(f.level == "WARN" and "generated_by_commit" in f.message for f in findings))
+            self.assertFalse(any(f.level == "ERROR" for f in findings))
+
+    def test_validate_wires_pin(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "your-company/groundwork.pin", PIN_OK.replace("schema_version: 1", "schema_version: 0"))
+            self.assertTrue(any(f.level == "ERROR" and "MIGRATIONS" in f.message for f in validate.validate(d)))
+
+
 if __name__ == "__main__":
     unittest.main()
