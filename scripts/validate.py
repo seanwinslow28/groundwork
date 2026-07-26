@@ -1258,6 +1258,75 @@ def iter_files(root, ignore=()):
             yield os.path.join(dirpath, fn)
 
 
+BLAST_RADIUS = {"track1-body", "escalating"}
+
+
+def check_proposals(root, ignore=()):
+    """#17/#18 proposal-file schema. Diff-based declared-vs-actual matching is 1.5d-ii;
+    this checks the static schema, the routing domain, and the pending-only lifecycle."""
+    findings = []
+    base = os.path.join(root, "proposals")
+    if not os.path.isdir(base) or _ignored("proposals", ignore):
+        return findings
+    for name in sorted(os.listdir(base)):
+        if not name.endswith(".md") or name in {"README.md", "_index.md"} or _ignored(name, ignore):
+            continue
+        abspath = os.path.join(base, name)
+        rel = os.path.relpath(abspath, root)
+        data, fm = _load_frontmatter(abspath, rel)
+        findings += fm
+        if data is None:
+            continue
+
+        target = data.get("target")
+        target_is_rule = False
+        if _blank(target):
+            findings.append(Finding("ERROR", rel, None, "proposal missing 'target' (the skill or rule it changes)"))
+        elif not isinstance(target, str):
+            findings.append(Finding("ERROR", rel, None, "proposal 'target' must be a single path"))
+        else:
+            t = target.strip().replace("\\", "/")
+            is_skill = t.startswith("skills/")
+            target_is_rule = t.startswith("governance/constitution/")
+            if not (is_skill or target_is_rule):
+                findings.append(Finding("ERROR", rel, None,
+                                        "proposal 'target' must be a skill (skills/) or a constitution rule "
+                                        "(governance/constitution/); other artifacts keep their own governance (#17)"))
+            elif not os.path.isfile(os.path.join(root, t)):
+                findings.append(Finding("ERROR", rel, None, "proposal 'target' not found: %s" % t))
+
+        br = data.get("blast_radius")
+        if _blank(br):
+            findings.append(Finding("ERROR", rel, None, "proposal missing 'blast_radius' (track1-body | escalating)"))
+        elif not (isinstance(br, str) and br in BLAST_RADIUS):
+            findings.append(Finding("ERROR", rel, None,
+                                    "invalid 'blast_radius' %r (one of %s)" % (br, sorted(BLAST_RADIUS))))
+        elif br == "track1-body" and target_is_rule:
+            findings.append(Finding("ERROR", rel, None,
+                                    "a constitution rule can never be 'track1-body' — rules never auto-apply; "
+                                    "they are escalating by construction (#17)"))
+
+        status = data.get("status")
+        if isinstance(status, str) and status.strip() and status.strip() != "pending":
+            findings.append(Finding("ERROR", rel, None,
+                                    "proposals/ is pending-only; an applied proposal evaporates into the "
+                                    "consent commit (#18) — status is %r" % status))
+
+        if _blank(data.get("reason")):
+            findings.append(Finding("WARN", rel, None,
+                                    "incomplete proposal: missing 'reason' — belongs as an org-memory "
+                                    "working note until it fills (#17)"))
+        ev = data.get("evidence")
+        if _blank(ev):
+            findings.append(Finding("WARN", rel, None,
+                                    "incomplete proposal: missing 'evidence' links — demote to a working note (#17)"))
+        else:
+            for e in (ev if isinstance(ev, list) else [ev]):
+                if isinstance(e, str) and e.strip() and not os.path.isfile(os.path.join(root, e.strip())):
+                    findings.append(Finding("WARN", rel, None, "evidence link not found: %s" % e.strip()))
+    return findings
+
+
 def validate(root):
     """Walk root, run every check, return a flat list[Finding]."""
     root = os.path.abspath(root)
@@ -1288,6 +1357,7 @@ def validate(root):
     findings += check_hooks(root)
     findings += check_version_pin(root)
     findings += check_symlinked_dirs(root)
+    findings += check_proposals(root, ignore)
     return findings
 
 

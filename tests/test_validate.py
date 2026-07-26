@@ -2365,5 +2365,77 @@ class TestSymlinkedDirs(unittest.TestCase):
                                 for f in validate.validate(d)))
 
 
+PROPOSAL_OK = """---
+target: skills/onboarding-orchestration/SKILL.md
+blast_radius: escalating
+reason: Tighten the description so it stops overlapping the offboarding skill
+evidence:
+  - memory/onboarding-baseline.md
+status: pending
+---
+# Proposal: sharpen onboarding description
+
+## Diff
+(elided)
+
+## Why
+The two descriptions overlap and misroute selection.
+"""
+
+
+class TestProposals(unittest.TestCase):
+    def _prop(self, d, text=PROPOSAL_OK, name="p1.md"):
+        _write(d, "proposals/%s" % name, text)
+        _write(d, "skills/onboarding-orchestration/SKILL.md", SKILL_OK)
+        _write(d, "memory/onboarding-baseline.md", MEM_OK)
+
+    def test_valid_proposal_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._prop(d)
+            self.assertEqual([f for f in validate.check_proposals(d) if f.level == "ERROR"], [])
+
+    def test_missing_target_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._prop(d, PROPOSAL_OK.replace("target: skills/onboarding-orchestration/SKILL.md\n", ""))
+            self.assertTrue(any(f.level == "ERROR" and "target" in f.message
+                                for f in validate.check_proposals(d)))
+
+    def test_target_outside_domain_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._prop(d, PROPOSAL_OK.replace("skills/onboarding-orchestration/SKILL.md",
+                                              "ontologies/people-hr/onboarding-orchestration.md"))
+            self.assertTrue(any(f.level == "ERROR" and "skill" in f.message.lower()
+                                for f in validate.check_proposals(d)))
+
+    def test_invalid_blast_radius_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._prop(d, PROPOSAL_OK.replace("blast_radius: escalating", "blast_radius: trivial"))
+            self.assertTrue(any(f.level == "ERROR" and "blast_radius" in f.message
+                                for f in validate.check_proposals(d)))
+
+    def test_rule_target_cannot_be_track1_body(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "proposals/p.md",
+                   PROPOSAL_OK.replace("skills/onboarding-orchestration/SKILL.md",
+                                       "governance/constitution/access.md")
+                   .replace("blast_radius: escalating", "blast_radius: track1-body"))
+            _write(d, "governance/constitution/access.md", RULE_OK)
+            self.assertTrue(any(f.level == "ERROR" and "never auto-apply" in f.message
+                                for f in validate.check_proposals(d)))
+
+    def test_non_pending_status_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._prop(d, PROPOSAL_OK.replace("status: pending", "status: applied"))
+            self.assertTrue(any(f.level == "ERROR" and "pending-only" in f.message
+                                for f in validate.check_proposals(d)))
+
+    def test_incomplete_proposal_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._prop(d, PROPOSAL_OK.replace("reason: Tighten the description so it stops overlapping the offboarding skill\n", ""))
+            findings = validate.check_proposals(d)
+            self.assertTrue(any(f.level == "WARN" and "working note" in f.message for f in findings))
+            self.assertFalse(any(f.level == "ERROR" and "reason" in f.message for f in findings))
+
+
 if __name__ == "__main__":
     unittest.main()
