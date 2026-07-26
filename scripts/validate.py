@@ -1373,6 +1373,15 @@ def check_proposals(root, ignore=()):
             findings.append(Finding("WARN", rel, None,
                                     "incomplete proposal: empty body — the diff and reasoning live in the "
                                     "file (## Diff / ## Why); demote to a working note (#17)"))
+        else:
+            # #17: a complete proposal carries the diff itself, statically — a
+            # '## Diff' section with content (matching declared-vs-actual is
+            # 1.5d-ii).
+            m = re.search(r"^## Diff\b(.*?)(?=^## |\Z)", body_text, flags=re.S | re.M)
+            if not (m and any(_substantive_line(ln) for ln in m.group(1).split("\n"))):
+                findings.append(Finding("WARN", rel, None,
+                                        "incomplete proposal: no '## Diff' content — a complete proposal "
+                                        "carries its diff (#17); demote to a working note"))
     return findings
 
 

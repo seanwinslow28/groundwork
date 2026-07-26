@@ -2490,6 +2490,34 @@ class TestProposals(unittest.TestCase):
             self.assertTrue(any(f.level == "WARN" and "empty body" in f.message
                                 for f in validate.check_proposals(d)))
 
+    def test_unterminated_comment_body_warns(self):
+        # Codex 1.5d-i round 4: an unterminated <!-- opener hides everything
+        # after it — the body is still empty.
+        with tempfile.TemporaryDirectory() as d:
+            fm_only = PROPOSAL_OK.split("\n---\n")[0] + "\n---\n"
+            self._prop(d, fm_only + "<!--\nnot proposed yet\n")
+            self.assertTrue(any(f.level == "WARN" and "empty body" in f.message
+                                for f in validate.check_proposals(d)))
+
+    def test_missing_diff_section_warns(self):
+        # Codex 1.5d-i round 4: #17 completeness includes the diff itself —
+        # prose with no '## Diff' content is incomplete.
+        with tempfile.TemporaryDirectory() as d:
+            fm_only = PROPOSAL_OK.split("\n---\n")[0] + "\n---\n"
+            self._prop(d, fm_only + "## Why\nThe two descriptions overlap.\n")
+            findings = validate.check_proposals(d)
+            self.assertTrue(any(f.level == "WARN" and "Diff" in f.message for f in findings))
+            self.assertFalse(any(f.level == "ERROR" for f in findings))
+
+    def test_empty_diff_section_warns(self):
+        # Codex 1.5d-i round 4: a bare '## Diff' heading with no content is
+        # not a carried diff.
+        with tempfile.TemporaryDirectory() as d:
+            fm_only = PROPOSAL_OK.split("\n---\n")[0] + "\n---\n"
+            self._prop(d, fm_only + "## Diff\n\n## Why\nThe two descriptions overlap.\n")
+            self.assertTrue(any(f.level == "WARN" and "Diff" in f.message
+                                for f in validate.check_proposals(d)))
+
     def test_list_reason_counts_as_incomplete(self):
         # Codex 1.5d-i round 2: a list-valued reason is not the one scalar
         # line the schema asks for — still incomplete.
