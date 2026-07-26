@@ -1512,11 +1512,12 @@ def _committed_path_status(toplevel, parts, cache=None):
     return "ok" if os.path.isfile(p) else "missing"
 
 
-def memory_diff_findings(root, base):
-    """Compare memory records that existed at <base> (a git ref) against the
-    working tree. Scoped to memory folders under root. New records are fine;
-    deletions and immutable-field edits are ERRORs. Driven by the BASE file
-    list, so no working-tree skip can exempt a committed record."""
+def _git_diff_context(root, base):
+    """Resolve the git layout and the BASE file list once, with 1.4b's hardening:
+    byte-safe paths, canonical-casing scope prefix, a verified base ref, and a
+    NUL-separated ls-tree listing. Returns (ctx, findings); ctx is None exactly
+    when the findings are fatal. Shared by every --diff mode so the plumbing is
+    hardened in one place."""
     try:
         # bytes + os.fsdecode: survives locale-undecodable repo paths; and
         # --show-prefix gives root's repo-relative path in git's canonical
@@ -1524,13 +1525,13 @@ def memory_diff_findings(root, base):
         rp = subprocess.run(["git", "-C", root, "rev-parse", "--show-toplevel", "--show-prefix"],
                             capture_output=True, check=True).stdout
     except (subprocess.CalledProcessError, FileNotFoundError):
-        return [Finding("ERROR", root, None, "--diff requires a git repository")]
+        return None, [Finding("ERROR", root, None, "--diff requires a git repository")]
     rp_lines = os.fsdecode(rp).splitlines()
     if len(rp_lines) != 2 or not os.path.isdir(rp_lines[0]):
         # a newline/CR inside the repo path mis-splits this output; a wrong
         # scope would fail open, so refuse instead
-        return [Finding("ERROR", root, None,
-                        "--diff could not resolve the repository layout (unsupported path)")]
+        return None, [Finding("ERROR", root, None,
+                              "--diff could not resolve the repository layout (unsupported path)")]
     toplevel = rp_lines[0]
     scope = rp_lines[1].strip("/") or "."
     try:
@@ -1538,17 +1539,44 @@ def memory_diff_findings(root, base):
                         "%s^{commit}" % base], capture_output=True, check=True)
     except subprocess.CalledProcessError:
         # a typo'd base must not report a clean bill of health
-        return [Finding("ERROR", root, None, "--diff base ref not found: %s" % base)]
+        return None, [Finding("ERROR", root, None, "--diff base ref not found: %s" % base)]
     try:
         # -z: NUL-terminated, unquoted paths (immune to core.quotePath mangling
         # of non-ASCII names); os.fsdecode round-trips odd bytes losslessly
         raw = subprocess.run(["git", "-C", toplevel, "ls-tree", "-r", "--name-only", "-z", base],
                              capture_output=True, check=True).stdout
     except subprocess.CalledProcessError:
-        return [Finding("ERROR", root, None, "--diff could not list the base tree for %s" % base)]
+        return None, [Finding("ERROR", root, None, "--diff could not list the base tree for %s" % base)]
+    return {"toplevel": toplevel, "scope": scope,
+            "base_files": [os.fsdecode(b) for b in raw.split(b"\0") if b]}, []
+
+
+def _git_show(toplevel, base, repo_path):
+    """The base version of one committed file as text, or None when it cannot be
+    read (fetch failure or non-UTF-8). Callers treat None as fail-closed: the
+    base LIST says the file exists, so an unreadable base is never 'new'."""
+    show = subprocess.run(["git", "-C", toplevel, "show", "%s:%s" % (base, repo_path)],
+                          capture_output=True)
+    if show.returncode != 0:
+        return None
+    try:
+        return show.stdout.decode("utf-8")
+    except UnicodeError:
+        return None
+
+
+def memory_diff_findings(root, base):
+    """Compare memory records that existed at <base> (a git ref) against the
+    working tree. Scoped to memory folders under root. New records are fine;
+    deletions and immutable-field edits are ERRORs. Driven by the BASE file
+    list, so no working-tree skip can exempt a committed record."""
+    ctx, ctx_findings = _git_diff_context(root, base)
+    if ctx is None:
+        return ctx_findings
+    toplevel, scope = ctx["toplevel"], ctx["scope"]
     findings = []
     listdir_cache = {}
-    for bf in (os.fsdecode(b) for b in raw.split(b"\0") if b):
+    for bf in ctx["base_files"]:
         if scope != "." and not bf.startswith(scope + "/"):
             continue
         parts = bf.split("/")
@@ -1568,19 +1596,13 @@ def memory_diff_findings(root, base):
             findings.append(Finding("ERROR", bf, None,
                                     "memory record deleted (records are superseded, never deleted)"))
             continue
-        show = subprocess.run(["git", "-C", toplevel, "show", "%s:%s" % (base, bf)],
-                              capture_output=True)
-        if show.returncode != 0:
-            # the base LIST says it exists, so a fetch failure is never "new" —
-            # fail closed rather than silently passing
+        old = _git_show(toplevel, base, bf)
+        if old is None:
+            # the base LIST says it exists, so a fetch failure (or an
+            # undecodable blob) is never "new" — fail closed
             findings.append(Finding("ERROR", bf, None,
-                                    "--diff could not read the base version of this record"))
-            continue
-        try:
-            old = show.stdout.decode("utf-8")
-        except UnicodeError:
-            findings.append(Finding("ERROR", bf, None,
-                                    "cannot verify immutability: base version is not valid UTF-8"))
+                                    "cannot verify immutability: the base version of this record is "
+                                    "unreadable or not valid UTF-8"))
             continue
         try:
             with open(abspath, encoding="utf-8") as fh:
