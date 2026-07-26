@@ -1466,6 +1466,15 @@ def classify_governed_change(kind, cls, old_text, new_text):
     land. Unparseable frontmatter, a missing or invalid action_class, a nested or
     non-SKILL.md package file, a brand-new SKILL.md (its description is a new
     selection surface) — all escalate."""
+    if kind == "modified":
+        # No-op first, for EVERY class: the caller's candidate set is the whole
+        # base tree, so an untouched rule must not read as an escalating change.
+        # Line endings are normalized (a CRLF base blob against a text-mode read
+        # is not a rewrite); anything beyond that is a change.
+        old_n = (old_text or "").replace("\r\n", "\n").replace("\r", "\n")
+        new_n = (new_text or "").replace("\r\n", "\n").replace("\r", "\n")
+        if old_n == new_n:
+            return None, None
     if cls == "rule":
         return "escalating", "a constitution rule (rules never auto-apply, #17)"
     if cls == "skill-other":
@@ -1688,6 +1697,255 @@ def memory_diff_findings(root, base):
     return findings
 
 
+def _has_symlink_component(root, rel):
+    """True when any component of root/rel is a symlink. A symlinked rule, skill,
+    or ancestor directory cannot be classified honestly (it can point one place
+    and be spelled another), so the caller fails closed."""
+    p = root
+    for part in rel.split("/"):
+        p = os.path.join(p, part)
+        if os.path.islink(p):
+            return True
+    return False
+
+
+def _pin_dirs(root, base_files, scope):
+    """Governed roots: every directory carrying a #21 groundwork.pin, collected
+    from the BASE tree AND the working tree. Both sides matter — deleting the pin
+    in the same diff must not un-govern the change that deleted it. Returned as
+    root-relative directories, where "" is root itself. .gitignore is deliberately
+    NOT honored: a pin hidden behind an ignore rule must not un-govern content."""
+    dirs = set()
+    for bf in base_files:
+        if scope != "." and not bf.startswith(scope + "/"):
+            continue
+        rel = bf if scope == "." else bf[len(scope) + 1:]
+        if os.path.basename(rel) == "groundwork.pin":
+            dirs.add(os.path.dirname(rel).replace("\\", "/"))
+    for abspath in iter_files(root, ()):
+        if os.path.basename(abspath) != "groundwork.pin":
+            continue
+        rel = os.path.relpath(abspath, root).replace(os.sep, "/")
+        dirs.add(os.path.dirname(rel))
+    return dirs
+
+
+def _pending_proposal_radii(root, gov_rel):
+    """{realpath(target) -> set(declared blast_radius)} for the pending proposals
+    in <governed root>/proposals/. Targets resolve through the filesystem
+    (realpath) and must stay contained in the governed root, so a symlink or a
+    '../' alias can never point one place and match another — the same
+    both-layers discipline check_proposals uses. Anything malformed is simply
+    absent from the map, which makes the change it would have covered fail
+    closed (no match -> the escalating ERROR fires)."""
+    out = {}
+    gov_abs = os.path.join(root, *gov_rel.split("/")) if gov_rel else root
+    pdir = os.path.join(gov_abs, "proposals")
+    if not os.path.isdir(pdir) or os.path.islink(pdir):
+        return out
+    try:
+        names = sorted(os.listdir(pdir))
+    except OSError:
+        return out
+    gov_real = os.path.realpath(gov_abs)
+    for name in names:
+        if not name.endswith(".md") or name in {"README.md", "_index.md"}:
+            continue
+        data, _f = _load_frontmatter(os.path.join(pdir, name), name)
+        if data is None:
+            continue
+        status = data.get("status")
+        if isinstance(status, str) and status.strip() and status.strip() != "pending":
+            continue  # not pending; check_proposals already ERRORs on the lifecycle
+        target, br = data.get("target"), data.get("blast_radius")
+        if not isinstance(target, str) or not isinstance(br, str) or br not in BLAST_RADIUS:
+            continue
+        tabs = os.path.join(gov_abs, os.path.normpath(target.strip().replace("\\", "/")))
+        if not os.path.isfile(tabs):
+            continue
+        treal = os.path.realpath(tabs)
+        if not treal.startswith(gov_real + os.sep):
+            continue
+        out.setdefault(treal, set()).add(br)
+    return out
+
+
+def _changelog_appended_targets(root, gov_abs, appended_lines):
+    """Realpaths of the skills named by changelog lines APPENDED since base. An
+    old line for the same skill does not excuse a new edit, so only the appended
+    span counts."""
+    targets = set()
+    for line in appended_lines:
+        s = line.strip()
+        if not s.startswith("- "):
+            continue
+        fields = [c.strip() for c in s[2:].split("|")]
+        if len(fields) != 5:
+            continue
+        p = os.path.join(gov_abs, os.path.normpath(fields[1].replace("\\", "/")))
+        if os.path.isfile(p):
+            targets.add(os.path.realpath(p))
+    return targets
+
+
+def blast_radius_diff_findings(root, base):
+    """#18's blast-radius tripwire. On --diff, classify every changed skill/rule
+    under a governed root (a directory carrying a #21 groundwork.pin) and require
+    each ESCALATING change to trace to a pending proposal whose DECLARED
+    blast_radius matches what the diff ACTUALLY touches. A track-1 body-only
+    change wants its changelog line (WARN — a stateless validator cannot tell an
+    agent auto-apply from the maintainer's own edit); the changelog itself is
+    append-only (ERROR).
+
+    What this cannot do: prove a human truthfully reviewed anything. That is the
+    commit bit's job (#18) — see docs/known-limitations.md."""
+    ctx, ctx_findings = _git_diff_context(root, base)
+    if ctx is None:
+        return ctx_findings
+    toplevel, scope, base_files = ctx["toplevel"], ctx["scope"], ctx["base_files"]
+    findings = []
+
+    base_rels = {}
+    for bf in base_files:
+        if scope != "." and not bf.startswith(scope + "/"):
+            continue
+        base_rels[(bf if scope == "." else bf[len(scope) + 1:])] = bf
+
+    gov_roots = _pin_dirs(root, base_files, scope)
+    if not gov_roots:
+        return findings  # no company instance in scope: the tripwire is dormant
+
+    def governed_root_of(rel):
+        best = None
+        for g in gov_roots:
+            if g == "" or rel == g or rel.startswith(g + "/"):
+                if best is None or len(g) > len(best):
+                    best = g
+        return best
+
+    # --- Pass 1: the changelog per governed root (append-only + appended span).
+    appended_targets = {}
+    for g in sorted(gov_roots):
+        gov_abs = os.path.join(root, *g.split("/")) if g else root
+        cl_rel = (g + "/" if g else "") + "governance/changelog.md"
+        appended_targets[g] = set()
+        bf = base_rels.get(cl_rel)
+        if bf is None:
+            continue  # no committed ledger at base: nothing to protect yet
+        old = _git_show(toplevel, base, bf)
+        if old is None:
+            findings.append(Finding("ERROR", cl_rel, None,
+                                    "cannot verify the governance changelog: its base version is "
+                                    "unreadable or not valid UTF-8"))
+            continue
+        abspath = os.path.join(root, *cl_rel.split("/"))
+        if _has_symlink_component(root, cl_rel):
+            findings.append(Finding("ERROR", cl_rel, None,
+                                    "the governance changelog is or sits behind a symlink "
+                                    "(cannot verify it is append-only)"))
+            continue
+        if not os.path.isfile(abspath):
+            findings.append(Finding("ERROR", cl_rel, None,
+                                    "the governance changelog was deleted — it is an append-only "
+                                    "index of auto-applied changes (#17)"))
+            continue
+        new, rd = _read_utf8(abspath, cl_rel)
+        if new is None:
+            findings += rd
+            continue
+        if not _changelog_append_only(old, new):
+            findings.append(Finding("ERROR", cl_rel, None,
+                                    "the governance changelog is append-only — an existing entry was "
+                                    "edited, reordered, or removed (#17)"))
+            continue
+        old_lines = old.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        while old_lines and not old_lines[-1].strip():
+            old_lines.pop()
+        new_lines = new.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        appended_targets[g] = _changelog_appended_targets(root, gov_abs, new_lines[len(old_lines):])
+
+    # --- Pass 2: every changed governed file.
+    candidates = set(base_rels)
+    for abspath in iter_files(root, ()):
+        candidates.add(os.path.relpath(abspath, root).replace(os.sep, "/"))
+
+    proposals_cache = {}
+    for rel in sorted(candidates):
+        if _diff_in_workbench_skips(rel):
+            continue
+        g = governed_root_of(rel)
+        if g is None:
+            continue
+        inner = rel if g == "" else rel[len(g) + 1:]
+        cls = _governed_class(inner)
+        if cls is None:
+            continue
+
+        abspath = os.path.join(root, *rel.split("/"))
+        bf = base_rels.get(rel)
+        if bf is not None:
+            status = _committed_path_status(toplevel, bf.split("/"), None)
+            if status == "symlink":
+                findings.append(Finding("ERROR", rel, None,
+                                        "governed file is or sits behind a symlink (cannot classify "
+                                        "its blast radius)"))
+                continue
+            if status == "missing":
+                findings.append(Finding("WARN", rel, None,
+                                        "governed file deleted — retiring a rule or skill is escalating, "
+                                        "and its record is the maintainer's consent commit; a proposal "
+                                        "cannot name a target that no longer exists (#18)"))
+                continue
+            old = _git_show(toplevel, base, bf)
+            if old is None:
+                findings.append(Finding("ERROR", rel, None,
+                                        "cannot classify this change: the base version is unreadable "
+                                        "or not valid UTF-8"))
+                continue
+            kind = "modified"
+        else:
+            if _has_symlink_component(root, rel):
+                findings.append(Finding("ERROR", rel, None,
+                                        "governed file is or sits behind a symlink (cannot classify "
+                                        "its blast radius)"))
+                continue
+            if not os.path.isfile(abspath):
+                continue
+            old, kind = None, "added"
+
+        new, rd = _read_utf8(abspath, rel)
+        if new is None:
+            findings += rd
+            continue
+
+        radius, detail = classify_governed_change(kind, cls, old, new)
+        if radius is None:
+            continue
+
+        if g not in proposals_cache:
+            proposals_cache[g] = _pending_proposal_radii(root, g)
+        radii = proposals_cache[g].get(os.path.realpath(abspath), set())
+        prefix = (g + "/") if g else ""
+
+        if radius == "escalating":
+            if not radii:
+                findings.append(Finding("ERROR", rel, None,
+                                        "escalating change (%s) with no pending proposal — an escalating "
+                                        "change reaches the main line only through a reviewable proposal "
+                                        "in %sproposals/ (#18)" % (detail, prefix)))
+            elif "escalating" not in radii:
+                findings.append(Finding("ERROR", rel, None,
+                                        "declared-vs-actual blast-radius mismatch: the pending proposal "
+                                        "declares 'track1-body' but this change actually touches %s — "
+                                        "that is escalating (#18)" % detail))
+        elif not radii and os.path.realpath(abspath) not in appended_targets.get(g, set()):
+            findings.append(Finding("WARN", rel, None,
+                                    "track-1 body-only change with no new governance changelog entry — "
+                                    "an agent auto-apply must append its line (#17); a maintainer's own "
+                                    "edit needs none"))
+    return findings
+
+
 def main(argv):
     args = argv[1:]
     diff_base = None
@@ -1702,6 +1960,7 @@ def main(argv):
     findings = validate(root)
     if diff_base is not None:
         findings += memory_diff_findings(root, diff_base)
+        findings += blast_radius_diff_findings(root, diff_base)
     errors = [f for f in findings if f.level == "ERROR"]
     warns = [f for f in findings if f.level == "WARN"]
     for f in findings:
