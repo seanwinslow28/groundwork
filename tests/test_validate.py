@@ -2306,5 +2306,20 @@ class TestVersionPin(unittest.TestCase):
             self.assertTrue(any(f.level == "ERROR" and "MIGRATIONS" in f.message for f in validate.validate(d)))
 
 
+class TestSymlinkedDirs(unittest.TestCase):
+    def test_symlinked_content_dir_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "real_memory"))
+            _write(d, "real_memory/rec.md", "# a record\n")
+            os.symlink(os.path.join(d, "real_memory"), os.path.join(d, "memory"))
+            warns = [f for f in validate.check_symlinked_dirs(d) if f.level == "WARN"]
+            self.assertTrue(any("symlinked directory" in f.message for f in warns))
+
+    def test_no_symlinks_is_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/people-hr/x.md", "# x\n")
+            self.assertEqual(validate.check_symlinked_dirs(d), [])
+
+
 if __name__ == "__main__":
     unittest.main()

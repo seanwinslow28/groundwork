@@ -1135,6 +1135,28 @@ def check_version_pin(root):
     return findings
 
 
+def check_symlinked_dirs(root):
+    """Make the stateless walker's skip of symlinked directories LOUD. os.walk does
+    not descend into symlinked dirs, so their contents would go unchecked silently."""
+    findings = []
+    ignore = load_gitignore(root)
+    for dirpath, dirnames, filenames in os.walk(root):
+        rel_dir = os.path.relpath(dirpath, root)
+        kept = []
+        for d in dirnames:
+            rel = os.path.normpath(os.path.join(rel_dir, d))
+            if d in SKIP_DIRS or d.startswith(".") or rel in SKIP_RELPATHS or _ignored(d, ignore):
+                continue  # legitimately not scanned
+            if os.path.islink(os.path.join(dirpath, d)):
+                findings.append(Finding("WARN", rel, None,
+                                        "symlinked directory is not traversed by the stateless validator; "
+                                        "its contents are unchecked (the --diff layer backstops memory records)"))
+            else:
+                kept.append(d)
+        dirnames[:] = kept  # do not descend into skipped or symlinked dirs
+    return findings
+
+
 def _frontmatter_and_body(text, path="<unknown>"):
     data, findings = parse_frontmatter(text, path)
     lines = text.split("\n")
@@ -1265,6 +1287,7 @@ def validate(root):
     findings += check_constitution(root, ignore)
     findings += check_hooks(root)
     findings += check_version_pin(root)
+    findings += check_symlinked_dirs(root)
     return findings
 
 
