@@ -2242,5 +2242,128 @@ class TestHooks(unittest.TestCase):
                                 for f in validate.check_hooks(d)))
 
 
+PIN_OK = """---
+schema_version: 1
+generated_by_commit: 0123456789abcdef0123456789abcdef01234567
+---
+"""
+
+
+class TestVersionPin(unittest.TestCase):
+    def test_current_pin_is_exactly_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "your-company/groundwork.pin", PIN_OK)
+            self.assertEqual(validate.check_version_pin(d), [])
+
+    def test_skew_forward_is_exactly_one_migration_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "your-company/groundwork.pin", PIN_OK.replace("schema_version: 1", "schema_version: 0"))
+            errs = [f for f in validate.check_version_pin(d) if f.level == "ERROR"]
+            self.assertEqual(len(errs), 1)
+            self.assertIn("MIGRATIONS", errs[0].message)
+
+    def test_reverse_skew_warns_not_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "your-company/groundwork.pin", PIN_OK.replace("schema_version: 1", "schema_version: 2"))
+            findings = validate.check_version_pin(d)
+            self.assertTrue(any(f.level == "WARN" and "pull the engine" in f.message for f in findings))
+            self.assertFalse(any(f.level == "ERROR" for f in findings))
+
+    def test_missing_schema_version_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "your-company/groundwork.pin",
+                   "---\ngenerated_by_commit: abc123\n---\n")
+            self.assertTrue(any(f.level == "ERROR" and "schema_version" in f.message
+                                for f in validate.check_version_pin(d)))
+
+    def test_non_integer_schema_version_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "your-company/groundwork.pin", PIN_OK.replace("schema_version: 1", "schema_version: v1"))
+            self.assertTrue(any(f.level == "ERROR" and "integer" in f.message
+                                for f in validate.check_version_pin(d)))
+
+    def test_list_schema_version_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "your-company/groundwork.pin",
+                   "---\nschema_version:\n- 1\n- 2\n---\n")
+            self.assertTrue(any(f.level == "ERROR" and "integer" in f.message
+                                for f in validate.check_version_pin(d)))
+
+    def test_non_utf8_pin_errors_not_crashes(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write_bytes(d, "your-company/groundwork.pin", b"---\nschema_version: 1\n---\n\xff\xfe")
+            self.assertTrue(any(f.level == "ERROR" for f in validate.check_version_pin(d)))
+
+    def test_empty_pin_file_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "your-company/groundwork.pin", "")
+            self.assertTrue(any(f.level == "ERROR" and "schema_version" in f.message
+                                for f in validate.check_version_pin(d)))
+
+    def test_unclosed_frontmatter_pin_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "your-company/groundwork.pin", "---\nschema_version: 1\n")
+            self.assertTrue(any(f.level == "ERROR" and "never closed" in f.message
+                                for f in validate.check_version_pin(d)))
+
+    def test_duplicate_schema_version_key_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "your-company/groundwork.pin",
+                   "---\nschema_version: 1\nschema_version: 0\n---\n")
+            self.assertTrue(any(f.level == "ERROR" and "duplicate" in f.message
+                                for f in validate.check_version_pin(d)))
+
+    def test_missing_commit_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "your-company/groundwork.pin", "---\nschema_version: 1\n---\n")
+            findings = validate.check_version_pin(d)
+            self.assertTrue(any(f.level == "WARN" and "generated_by_commit" in f.message for f in findings))
+            self.assertFalse(any(f.level == "ERROR" for f in findings))
+
+    def test_validate_wires_pin(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "your-company/groundwork.pin", PIN_OK.replace("schema_version: 1", "schema_version: 0"))
+            self.assertTrue(any(f.level == "ERROR" and "MIGRATIONS" in f.message for f in validate.validate(d)))
+
+
+class TestSymlinkedDirs(unittest.TestCase):
+    def test_symlinked_content_dir_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "real_memory"))
+            _write(d, "real_memory/rec.md", "# a record\n")
+            os.symlink(os.path.join(d, "real_memory"), os.path.join(d, "memory"))
+            warns = [f for f in validate.check_symlinked_dirs(d) if f.level == "WARN"]
+            self.assertTrue(any("symlinked directory" in f.message for f in warns))
+
+    def test_no_symlinks_is_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/people-hr/x.md", "# x\n")
+            self.assertEqual(validate.check_symlinked_dirs(d), [])
+
+    def test_skip_set_symlinks_are_silent(self):
+        """Skip-set parity with iter_files: symlinks under SKIP_DIRS, dot-dirs,
+        SKIP_RELPATHS, and gitignored names are legitimately unscanned — no WARN."""
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "real"))
+            _write(d, "real/x.md", "# x\n")
+            _write(d, ".gitignore", "ignored-link\n")
+            os.makedirs(os.path.join(d, ".claude"))
+            os.symlink(os.path.join(d, "real"), os.path.join(d, ".claude", "skills"))
+            os.makedirs(os.path.join(d, "tests"))
+            os.symlink(os.path.join(d, "real"), os.path.join(d, "tests", "fixtures"))
+            os.makedirs(os.path.join(d, "__pycache__"))
+            os.symlink(os.path.join(d, "real"), os.path.join(d, "__pycache__", "cached"))
+            os.symlink(os.path.join(d, "real"), os.path.join(d, "ignored-link"))
+            self.assertEqual(validate.check_symlinked_dirs(d), [])
+
+    def test_validate_wires_symlink_warn(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "real_memory"))
+            _write(d, "real_memory/rec.md", "# a record\n")
+            os.symlink(os.path.join(d, "real_memory"), os.path.join(d, "memory"))
+            self.assertTrue(any(f.level == "WARN" and "symlinked directory" in f.message
+                                for f in validate.validate(d)))
+
+
 if __name__ == "__main__":
     unittest.main()
