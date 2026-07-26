@@ -2437,5 +2437,37 @@ class TestProposals(unittest.TestCase):
             self.assertFalse(any(f.level == "ERROR" and "reason" in f.message for f in findings))
 
 
+class TestChangelog(unittest.TestCase):
+    def test_empty_changelog_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/changelog.md", "# Governance changelog\n\n## Entries\n")
+            self.assertEqual(validate.check_changelog(d), [])
+
+    def test_valid_entry_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/changelog.md",
+                   "# Governance changelog\n\n## Entries\n\n"
+                   "- 2026-07-26 | skills/onboarding-orchestration/SKILL.md | trimmed wording | scribe | a1b2c3d\n")
+            self.assertEqual([f for f in validate.check_changelog(d) if f.level == "ERROR"], [])
+            self.assertEqual(validate.check_changelog(d), [])
+
+    def test_malformed_entry_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/changelog.md",
+                   "# Governance changelog\n\n## Entries\n\n- oops not a real entry\n")
+            self.assertTrue(any(f.level == "WARN" for f in validate.check_changelog(d)))
+
+    def test_bad_date_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/changelog.md",
+                   "# Governance changelog\n\n## Entries\n\n"
+                   "- last-tuesday | skills/x/SKILL.md | gist | agent | a1b2c3d\n")
+            self.assertTrue(any(f.level == "WARN" and "date" in f.message for f in validate.check_changelog(d)))
+
+    def test_no_changelog_is_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(validate.check_changelog(d), [])
+
+
 if __name__ == "__main__":
     unittest.main()

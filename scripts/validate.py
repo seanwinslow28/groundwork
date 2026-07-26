@@ -1327,6 +1327,38 @@ def check_proposals(root, ignore=()):
     return findings
 
 
+def check_changelog(root, ignore=()):
+    """#17 governance changelog: append-only index of auto-applied track-1 changes.
+    Validates entry format; append-only enforcement is the --diff mode (1.5d-ii)."""
+    findings = []
+    path = os.path.join(root, "governance", "changelog.md")
+    if not os.path.isfile(path) or _ignored("governance", ignore) or _ignored("changelog.md", ignore):
+        return findings
+    rel = os.path.relpath(path, root)
+    text, rd = _read_utf8(path, rel)
+    findings += rd
+    if text is None:
+        return findings
+    for lineno, line in enumerate(text.split("\n"), 1):
+        s = line.strip()
+        if not s.startswith("- "):
+            continue
+        fields = [c.strip() for c in s[2:].split("|")]
+        if len(fields) != 5:
+            findings.append(Finding("WARN", rel, lineno,
+                                    "malformed changelog entry (want: date | skill | gist | agent | sha)"))
+            continue
+        date_s, skill_s, _gist, _agent, sha_s = fields
+        if _parse_date(date_s) is None:
+            findings.append(Finding("WARN", rel, lineno, "changelog entry has an unparseable date: %r" % date_s))
+        if not skill_s.replace("\\", "/").startswith("skills/"):
+            findings.append(Finding("WARN", rel, lineno,
+                                    "changelog entry skill path should be under skills/ (auto-apply is track-1 skills only)"))
+        if not re.fullmatch(r"[0-9a-fA-F]{7,40}", sha_s):
+            findings.append(Finding("WARN", rel, lineno, "changelog entry commit sha looks malformed: %r" % sha_s))
+    return findings
+
+
 def validate(root):
     """Walk root, run every check, return a flat list[Finding]."""
     root = os.path.abspath(root)
@@ -1358,6 +1390,7 @@ def validate(root):
     findings += check_version_pin(root)
     findings += check_symlinked_dirs(root)
     findings += check_proposals(root, ignore)
+    findings += check_changelog(root, ignore)
     return findings
 
 
