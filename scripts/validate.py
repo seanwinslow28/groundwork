@@ -1280,6 +1280,8 @@ def check_proposals(root, ignore=()):
 
         target = data.get("target")
         target_is_rule = False
+        target_is_skill = False
+        t = None
         if _blank(target):
             findings.append(Finding("ERROR", rel, None, "proposal missing 'target' (the skill or rule it changes)"))
         elif not isinstance(target, str):
@@ -1289,14 +1291,27 @@ def check_proposals(root, ignore=()):
             # skills/../governance/constitution/x.md must not launder a rule
             # into the skills/ bucket (rules never auto-apply).
             t = os.path.normpath(target.strip().replace("\\", "/")).replace("\\", "/")
-            is_skill = t.startswith("skills/")
+            target_is_skill = t.startswith("skills/")
             target_is_rule = t.startswith("governance/constitution/")
-            if not (is_skill or target_is_rule):
+            if not (target_is_skill or target_is_rule):
                 findings.append(Finding("ERROR", rel, None,
                                         "proposal 'target' must be a skill (skills/) or a constitution rule "
                                         "(governance/constitution/); other artifacts keep their own governance (#17)"))
             elif not os.path.isfile(os.path.join(root, t)):
                 findings.append(Finding("ERROR", rel, None, "proposal 'target' not found: %s" % t))
+            else:
+                # Filesystem aliases too (1.4b precedent): classification is by
+                # where the target RESOLVES, not just how it is spelled — a
+                # symlink under skills/ pointing at a rule must fail closed.
+                resolved = os.path.relpath(
+                    os.path.realpath(os.path.join(root, t)),
+                    os.path.realpath(root)).replace("\\", "/")
+                bucket = "skills/" if target_is_skill else "governance/constitution/"
+                if not resolved.startswith(bucket):
+                    findings.append(Finding("ERROR", rel, None,
+                                            "proposal 'target' resolves outside %s (symlink or filesystem "
+                                            "alias: %s) — fail closed (#17)" % (bucket, resolved)))
+                    target_is_rule = target_is_rule or resolved.startswith("governance/constitution/")
 
         br = data.get("blast_radius")
         if _blank(br):
@@ -1308,6 +1323,10 @@ def check_proposals(root, ignore=()):
             findings.append(Finding("ERROR", rel, None,
                                     "a constitution rule can never be 'track1-body' — rules never auto-apply; "
                                     "they are escalating by construction (#17)"))
+        elif br == "track1-body" and target_is_skill and not t.endswith("/SKILL.md"):
+            findings.append(Finding("ERROR", rel, None,
+                                    "'track1-body' touches only the SKILL.md body — %s is not a SKILL.md; "
+                                    "description, card, and every other change is escalating (#17)" % t))
 
         status = data.get("status")
         if _blank(status):
@@ -1321,10 +1340,11 @@ def check_proposals(root, ignore=()):
                                     "proposals/ is pending-only; an applied proposal evaporates into the "
                                     "consent commit (#18) — status is %r" % status))
 
-        if _blank(data.get("reason")):
+        reason = data.get("reason")
+        if _blank(reason) or not isinstance(reason, str):
             findings.append(Finding("WARN", rel, None,
-                                    "incomplete proposal: missing 'reason' — belongs as an org-memory "
-                                    "working note until it fills (#17)"))
+                                    "incomplete proposal: missing 'reason' (one scalar line) — belongs as an "
+                                    "org-memory working note until it fills (#17)"))
         ev = data.get("evidence")
         if _blank(ev):
             findings.append(Finding("WARN", rel, None,
@@ -1333,6 +1353,23 @@ def check_proposals(root, ignore=()):
             for e in (ev if isinstance(ev, list) else [ev]):
                 if isinstance(e, str) and e.strip() and not os.path.isfile(os.path.join(root, e.strip())):
                     findings.append(Finding("WARN", rel, None, "evidence link not found: %s" % e.strip()))
+
+        # #17 completeness includes the diff itself: the proposal file IS the
+        # review file, so a body with no substantive content (no Diff / Why)
+        # is incomplete. The frontmatter parsed above, so the file is UTF-8.
+        text, _rd = _read_utf8(abspath, rel)
+        body = []
+        if text is not None:
+            lines = text.split("\n")
+            if lines and lines[0].strip() == "---":
+                for i in range(1, len(lines)):
+                    if lines[i].strip() == "---":
+                        body = lines[i + 1:]
+                        break
+        if not any(_substantive_line(ln) for ln in body):
+            findings.append(Finding("WARN", rel, None,
+                                    "incomplete proposal: empty body — the diff and reasoning live in the "
+                                    "file (## Diff / ## Why); demote to a working note (#17)"))
     return findings
 
 
@@ -1360,9 +1397,23 @@ def check_changelog(root, ignore=()):
         date_s, skill_s, _gist, _agent, sha_s = fields
         if _parse_date(date_s) is None:
             findings.append(Finding("WARN", rel, lineno, "changelog entry has an unparseable date: %r" % date_s))
-        if not os.path.normpath(skill_s.replace("\\", "/")).replace("\\", "/").startswith("skills/"):
+        skill_norm = os.path.normpath(skill_s.replace("\\", "/")).replace("\\", "/")
+        if not skill_norm.startswith("skills/"):
             findings.append(Finding("WARN", rel, lineno,
                                     "changelog entry skill path should be under skills/ (auto-apply is track-1 skills only)"))
+        elif not skill_norm.endswith("/SKILL.md"):
+            findings.append(Finding("WARN", rel, lineno,
+                                    "changelog entry should point at a SKILL.md (auto-apply is body-only SKILL.md edits)"))
+        elif os.path.isfile(os.path.join(root, skill_norm)):
+            # Symlink parity with check_proposals: a path spelled skills/ that
+            # resolves elsewhere in the current tree is an alias, not a skill.
+            resolved = os.path.relpath(
+                os.path.realpath(os.path.join(root, skill_norm)),
+                os.path.realpath(root)).replace("\\", "/")
+            if not resolved.startswith("skills/"):
+                findings.append(Finding("WARN", rel, lineno,
+                                        "changelog entry skill path is a filesystem alias resolving outside "
+                                        "skills/ (%s)" % resolved))
         if not re.fullmatch(r"[0-9a-fA-F]{7,40}", sha_s):
             findings.append(Finding("WARN", rel, lineno, "changelog entry commit sha looks malformed: %r" % sha_s))
     return findings
