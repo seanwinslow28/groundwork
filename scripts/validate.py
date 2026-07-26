@@ -1436,6 +1436,79 @@ def check_changelog(root, ignore=()):
     return findings
 
 
+def _governed_class(rel):
+    """Classify a path (relative to a governed root) into #17's routing domain:
+    'rule' (any constitution file), 'skill-md' (a package's own SKILL.md),
+    'skill-other' (anything else inside a skill package — the Owner's Card and
+    every nested file), or None (not governed by the proposal routing at all).
+    Top-level docs under skills/ (e.g. skills/work-package-spec.md) are not part
+    of a package and are not governed."""
+    parts = rel.split("/")
+    if len(parts) >= 3 and parts[0] == "governance" and parts[1] == "constitution" \
+            and rel.endswith(".md"):
+        return "rule"
+    if len(parts) >= 3 and parts[0] == "skills":
+        if len(parts) == 3 and parts[2] == "SKILL.md":
+            return "skill-md"
+        return "skill-other"
+    return None
+
+
+def classify_governed_change(kind, cls, old_text, new_text):
+    """PURE #17 blast-radius classification of ONE changed governed file. `kind`
+    is 'added' or 'modified' (deletions are the caller's, see #18 note below);
+    `cls` comes from _governed_class. Returns (radius, detail) with radius in
+    BLAST_RADIUS, or (None, None) when nothing actually changed.
+
+    Reasoning to carry: 'track1-body' is the ONLY auto-apply-eligible verdict, so
+    every uncertain path must resolve to 'escalating'. A misclassification in that
+    direction costs a human review; the other direction lets an unreviewed change
+    land. Unparseable frontmatter, a missing or invalid action_class, a nested or
+    non-SKILL.md package file, a brand-new SKILL.md (its description is a new
+    selection surface) — all escalate."""
+    if cls == "rule":
+        return "escalating", "a constitution rule (rules never auto-apply, #17)"
+    if cls == "skill-other":
+        return "escalating", "a skill-package file other than SKILL.md (Owner's Card / package content)"
+    if kind == "added":
+        return "escalating", "a new SKILL.md (its description is a new selection surface)"
+
+    old_fm, old_body, _old_parse = _frontmatter_and_body(old_text or "", "base")
+    new_fm, new_body, new_parse = _frontmatter_and_body(new_text or "", "new")
+    if any(f.level == "ERROR" for f in new_parse):
+        return "escalating", "unparseable SKILL.md frontmatter (cannot prove the change is body-only)"
+    if old_fm != new_fm:
+        return "escalating", "SKILL.md frontmatter (description / action class / governance fields)"
+
+    old_b = old_body.replace("\r\n", "\n").replace("\r", "\n").strip()
+    new_b = new_body.replace("\r\n", "\n").replace("\r", "\n").strip()
+    if old_b == new_b:
+        return None, None
+
+    # Frontmatter is identical here, so old and new action_class agree; read it
+    # once and require it to be a valid class before conceding track-1.
+    ac = new_fm.get("action_class")
+    if not isinstance(ac, str) or ac not in ACTION_CLASSES:
+        return "escalating", ("SKILL.md body of a skill with no valid action_class "
+                              "(cannot prove track-1)")
+    if ac in TRACK2_CLASSES:
+        return "escalating", "SKILL.md body of a track-2 (%s) skill" % ac
+    return "track1-body", "SKILL.md body of a track-1 (%s) skill" % ac
+
+
+def _changelog_append_only(old_text, new_text):
+    """PURE. #17's changelog is an append-only index: every line committed at base
+    must survive, in order, as the head of the new file. Trailing blank lines on
+    the base side are ignored (an append lands after them). Line endings are
+    normalized first so a CRLF base blob is not a phantom rewrite."""
+    def _lines(t):
+        return t.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    old_lines = _lines(old_text)
+    while old_lines and not old_lines[-1].strip():
+        old_lines.pop()
+    return _lines(new_text)[:len(old_lines)] == old_lines
+
+
 def validate(root):
     """Walk root, run every check, return a flat list[Finding]."""
     root = os.path.abspath(root)

@@ -2633,5 +2633,141 @@ class TestChangelog(unittest.TestCase):
             self.assertEqual(validate.check_changelog(d), [])
 
 
+SKILL_T1 = """---
+name: weekly-digest
+description: Summarize the week's open threads for the team channel
+action_class: read-only
+provisioned: no
+ontology: ontologies/people-hr/onboarding-orchestration.md
+---
+# Weekly digest
+
+Collect the week's open threads and summarize them.
+"""
+
+
+class TestGovernedClassify(unittest.TestCase):
+    def test_rule_paths_are_governed(self):
+        self.assertEqual(validate._governed_class("governance/constitution/access.md"), "rule")
+        self.assertEqual(validate._governed_class("governance/constitution/sub/access.md"), "rule")
+
+    def test_skill_md_and_package_files(self):
+        self.assertEqual(validate._governed_class("skills/weekly-digest/SKILL.md"), "skill-md")
+        self.assertEqual(validate._governed_class("skills/weekly-digest/owner-card.md"), "skill-other")
+        self.assertEqual(validate._governed_class("skills/weekly-digest/sub/SKILL.md"), "skill-other")
+
+    def test_ungoverned_paths(self):
+        self.assertIsNone(validate._governed_class("skills/work-package-spec.md"))
+        self.assertIsNone(validate._governed_class("governance/changelog.md"))
+        self.assertIsNone(validate._governed_class("memory/onboarding-baseline.md"))
+        self.assertIsNone(validate._governed_class("README.md"))
+
+    def test_any_rule_change_escalates(self):
+        r, _d = validate.classify_governed_change("modified", "rule", RULE_OK, RULE_OK + "\nmore\n")
+        self.assertEqual(r, "escalating")
+
+    def test_owner_card_change_escalates(self):
+        r, _d = validate.classify_governed_change("modified", "skill-other", CARD_OK, CARD_OK + "\nx\n")
+        self.assertEqual(r, "escalating")
+
+    def test_added_skill_escalates(self):
+        r, _d = validate.classify_governed_change("added", "skill-md", None, SKILL_T1)
+        self.assertEqual(r, "escalating")
+
+    def test_track1_body_only_change(self):
+        new = SKILL_T1.replace("Collect the week's open threads and summarize them.",
+                               "Collect the week's open threads, summarize them, and note blockers.")
+        r, _d = validate.classify_governed_change("modified", "skill-md", SKILL_T1, new)
+        self.assertEqual(r, "track1-body")
+
+    def test_track2_body_only_change_escalates(self):
+        new = SKILL_OK.replace("# Onboarding orchestration", "# Onboarding orchestration\n\nextra line")
+        r, d = validate.classify_governed_change("modified", "skill-md", SKILL_OK, new)
+        self.assertEqual(r, "escalating")
+        self.assertIn("track-2", d)
+
+    def test_description_change_escalates(self):
+        new = SKILL_T1.replace("Summarize the week's open threads for the team channel",
+                               "Summarize everything anyone said this week")
+        r, d = validate.classify_governed_change("modified", "skill-md", SKILL_T1, new)
+        self.assertEqual(r, "escalating")
+        self.assertIn("frontmatter", d)
+
+    def test_action_class_change_escalates(self):
+        new = SKILL_T1.replace("action_class: read-only", "action_class: high-risk")
+        r, _d = validate.classify_governed_change("modified", "skill-md", SKILL_T1, new)
+        self.assertEqual(r, "escalating")
+
+    def test_unparseable_new_frontmatter_fails_closed(self):
+        new = SKILL_T1.replace("provisioned: no", "  indented: bad")
+        r, d = validate.classify_governed_change("modified", "skill-md", SKILL_T1, new)
+        self.assertEqual(r, "escalating")
+        self.assertIn("unparseable", d)
+
+    def test_missing_action_class_fails_closed(self):
+        base = SKILL_T1.replace("action_class: read-only\n", "")
+        new = base.replace("Collect the week's open threads and summarize them.", "Different body.")
+        r, d = validate.classify_governed_change("modified", "skill-md", base, new)
+        self.assertEqual(r, "escalating")
+        self.assertIn("action_class", d)
+
+    def test_invalid_action_class_fails_closed(self):
+        base = SKILL_T1.replace("action_class: read-only", "action_class: mostly-harmless")
+        new = base.replace("Collect the week's open threads and summarize them.", "Different body.")
+        r, _d = validate.classify_governed_change("modified", "skill-md", base, new)
+        self.assertEqual(r, "escalating")
+
+    def test_unchanged_file_classifies_as_nothing(self):
+        r, d = validate.classify_governed_change("modified", "skill-md", SKILL_T1, SKILL_T1)
+        self.assertIsNone(r)
+        self.assertIsNone(d)
+
+    def test_whitespace_and_crlf_only_change_is_not_a_change(self):
+        new = SKILL_T1.replace("\n", "\r\n") + "\n\n"
+        r, _d = validate.classify_governed_change("modified", "skill-md", SKILL_T1, new)
+        self.assertIsNone(r)
+
+    def test_frontmatter_removed_entirely_escalates(self):
+        new = SKILL_T1.split("---\n", 2)[2]
+        r, _d = validate.classify_governed_change("modified", "skill-md", SKILL_T1, new)
+        self.assertEqual(r, "escalating")
+
+
+class TestChangelogAppendOnly(unittest.TestCase):
+    BASE = ("# Governance changelog\n\n## Entries\n\n"
+            "- 2026-07-26 | skills/a/SKILL.md | one | scribe | a1b2c3d\n")
+
+    def test_append_is_allowed(self):
+        new = self.BASE + "- 2026-07-27 | skills/a/SKILL.md | two | scribe | b2c3d4e\n"
+        self.assertTrue(validate._changelog_append_only(self.BASE, new))
+
+    def test_identical_is_allowed(self):
+        self.assertTrue(validate._changelog_append_only(self.BASE, self.BASE))
+
+    def test_edited_entry_rejected(self):
+        new = self.BASE.replace("one", "something else entirely")
+        self.assertFalse(validate._changelog_append_only(self.BASE, new))
+
+    def test_removed_entry_rejected(self):
+        new = "# Governance changelog\n\n## Entries\n\n"
+        self.assertFalse(validate._changelog_append_only(self.BASE, new))
+
+    def test_reordered_entries_rejected(self):
+        base = self.BASE + "- 2026-07-27 | skills/a/SKILL.md | two | scribe | b2c3d4e\n"
+        new = ("# Governance changelog\n\n## Entries\n\n"
+               "- 2026-07-27 | skills/a/SKILL.md | two | scribe | b2c3d4e\n"
+               "- 2026-07-26 | skills/a/SKILL.md | one | scribe | a1b2c3d\n")
+        self.assertFalse(validate._changelog_append_only(base, new))
+
+    def test_prepended_entry_rejected(self):
+        new = ("# Governance changelog\n\n## Entries\n\n"
+               "- 2026-07-20 | skills/a/SKILL.md | zero | scribe | 0a1b2c3\n"
+               "- 2026-07-26 | skills/a/SKILL.md | one | scribe | a1b2c3d\n")
+        self.assertFalse(validate._changelog_append_only(self.BASE, new))
+
+    def test_crlf_base_is_not_a_phantom_rewrite(self):
+        self.assertTrue(validate._changelog_append_only(self.BASE.replace("\n", "\r\n"), self.BASE))
+
+
 if __name__ == "__main__":
     unittest.main()
