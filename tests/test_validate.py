@@ -2423,6 +2423,26 @@ class TestProposals(unittest.TestCase):
             self.assertTrue(any(f.level == "ERROR" and "never auto-apply" in f.message
                                 for f in validate.check_proposals(d)))
 
+    def test_rule_target_via_path_alias_cannot_be_track1_body(self):
+        # Codex 1.5d-i round 1: skills/../governance/... must not launder a
+        # rule into the skills/ bucket and dodge rules-never-auto-apply.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "proposals/p.md",
+                   PROPOSAL_OK.replace("skills/onboarding-orchestration/SKILL.md",
+                                       "skills/../governance/constitution/access.md")
+                   .replace("blast_radius: escalating", "blast_radius: track1-body"))
+            _write(d, "governance/constitution/access.md", RULE_OK)
+            self.assertTrue(any(f.level == "ERROR" and "never auto-apply" in f.message
+                                for f in validate.check_proposals(d)))
+
+    def test_non_scalar_status_errors(self):
+        # Codex 1.5d-i round 1: a list-valued status must not slip past the
+        # pending-only lifecycle check (fail closed, not fail open).
+        with tempfile.TemporaryDirectory() as d:
+            self._prop(d, PROPOSAL_OK.replace("status: pending", "status:\n  - applied"))
+            self.assertTrue(any(f.level == "ERROR" and "pending-only" in f.message
+                                for f in validate.check_proposals(d)))
+
     def test_non_pending_status_errors(self):
         with tempfile.TemporaryDirectory() as d:
             self._prop(d, PROPOSAL_OK.replace("status: pending", "status: applied"))
@@ -2463,6 +2483,25 @@ class TestChangelog(unittest.TestCase):
                    "# Governance changelog\n\n## Entries\n\n"
                    "- last-tuesday | skills/x/SKILL.md | gist | agent | a1b2c3d\n")
             self.assertTrue(any(f.level == "WARN" and "date" in f.message for f in validate.check_changelog(d)))
+
+    def test_blank_gist_or_agent_warns(self):
+        # Codex 1.5d-i round 1: five pipes with empty gist/agent fields is
+        # not a well-formed entry.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/changelog.md",
+                   "# Governance changelog\n\n## Entries\n\n"
+                   "- 2026-07-26 | skills/x/SKILL.md | | | a1b2c3d\n")
+            self.assertTrue(any(f.level == "WARN" and "malformed changelog entry" in f.message
+                                for f in validate.check_changelog(d)))
+
+    def test_skill_path_alias_warns(self):
+        # Codex 1.5d-i round 1: skills/../governance/... is not a skills/ path.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/changelog.md",
+                   "# Governance changelog\n\n## Entries\n\n"
+                   "- 2026-07-26 | skills/../governance/changelog.md | gist | agent | a1b2c3d\n")
+            self.assertTrue(any(f.level == "WARN" and "skills/" in f.message
+                                for f in validate.check_changelog(d)))
 
     def test_no_changelog_is_silent(self):
         with tempfile.TemporaryDirectory() as d:

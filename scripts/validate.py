@@ -1285,7 +1285,10 @@ def check_proposals(root, ignore=()):
         elif not isinstance(target, str):
             findings.append(Finding("ERROR", rel, None, "proposal 'target' must be a single path"))
         else:
-            t = target.strip().replace("\\", "/")
+            # Normalize before classifying: a lexical alias like
+            # skills/../governance/constitution/x.md must not launder a rule
+            # into the skills/ bucket (rules never auto-apply).
+            t = os.path.normpath(target.strip().replace("\\", "/")).replace("\\", "/")
             is_skill = t.startswith("skills/")
             target_is_rule = t.startswith("governance/constitution/")
             if not (is_skill or target_is_rule):
@@ -1307,7 +1310,13 @@ def check_proposals(root, ignore=()):
                                     "they are escalating by construction (#17)"))
 
         status = data.get("status")
-        if isinstance(status, str) and status.strip() and status.strip() != "pending":
+        if _blank(status):
+            pass
+        elif not isinstance(status, str):
+            findings.append(Finding("ERROR", rel, None,
+                                    "proposal 'status' must be the scalar string 'pending' "
+                                    "(proposals/ is pending-only, #18) — got %r" % (status,)))
+        elif status.strip() != "pending":
             findings.append(Finding("ERROR", rel, None,
                                     "proposals/ is pending-only; an applied proposal evaporates into the "
                                     "consent commit (#18) — status is %r" % status))
@@ -1344,14 +1353,14 @@ def check_changelog(root, ignore=()):
         if not s.startswith("- "):
             continue
         fields = [c.strip() for c in s[2:].split("|")]
-        if len(fields) != 5:
+        if len(fields) != 5 or not all(fields):
             findings.append(Finding("WARN", rel, lineno,
                                     "malformed changelog entry (want: date | skill | gist | agent | sha)"))
             continue
         date_s, skill_s, _gist, _agent, sha_s = fields
         if _parse_date(date_s) is None:
             findings.append(Finding("WARN", rel, lineno, "changelog entry has an unparseable date: %r" % date_s))
-        if not skill_s.replace("\\", "/").startswith("skills/"):
+        if not os.path.normpath(skill_s.replace("\\", "/")).replace("\\", "/").startswith("skills/"):
             findings.append(Finding("WARN", rel, lineno,
                                     "changelog entry skill path should be under skills/ (auto-apply is track-1 skills only)"))
         if not re.fullmatch(r"[0-9a-fA-F]{7,40}", sha_s):
