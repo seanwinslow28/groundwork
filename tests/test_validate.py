@@ -2481,6 +2481,15 @@ class TestProposals(unittest.TestCase):
             self.assertTrue(any(f.level == "WARN" and "empty body" in f.message for f in findings))
             self.assertFalse(any(f.level == "ERROR" for f in findings))
 
+    def test_multiline_comment_body_warns(self):
+        # Codex 1.5d-i round 3: a body that is only a MULTILINE HTML comment
+        # (opener/closer on separate lines) is still empty.
+        with tempfile.TemporaryDirectory() as d:
+            fm_only = PROPOSAL_OK.split("\n---\n")[0] + "\n---\n"
+            self._prop(d, fm_only + "<!--\nnot proposed yet\n-->\n")
+            self.assertTrue(any(f.level == "WARN" and "empty body" in f.message
+                                for f in validate.check_proposals(d)))
+
     def test_list_reason_counts_as_incomplete(self):
         # Codex 1.5d-i round 2: a list-valued reason is not the one scalar
         # line the schema asks for — still incomplete.

@@ -1366,7 +1366,10 @@ def check_proposals(root, ignore=()):
                     if lines[i].strip() == "---":
                         body = lines[i + 1:]
                         break
-        if not any(_substantive_line(ln) for ln in body):
+        # Strip multiline HTML comments first (an unterminated opener hides
+        # everything after it) — _substantive_line only sees one-line comments.
+        body_text = re.sub(r"<!--.*?(-->|\Z)", "", "\n".join(body), flags=re.S)
+        if not any(_substantive_line(ln) for ln in body_text.split("\n")):
             findings.append(Finding("WARN", rel, None,
                                     "incomplete proposal: empty body — the diff and reasoning live in the "
                                     "file (## Diff / ## Why); demote to a working note (#17)"))
