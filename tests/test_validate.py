@@ -2535,6 +2535,21 @@ class TestProposals(unittest.TestCase):
             self.assertTrue(any(f.level == "ERROR" and "pending-only" in f.message
                                 for f in validate.check_proposals(d)))
 
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0,
+                     "root ignores directory permissions")
+    def test_unreadable_proposals_dir_fails_closed(self):
+        # Codex 1.5d-i round 5: an unreadable proposals/ must ERROR, not crash.
+        with tempfile.TemporaryDirectory() as d:
+            pdir = os.path.join(d, "proposals")
+            os.makedirs(pdir)
+            os.chmod(pdir, 0)
+            try:
+                findings = validate.check_proposals(d)
+            finally:
+                os.chmod(pdir, 0o755)
+            self.assertTrue(any(f.level == "ERROR" and "fail closed" in f.message
+                                for f in findings))
+
     def test_incomplete_proposal_warns(self):
         with tempfile.TemporaryDirectory() as d:
             self._prop(d, PROPOSAL_OK.replace("reason: Tighten the description so it stops overlapping the offboarding skill\n", ""))

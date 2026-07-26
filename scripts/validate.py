@@ -1268,7 +1268,12 @@ def check_proposals(root, ignore=()):
     base = os.path.join(root, "proposals")
     if not os.path.isdir(base) or _ignored("proposals", ignore):
         return findings
-    for name in sorted(os.listdir(base)):
+    try:
+        names = sorted(os.listdir(base))
+    except OSError as e:
+        return [Finding("ERROR", "proposals", None,
+                        "cannot list proposals/ — fail closed: %s" % e)]
+    for name in names:
         if not name.endswith(".md") or name in {"README.md", "_index.md"} or _ignored(name, ignore):
             continue
         abspath = os.path.join(base, name)
