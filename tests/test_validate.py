@@ -2341,8 +2341,8 @@ class TestSymlinkedDirs(unittest.TestCase):
             self.assertEqual(validate.check_symlinked_dirs(d), [])
 
     def test_skip_set_symlinks_are_silent(self):
-        """Skip-set parity with iter_files: symlinks under dot-dirs, SKIP_RELPATHS,
-        and gitignored names are legitimately unscanned — no WARN."""
+        """Skip-set parity with iter_files: symlinks under SKIP_DIRS, dot-dirs,
+        SKIP_RELPATHS, and gitignored names are legitimately unscanned — no WARN."""
         with tempfile.TemporaryDirectory() as d:
             os.makedirs(os.path.join(d, "real"))
             _write(d, "real/x.md", "# x\n")
@@ -2351,6 +2351,8 @@ class TestSymlinkedDirs(unittest.TestCase):
             os.symlink(os.path.join(d, "real"), os.path.join(d, ".claude", "skills"))
             os.makedirs(os.path.join(d, "tests"))
             os.symlink(os.path.join(d, "real"), os.path.join(d, "tests", "fixtures"))
+            os.makedirs(os.path.join(d, "__pycache__"))
+            os.symlink(os.path.join(d, "real"), os.path.join(d, "__pycache__", "cached"))
             os.symlink(os.path.join(d, "real"), os.path.join(d, "ignored-link"))
             self.assertEqual(validate.check_symlinked_dirs(d), [])
 
