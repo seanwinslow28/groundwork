@@ -2365,5 +2365,273 @@ class TestSymlinkedDirs(unittest.TestCase):
                                 for f in validate.validate(d)))
 
 
+PROPOSAL_OK = """---
+target: skills/onboarding-orchestration/SKILL.md
+blast_radius: escalating
+reason: Tighten the description so it stops overlapping the offboarding skill
+evidence:
+  - memory/onboarding-baseline.md
+status: pending
+---
+# Proposal: sharpen onboarding description
+
+## Diff
+(elided)
+
+## Why
+The two descriptions overlap and misroute selection.
+"""
+
+
+class TestProposals(unittest.TestCase):
+    def _prop(self, d, text=PROPOSAL_OK, name="p1.md"):
+        _write(d, "proposals/%s" % name, text)
+        _write(d, "skills/onboarding-orchestration/SKILL.md", SKILL_OK)
+        _write(d, "memory/onboarding-baseline.md", MEM_OK)
+
+    def test_valid_proposal_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._prop(d)
+            self.assertEqual([f for f in validate.check_proposals(d) if f.level == "ERROR"], [])
+
+    def test_missing_target_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._prop(d, PROPOSAL_OK.replace("target: skills/onboarding-orchestration/SKILL.md\n", ""))
+            self.assertTrue(any(f.level == "ERROR" and "target" in f.message
+                                for f in validate.check_proposals(d)))
+
+    def test_target_outside_domain_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._prop(d, PROPOSAL_OK.replace("skills/onboarding-orchestration/SKILL.md",
+                                              "ontologies/people-hr/onboarding-orchestration.md"))
+            self.assertTrue(any(f.level == "ERROR" and "skill" in f.message.lower()
+                                for f in validate.check_proposals(d)))
+
+    def test_invalid_blast_radius_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._prop(d, PROPOSAL_OK.replace("blast_radius: escalating", "blast_radius: trivial"))
+            self.assertTrue(any(f.level == "ERROR" and "blast_radius" in f.message
+                                for f in validate.check_proposals(d)))
+
+    def test_rule_target_cannot_be_track1_body(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "proposals/p.md",
+                   PROPOSAL_OK.replace("skills/onboarding-orchestration/SKILL.md",
+                                       "governance/constitution/access.md")
+                   .replace("blast_radius: escalating", "blast_radius: track1-body"))
+            _write(d, "governance/constitution/access.md", RULE_OK)
+            self.assertTrue(any(f.level == "ERROR" and "never auto-apply" in f.message
+                                for f in validate.check_proposals(d)))
+
+    def test_rule_target_via_path_alias_cannot_be_track1_body(self):
+        # Codex 1.5d-i round 1: skills/../governance/... must not launder a
+        # rule into the skills/ bucket and dodge rules-never-auto-apply.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "proposals/p.md",
+                   PROPOSAL_OK.replace("skills/onboarding-orchestration/SKILL.md",
+                                       "skills/../governance/constitution/access.md")
+                   .replace("blast_radius: escalating", "blast_radius: track1-body"))
+            _write(d, "governance/constitution/access.md", RULE_OK)
+            self.assertTrue(any(f.level == "ERROR" and "never auto-apply" in f.message
+                                for f in validate.check_proposals(d)))
+
+    def test_non_scalar_status_errors(self):
+        # Codex 1.5d-i round 1: a list-valued status must not slip past the
+        # pending-only lifecycle check (fail closed, not fail open).
+        with tempfile.TemporaryDirectory() as d:
+            self._prop(d, PROPOSAL_OK.replace("status: pending", "status:\n  - applied"))
+            self.assertTrue(any(f.level == "ERROR" and "pending-only" in f.message
+                                for f in validate.check_proposals(d)))
+
+    def test_symlinked_target_cannot_launder_rule(self):
+        # Codex 1.5d-i round 2: a symlink named SKILL.md pointing at a rule
+        # must classify by where it RESOLVES, not how it is spelled.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/constitution/access.md", RULE_OK)
+            os.makedirs(os.path.join(d, "skills", "onboarding-orchestration"))
+            os.symlink(os.path.join(d, "governance", "constitution", "access.md"),
+                       os.path.join(d, "skills", "onboarding-orchestration", "SKILL.md"))
+            _write(d, "proposals/p.md",
+                   PROPOSAL_OK.replace("blast_radius: escalating", "blast_radius: track1-body"))
+            _write(d, "memory/onboarding-baseline.md", MEM_OK)
+            findings = validate.check_proposals(d)
+            self.assertTrue(any(f.level == "ERROR" and "resolves outside" in f.message
+                                for f in findings))
+            self.assertTrue(any(f.level == "ERROR" and "never auto-apply" in f.message
+                                for f in findings))
+
+    def test_track1_body_requires_skill_md_target(self):
+        # Codex 1.5d-i round 2: an Owner's Card under skills/ is not the
+        # SKILL.md body — track1-body on it is a contradiction.
+        with tempfile.TemporaryDirectory() as d:
+            self._prop(d, PROPOSAL_OK.replace("skills/onboarding-orchestration/SKILL.md",
+                                              "skills/onboarding-orchestration/owner-card.md")
+                       .replace("blast_radius: escalating", "blast_radius: track1-body"))
+            _write(d, "skills/onboarding-orchestration/owner-card.md", "# card\n")
+            self.assertTrue(any(f.level == "ERROR" and "SKILL.md" in f.message
+                                for f in validate.check_proposals(d)))
+
+    def test_empty_body_warns(self):
+        # Codex 1.5d-i round 2: the proposal file IS the review file — a
+        # frontmatter-only proposal (no Diff / Why) is incomplete.
+        with tempfile.TemporaryDirectory() as d:
+            fm_only = PROPOSAL_OK.split("\n---\n")[0] + "\n---\n"
+            self._prop(d, fm_only)
+            findings = validate.check_proposals(d)
+            self.assertTrue(any(f.level == "WARN" and "empty body" in f.message for f in findings))
+            self.assertFalse(any(f.level == "ERROR" for f in findings))
+
+    def test_multiline_comment_body_warns(self):
+        # Codex 1.5d-i round 3: a body that is only a MULTILINE HTML comment
+        # (opener/closer on separate lines) is still empty.
+        with tempfile.TemporaryDirectory() as d:
+            fm_only = PROPOSAL_OK.split("\n---\n")[0] + "\n---\n"
+            self._prop(d, fm_only + "<!--\nnot proposed yet\n-->\n")
+            self.assertTrue(any(f.level == "WARN" and "empty body" in f.message
+                                for f in validate.check_proposals(d)))
+
+    def test_unterminated_comment_body_warns(self):
+        # Codex 1.5d-i round 4: an unterminated <!-- opener hides everything
+        # after it — the body is still empty.
+        with tempfile.TemporaryDirectory() as d:
+            fm_only = PROPOSAL_OK.split("\n---\n")[0] + "\n---\n"
+            self._prop(d, fm_only + "<!--\nnot proposed yet\n")
+            self.assertTrue(any(f.level == "WARN" and "empty body" in f.message
+                                for f in validate.check_proposals(d)))
+
+    def test_missing_diff_section_warns(self):
+        # Codex 1.5d-i round 4: #17 completeness includes the diff itself —
+        # prose with no '## Diff' content is incomplete.
+        with tempfile.TemporaryDirectory() as d:
+            fm_only = PROPOSAL_OK.split("\n---\n")[0] + "\n---\n"
+            self._prop(d, fm_only + "## Why\nThe two descriptions overlap.\n")
+            findings = validate.check_proposals(d)
+            self.assertTrue(any(f.level == "WARN" and "Diff" in f.message for f in findings))
+            self.assertFalse(any(f.level == "ERROR" for f in findings))
+
+    def test_empty_diff_section_warns(self):
+        # Codex 1.5d-i round 4: a bare '## Diff' heading with no content is
+        # not a carried diff.
+        with tempfile.TemporaryDirectory() as d:
+            fm_only = PROPOSAL_OK.split("\n---\n")[0] + "\n---\n"
+            self._prop(d, fm_only + "## Diff\n\n## Why\nThe two descriptions overlap.\n")
+            self.assertTrue(any(f.level == "WARN" and "Diff" in f.message
+                                for f in validate.check_proposals(d)))
+
+    def test_list_reason_counts_as_incomplete(self):
+        # Codex 1.5d-i round 2: a list-valued reason is not the one scalar
+        # line the schema asks for — still incomplete.
+        with tempfile.TemporaryDirectory() as d:
+            self._prop(d, PROPOSAL_OK.replace(
+                "reason: Tighten the description so it stops overlapping the offboarding skill",
+                "reason:\n  - because"))
+            findings = validate.check_proposals(d)
+            self.assertTrue(any(f.level == "WARN" and "reason" in f.message for f in findings))
+            self.assertFalse(any(f.level == "ERROR" for f in findings))
+
+    def test_non_pending_status_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._prop(d, PROPOSAL_OK.replace("status: pending", "status: applied"))
+            self.assertTrue(any(f.level == "ERROR" and "pending-only" in f.message
+                                for f in validate.check_proposals(d)))
+
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0,
+                     "root ignores directory permissions")
+    def test_unreadable_proposals_dir_fails_closed(self):
+        # Codex 1.5d-i round 5: an unreadable proposals/ must ERROR, not crash.
+        with tempfile.TemporaryDirectory() as d:
+            pdir = os.path.join(d, "proposals")
+            os.makedirs(pdir)
+            os.chmod(pdir, 0)
+            try:
+                findings = validate.check_proposals(d)
+            finally:
+                os.chmod(pdir, 0o755)
+            self.assertTrue(any(f.level == "ERROR" and "fail closed" in f.message
+                                for f in findings))
+
+    def test_incomplete_proposal_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._prop(d, PROPOSAL_OK.replace("reason: Tighten the description so it stops overlapping the offboarding skill\n", ""))
+            findings = validate.check_proposals(d)
+            self.assertTrue(any(f.level == "WARN" and "working note" in f.message for f in findings))
+            self.assertFalse(any(f.level == "ERROR" and "reason" in f.message for f in findings))
+
+
+class TestChangelog(unittest.TestCase):
+    def test_empty_changelog_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/changelog.md", "# Governance changelog\n\n## Entries\n")
+            self.assertEqual(validate.check_changelog(d), [])
+
+    def test_valid_entry_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/changelog.md",
+                   "# Governance changelog\n\n## Entries\n\n"
+                   "- 2026-07-26 | skills/onboarding-orchestration/SKILL.md | trimmed wording | scribe | a1b2c3d\n")
+            self.assertEqual([f for f in validate.check_changelog(d) if f.level == "ERROR"], [])
+            self.assertEqual(validate.check_changelog(d), [])
+
+    def test_malformed_entry_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/changelog.md",
+                   "# Governance changelog\n\n## Entries\n\n- oops not a real entry\n")
+            self.assertTrue(any(f.level == "WARN" for f in validate.check_changelog(d)))
+
+    def test_bad_date_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/changelog.md",
+                   "# Governance changelog\n\n## Entries\n\n"
+                   "- last-tuesday | skills/x/SKILL.md | gist | agent | a1b2c3d\n")
+            self.assertTrue(any(f.level == "WARN" and "date" in f.message for f in validate.check_changelog(d)))
+
+    def test_blank_gist_or_agent_warns(self):
+        # Codex 1.5d-i round 1: five pipes with empty gist/agent fields is
+        # not a well-formed entry.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/changelog.md",
+                   "# Governance changelog\n\n## Entries\n\n"
+                   "- 2026-07-26 | skills/x/SKILL.md | | | a1b2c3d\n")
+            self.assertTrue(any(f.level == "WARN" and "malformed changelog entry" in f.message
+                                for f in validate.check_changelog(d)))
+
+    def test_skill_path_alias_warns(self):
+        # Codex 1.5d-i round 1: skills/../governance/... is not a skills/ path.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/changelog.md",
+                   "# Governance changelog\n\n## Entries\n\n"
+                   "- 2026-07-26 | skills/../governance/changelog.md | gist | agent | a1b2c3d\n")
+            self.assertTrue(any(f.level == "WARN" and "skills/" in f.message
+                                for f in validate.check_changelog(d)))
+
+    def test_non_skill_md_path_warns(self):
+        # Codex 1.5d-i round 2: auto-apply is body-only SKILL.md edits — a
+        # card path under skills/ is not a valid changelog subject.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/changelog.md",
+                   "# Governance changelog\n\n## Entries\n\n"
+                   "- 2026-07-26 | skills/onboarding-orchestration/owner-card.md | gist | agent | a1b2c3d\n")
+            self.assertTrue(any(f.level == "WARN" and "SKILL.md" in f.message
+                                for f in validate.check_changelog(d)))
+
+    def test_symlinked_skill_path_warns(self):
+        # Codex 1.5d-i round 2: symlink parity with check_proposals — a
+        # skills/ path resolving elsewhere in the tree is an alias.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/constitution/access.md", "# rule\n")
+            os.makedirs(os.path.join(d, "skills", "onboarding-orchestration"))
+            os.symlink(os.path.join(d, "governance", "constitution", "access.md"),
+                       os.path.join(d, "skills", "onboarding-orchestration", "SKILL.md"))
+            _write(d, "governance/changelog.md",
+                   "# Governance changelog\n\n## Entries\n\n"
+                   "- 2026-07-26 | skills/onboarding-orchestration/SKILL.md | gist | agent | a1b2c3d\n")
+            self.assertTrue(any(f.level == "WARN" and "alias" in f.message
+                                for f in validate.check_changelog(d)))
+
+    def test_no_changelog_is_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(validate.check_changelog(d), [])
+
+
 if __name__ == "__main__":
     unittest.main()
