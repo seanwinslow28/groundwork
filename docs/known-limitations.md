@@ -31,3 +31,32 @@ Honest limits of the current build. This file grows as the product does (brief �
 - **The gate is not installed in this repo.** It is an artifact shipped for company
   repos; whether groundwork governs its own maintenance agents with it is an open
   question, not an oversight.
+
+## Governance — the consent gate and its tripwire
+
+- **A stateless validator cannot prove a human reviewed anything.** `validate --diff <base>`
+  is a **tripwire**, not the teeth. It can prove that an escalating change is accompanied by
+  a pending proposal whose *declared* blast radius matches what the diff *actually* touches —
+  it cannot tell a maintainer-typed `approved_by` from an agent-forged one. The real
+  enforcement is the **commit bit** (#18): only the git-capable maintainer can land a change
+  on the main line; agents only propose. The guarantee is therefore "no unreviewed escalating
+  change lands *as long as the commit bit stays with a human who runs the validator*" — a
+  permissions convention, not a cryptographic proof.
+- **The tripwire only governs pinned content.** It fires on files under a directory carrying a
+  `groundwork.pin` (#21) — i.e. generated company content. The groundwork engine repo is
+  pin-less by design, so its own `skills/` and `governance/constitution/` exemplars are not
+  governed by it. Whether groundwork governs its own maintenance with its own consent gate is
+  the same open question as the hook set above, not an oversight.
+- **A deleted rule or skill is a WARN, not an ERROR.** Retirement is legitimate (rules carry
+  `sunset`, cards carry `retirement_condition`) and it is escalating — but a proposal's
+  `target` must be an existing file, so a deletion can never be traced to one. Making it an
+  ERROR would build a gate nothing could clear. The honest record of a deletion is the
+  maintainer's consent commit.
+- **A missing changelog line is a WARN, not an ERROR.** The validator cannot distinguish an
+  agent's auto-apply from the maintainer editing their own skill body. ERRORing would
+  false-positive on ordinary work and fill the changelog with non-auto-applies, destroying the
+  one-glance property that justifies conceding pre-approval on track-1 (#17).
+- **Changelog rotation is not supported in V1.** The append-only check compares against the
+  base version, so archiving or rotating `governance/changelog.md` reads as a rewrite. #17
+  left rotation cadence as a build-phase detail; it lands with a documented rotation
+  convention, not before.

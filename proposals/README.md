@@ -51,3 +51,19 @@ graduates into a proposed skill/rule change.
 GitHub **draft PR** → `proposal/*` **branch-merge** (Cursor / GitLab / local git) →
 self-attested **`approved_by` + `approved_at`** on the committed file (the weakest rung).
 The file is canonical; each rung is a way of reviewing it.
+
+## What the validator enforces (`validate --diff <base>`)
+
+At PR time the validator classifies every changed skill and rule under a governed root
+(a directory carrying a `groundwork.pin`) and checks the **declaration against the diff**:
+
+- An **escalating** change with **no pending proposal** → ERROR.
+- A pending proposal declaring **`track1-body`** while the diff actually touches a rule, a
+  track-2 skill, frontmatter, or the Owner's Card → ERROR (**declared-vs-actual mismatch** —
+  this is what stops a rule edit being smuggled under a track-1 label).
+- A **track-1 body-only** change with no newly appended changelog line → WARN (an agent
+  auto-apply must log its line; a maintainer's own edit needs none).
+- Any edit, reorder, or removal of an existing `governance/changelog.md` entry → ERROR.
+
+The tripwire cannot prove a human truly reviewed the change — the commit bit does that.
+See [docs/known-limitations.md](../docs/known-limitations.md).

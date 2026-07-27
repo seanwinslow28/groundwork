@@ -2633,5 +2633,562 @@ class TestChangelog(unittest.TestCase):
             self.assertEqual(validate.check_changelog(d), [])
 
 
+SKILL_T1 = """---
+name: weekly-digest
+description: Summarize the week's open threads for the team channel
+action_class: read-only
+provisioned: no
+ontology: ontologies/people-hr/onboarding-orchestration.md
+---
+# Weekly digest
+
+Collect the week's open threads and summarize them.
+"""
+
+
+class TestGovernedClassify(unittest.TestCase):
+    def test_rule_paths_are_governed(self):
+        self.assertEqual(validate._governed_class("governance/constitution/access.md"), "rule")
+        self.assertEqual(validate._governed_class("governance/constitution/sub/access.md"), "rule")
+
+    def test_skill_md_and_package_files(self):
+        self.assertEqual(validate._governed_class("skills/weekly-digest/SKILL.md"), "skill-md")
+        self.assertEqual(validate._governed_class("skills/weekly-digest/owner-card.md"), "skill-other")
+        self.assertEqual(validate._governed_class("skills/weekly-digest/sub/SKILL.md"), "skill-other")
+
+    def test_ungoverned_paths(self):
+        self.assertIsNone(validate._governed_class("skills/work-package-spec.md"))
+        self.assertIsNone(validate._governed_class("governance/changelog.md"))
+        self.assertIsNone(validate._governed_class("memory/onboarding-baseline.md"))
+        self.assertIsNone(validate._governed_class("README.md"))
+
+    def test_any_rule_change_escalates(self):
+        r, _d = validate.classify_governed_change("modified", "rule", RULE_OK, RULE_OK + "\nmore\n")
+        self.assertEqual(r, "escalating")
+
+    def test_owner_card_change_escalates(self):
+        r, _d = validate.classify_governed_change("modified", "skill-other", CARD_OK, CARD_OK + "\nx\n")
+        self.assertEqual(r, "escalating")
+
+    def test_added_skill_escalates(self):
+        r, _d = validate.classify_governed_change("added", "skill-md", None, SKILL_T1)
+        self.assertEqual(r, "escalating")
+
+    def test_track1_body_only_change(self):
+        new = SKILL_T1.replace("Collect the week's open threads and summarize them.",
+                               "Collect the week's open threads, summarize them, and note blockers.")
+        r, _d = validate.classify_governed_change("modified", "skill-md", SKILL_T1, new)
+        self.assertEqual(r, "track1-body")
+
+    def test_track2_body_only_change_escalates(self):
+        new = SKILL_OK.replace("# Onboarding orchestration", "# Onboarding orchestration\n\nextra line")
+        r, d = validate.classify_governed_change("modified", "skill-md", SKILL_OK, new)
+        self.assertEqual(r, "escalating")
+        self.assertIn("track-2", d)
+
+    def test_description_change_escalates(self):
+        new = SKILL_T1.replace("Summarize the week's open threads for the team channel",
+                               "Summarize everything anyone said this week")
+        r, d = validate.classify_governed_change("modified", "skill-md", SKILL_T1, new)
+        self.assertEqual(r, "escalating")
+        self.assertIn("frontmatter", d)
+
+    def test_action_class_change_escalates(self):
+        new = SKILL_T1.replace("action_class: read-only", "action_class: high-risk")
+        r, _d = validate.classify_governed_change("modified", "skill-md", SKILL_T1, new)
+        self.assertEqual(r, "escalating")
+
+    def test_unparseable_new_frontmatter_fails_closed(self):
+        new = SKILL_T1.replace("provisioned: no", "  indented: bad")
+        r, d = validate.classify_governed_change("modified", "skill-md", SKILL_T1, new)
+        self.assertEqual(r, "escalating")
+        self.assertIn("unparseable", d)
+
+    def test_missing_action_class_fails_closed(self):
+        base = SKILL_T1.replace("action_class: read-only\n", "")
+        new = base.replace("Collect the week's open threads and summarize them.", "Different body.")
+        r, d = validate.classify_governed_change("modified", "skill-md", base, new)
+        self.assertEqual(r, "escalating")
+        self.assertIn("action_class", d)
+
+    def test_invalid_action_class_fails_closed(self):
+        base = SKILL_T1.replace("action_class: read-only", "action_class: mostly-harmless")
+        new = base.replace("Collect the week's open threads and summarize them.", "Different body.")
+        r, _d = validate.classify_governed_change("modified", "skill-md", base, new)
+        self.assertEqual(r, "escalating")
+
+    def test_unchanged_file_classifies_as_nothing(self):
+        r, d = validate.classify_governed_change("modified", "skill-md", SKILL_T1, SKILL_T1)
+        self.assertIsNone(r)
+        self.assertIsNone(d)
+
+    def test_whitespace_and_crlf_only_change_is_not_a_change(self):
+        new = SKILL_T1.replace("\n", "\r\n") + "\n\n"
+        r, _d = validate.classify_governed_change("modified", "skill-md", SKILL_T1, new)
+        self.assertIsNone(r)
+
+    def test_frontmatter_removed_entirely_escalates(self):
+        new = SKILL_T1.split("---\n", 2)[2]
+        r, _d = validate.classify_governed_change("modified", "skill-md", SKILL_T1, new)
+        self.assertEqual(r, "escalating")
+
+    def test_unchanged_rule_classifies_as_nothing(self):
+        # Regression (plan bug, fixed in-session): the caller's candidate set is
+        # the whole base tree, so an UNTOUCHED rule must not read as escalating.
+        r, d = validate.classify_governed_change("modified", "rule", RULE_OK, RULE_OK)
+        self.assertIsNone(r)
+        self.assertIsNone(d)
+
+    def test_unchanged_owner_card_classifies_as_nothing(self):
+        r, d = validate.classify_governed_change("modified", "skill-other", CARD_OK, CARD_OK)
+        self.assertIsNone(r)
+        self.assertIsNone(d)
+
+    def test_crlf_only_rule_change_is_not_a_change(self):
+        # A CRLF base blob against a text-mode working read is not a rewrite.
+        r, _d = validate.classify_governed_change("modified", "rule",
+                                                  RULE_OK.replace("\n", "\r\n"), RULE_OK)
+        self.assertIsNone(r)
+
+
+class TestChangelogAppendOnly(unittest.TestCase):
+    BASE = ("# Governance changelog\n\n## Entries\n\n"
+            "- 2026-07-26 | skills/a/SKILL.md | one | scribe | a1b2c3d\n")
+
+    def test_append_is_allowed(self):
+        new = self.BASE + "- 2026-07-27 | skills/a/SKILL.md | two | scribe | b2c3d4e\n"
+        self.assertTrue(validate._changelog_append_only(self.BASE, new))
+
+    def test_identical_is_allowed(self):
+        self.assertTrue(validate._changelog_append_only(self.BASE, self.BASE))
+
+    def test_edited_entry_rejected(self):
+        new = self.BASE.replace("one", "something else entirely")
+        self.assertFalse(validate._changelog_append_only(self.BASE, new))
+
+    def test_removed_entry_rejected(self):
+        new = "# Governance changelog\n\n## Entries\n\n"
+        self.assertFalse(validate._changelog_append_only(self.BASE, new))
+
+    def test_reordered_entries_rejected(self):
+        base = self.BASE + "- 2026-07-27 | skills/a/SKILL.md | two | scribe | b2c3d4e\n"
+        new = ("# Governance changelog\n\n## Entries\n\n"
+               "- 2026-07-27 | skills/a/SKILL.md | two | scribe | b2c3d4e\n"
+               "- 2026-07-26 | skills/a/SKILL.md | one | scribe | a1b2c3d\n")
+        self.assertFalse(validate._changelog_append_only(base, new))
+
+    def test_prepended_entry_rejected(self):
+        new = ("# Governance changelog\n\n## Entries\n\n"
+               "- 2026-07-20 | skills/a/SKILL.md | zero | scribe | 0a1b2c3\n"
+               "- 2026-07-26 | skills/a/SKILL.md | one | scribe | a1b2c3d\n")
+        self.assertFalse(validate._changelog_append_only(self.BASE, new))
+
+    def test_crlf_base_is_not_a_phantom_rewrite(self):
+        self.assertTrue(validate._changelog_append_only(self.BASE.replace("\n", "\r\n"), self.BASE))
+
+
+PIN_OK = "---\nschema_version: 1\ngenerated_by_commit: abc1234\n---\n"
+
+CHANGELOG_OK = ("# Governance changelog\n\n## Entries\n\n"
+                "<!-- appended by the auto-apply track; none yet -->\n")
+
+
+def _proposal(target, radius="escalating"):
+    return ("---\ntarget: %s\nblast_radius: %s\n"
+            "reason: The description overlaps another skill and misroutes selection\n"
+            "evidence:\n  - memory/onboarding-baseline.md\nstatus: pending\n---\n"
+            "# Proposal\n\n## Diff\n\n    -old\n    +new\n\n## Why\n\nBecause.\n"
+            % (target, radius))
+
+
+class TestBlastRadiusDiff(unittest.TestCase):
+    """The #18 tripwire. Scoped to governed roots — a directory carrying a #21
+    groundwork.pin — so every fixture repo plants one."""
+
+    def _repo(self, d, pin_at=""):
+        _git(d, "init", "-q")
+        _git(d, "config", "user.email", "t@t.t")
+        _git(d, "config", "user.name", "t")
+        pre = (pin_at + "/") if pin_at else ""
+        _write(d, pre + "groundwork.pin", PIN_OK)
+        _write(d, pre + "skills/weekly-digest/SKILL.md", SKILL_T1)
+        _write(d, pre + "skills/onboarding-orchestration/SKILL.md", SKILL_OK)
+        _write(d, pre + "governance/constitution/access.md", RULE_OK)
+        _write(d, pre + "governance/changelog.md", CHANGELOG_OK)
+        _write(d, pre + "memory/onboarding-baseline.md", MEM_OK)
+        _git(d, "add", "-A")
+        _git(d, "commit", "-qm", "base")
+        return pre
+
+    def test_unchanged_repo_is_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            self.assertEqual(validate.blast_radius_diff_findings(d, "HEAD"), [])
+
+    def test_no_pin_means_dormant(self):
+        # The engine repo carries no pin: the tripwire must not fire at all.
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "governance/constitution/access.md", RULE_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "base")
+            _write(d, "governance/constitution/access.md", RULE_OK + "\nAppended.\n")
+            self.assertEqual(validate.blast_radius_diff_findings(d, "HEAD"), [])
+
+    def test_rule_edit_without_proposal_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "governance/constitution/access.md", RULE_OK + "\nAppended clause.\n")
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "no pending proposal" in f.message
+                                and "access.md" in f.path for f in findings))
+
+    def test_rule_edit_with_escalating_proposal_is_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "governance/constitution/access.md", RULE_OK + "\nAppended clause.\n")
+            _write(d, "proposals/p1.md", _proposal("governance/constitution/access.md"))
+            self.assertEqual([f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                              if f.level == "ERROR"], [])
+
+    def test_declared_vs_actual_mismatch_errors(self):
+        # The headline #18 case: a rule edit smuggled under a track1-body label.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "governance/constitution/access.md", RULE_OK + "\nAppended clause.\n")
+            _write(d, "proposals/p1.md",
+                   _proposal("governance/constitution/access.md", "track1-body"))
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "declared-vs-actual" in f.message
+                                for f in findings))
+
+    def test_track2_body_edit_needs_a_proposal(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "skills/onboarding-orchestration/SKILL.md",
+                   SKILL_OK.replace("# Onboarding orchestration",
+                                    "# Onboarding orchestration\n\nAn added paragraph."))
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "no pending proposal" in f.message
+                                for f in findings))
+
+    def test_description_edit_under_track1_label_is_a_mismatch(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "skills/weekly-digest/SKILL.md",
+                   SKILL_T1.replace("Summarize the week's open threads for the team channel",
+                                    "Summarize anything at all"))
+            _write(d, "proposals/p1.md",
+                   _proposal("skills/weekly-digest/SKILL.md", "track1-body"))
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "declared-vs-actual" in f.message
+                                for f in findings))
+
+    def test_owner_card_edit_escalates(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "skills/weekly-digest/owner-card.md", CARD_OK)
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "owner-card.md" in f.path
+                                for f in findings))
+
+    def test_track1_body_edit_without_changelog_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "skills/weekly-digest/SKILL.md",
+                   SKILL_T1.replace("Collect the week's open threads and summarize them.",
+                                    "Collect the week's open threads and note blockers."))
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertEqual([f for f in findings if f.level == "ERROR"], [])
+            self.assertTrue(any(f.level == "WARN" and "changelog" in f.message for f in findings))
+
+    def test_track1_body_edit_with_appended_changelog_line_is_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "skills/weekly-digest/SKILL.md",
+                   SKILL_T1.replace("Collect the week's open threads and summarize them.",
+                                    "Collect the week's open threads and note blockers."))
+            _write(d, "governance/changelog.md", CHANGELOG_OK +
+                   "- 2026-07-26 | skills/weekly-digest/SKILL.md | note blockers | scribe | a1b2c3d\n")
+            self.assertEqual(validate.blast_radius_diff_findings(d, "HEAD"), [])
+
+    def test_changelog_rewrite_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "governance/changelog.md",
+                   CHANGELOG_OK.replace("appended by the auto-apply track", "rewritten"))
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "append-only" in f.message
+                                for f in findings))
+
+    def test_changelog_deletion_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            os.remove(os.path.join(d, "governance", "changelog.md"))
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "changelog" in f.message
+                                for f in findings))
+
+    def test_new_rule_file_escalates(self):
+        # git diff never lists an untracked file; the working-tree union must.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "governance/constitution/new-rule.md", RULE_OK)
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "new-rule.md" in f.path
+                                for f in findings))
+
+    def test_deleted_rule_warns_not_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            os.remove(os.path.join(d, "governance", "constitution", "access.md"))
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertEqual([f for f in findings if f.level == "ERROR"], [])
+            self.assertTrue(any(f.level == "WARN" and "deleted" in f.message for f in findings))
+
+    def test_removing_the_pin_does_not_ungovern_the_change(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            os.remove(os.path.join(d, "groundwork.pin"))
+            _write(d, "governance/constitution/access.md", RULE_OK + "\nAppended clause.\n")
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "no pending proposal" in f.message
+                                for f in findings))
+
+    def test_proposal_target_escaping_the_governed_root_does_not_match(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d, pin_at="company")
+            _write(d, "company/governance/constitution/access.md", RULE_OK + "\nAppended.\n")
+            _write(d, "company/proposals/p1.md",
+                   _proposal("../governance/constitution/access.md"))
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "no pending proposal" in f.message
+                                for f in findings))
+
+    def test_nested_governed_root_is_scoped(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d, pin_at="company")
+            _write(d, "company/governance/constitution/access.md", RULE_OK + "\nAppended.\n")
+            _write(d, "company/proposals/p1.md",
+                   _proposal("governance/constitution/access.md"))
+            self.assertEqual([f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                              if f.level == "ERROR"], [])
+
+    def test_symlinked_rule_fails_closed(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            p = os.path.join(d, "governance", "constitution", "access.md")
+            os.remove(p)
+            os.symlink(os.path.join(d, "memory", "onboarding-baseline.md"), p)
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "symlink" in f.message for f in findings))
+
+    def test_non_utf8_working_file_fails_closed(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write_bytes(d, "governance/constitution/access.md", b"---\nowner: x\n---\n\xff\xfe bad\n")
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" for f in findings))
+
+    def test_unknown_base_ref_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            findings = validate.blast_radius_diff_findings(d, "no-such-ref")
+            self.assertTrue(any(f.level == "ERROR" and "base ref" in f.message for f in findings))
+
+    def test_workbench_trees_are_out_of_scope(self):
+        # tests/ and docs/superpowers/ are the validator's own harness.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "tests/fixtures/governance/constitution/x.md", RULE_OK)
+            self.assertEqual([f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                              if "tests/" in f.path], [])
+
+    def test_cli_wires_the_tripwire(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "governance/constitution/access.md", RULE_OK + "\nAppended clause.\n")
+            self.assertEqual(validate.main(["validate.py", d, "--diff", "HEAD"]), 1)
+
+    # --- Codex round-1 regressions ---
+
+    def test_nested_pin_cannot_shadow_the_governing_root(self):
+        # Codex r1: a pin planted INSIDE a skill package makes the innermost
+        # root's relative path unclassifiable; the outer root must still govern.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "skills/weekly-digest/groundwork.pin", PIN_OK)
+            _write(d, "skills/weekly-digest/SKILL.md",
+                   SKILL_T1.replace("Summarize the week's open threads for the team channel",
+                                    "Summarize anything at all"))
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "no pending proposal" in f.message
+                                and "SKILL.md" in f.path for f in findings))
+
+    def test_case_variant_rule_dir_still_governed(self):
+        # Codex r1: Governance/ must not launder a rule out of the routing
+        # domain (on a case-folding filesystem it IS governance/).
+        self.assertEqual(validate._governed_class("Governance/Constitution/access.md"), "rule")
+        self.assertEqual(validate._governed_class("SKILLS/x/helper.md"), "skill-other")
+        # Only the canonical SKILL.md spelling is auto-apply-eligible.
+        self.assertEqual(validate._governed_class("skills/x/Skill.md"), "skill-other")
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "Governance/constitution/evil.md", RULE_OK)
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "evil.md" in f.path for f in findings))
+
+    def test_symlinked_proposal_file_does_not_authorize(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "governance/constitution/access.md", RULE_OK + "\nAppended clause.\n")
+            _write(d, "elsewhere.md", _proposal("governance/constitution/access.md"))
+            os.makedirs(os.path.join(d, "proposals"))
+            os.symlink(os.path.join(d, "elsewhere.md"), os.path.join(d, "proposals", "p1.md"))
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "no pending proposal" in f.message
+                                for f in findings))
+
+    def test_unreadable_ancestor_dir_fails_closed_not_deletion_warn(self):
+        con = None
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                self._repo(d)
+                con = os.path.join(d, "governance", "constitution")
+                os.chmod(con, 0o000)
+                findings = validate.blast_radius_diff_findings(d, "HEAD")
+                os.chmod(con, 0o755)
+                con = None
+                self.assertTrue(any(f.level == "ERROR" and "unreadable" in f.message
+                                    for f in findings))
+                self.assertFalse(any(f.level == "WARN" and "deleted" in f.message
+                                     for f in findings))
+        finally:
+            if con is not None:
+                os.chmod(con, 0o755)
+
+    def test_new_rule_hidden_in_unreadable_dir_errors(self):
+        sub = None
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                self._repo(d)
+                sub = os.path.join(d, "governance", "constitution", "sub")
+                os.makedirs(sub)
+                _write(d, "governance/constitution/sub/new-rule.md", RULE_OK)
+                os.chmod(sub, 0o000)
+                findings = validate.blast_radius_diff_findings(d, "HEAD")
+                os.chmod(sub, 0o755)
+                sub = None
+                self.assertTrue(any(f.level == "ERROR" and "cannot scan" in f.message
+                                    for f in findings))
+        finally:
+            if sub is not None:
+                os.chmod(sub, 0o755)
+
+    def test_fatal_context_error_printed_once(self):
+        # Codex r1: both --diff modes resolve the context; the identical fatal
+        # ERROR must reach the report once.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                validate.main(["validate.py", d, "--diff", "no-such-ref"])
+            self.assertEqual(buf.getvalue().count("base ref not found"), 1)
+
+    # --- Codex round-2 regressions ---
+
+    def test_inner_pin_cannot_downgrade_an_outer_rule(self):
+        # Codex r2: a pin planted at governance/constitution/ reshapes the
+        # inner path of a nested rule into skills/x/SKILL.md (track-1 shaped).
+        # The change must still be licensed under the OUTER root, where it is
+        # a rule — enforcement runs under every containing governed root.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "governance/constitution/skills/x/SKILL.md", SKILL_T1)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "nested rule")
+            _write(d, "governance/constitution/groundwork.pin", PIN_OK)
+            _write(d, "governance/constitution/skills/x/SKILL.md",
+                   SKILL_T1.replace("Collect the week's open threads and summarize them.",
+                                    "A quietly different body."))
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "no pending proposal" in f.message
+                                for f in findings))
+
+    def test_case_renamed_governed_root_still_governs(self):
+        # Codex r2: renaming pinned company/ to Company/ (and dropping the pin)
+        # must not walk the tree out of its governed root — containment
+        # casefolds, and the base pin still governs.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d, pin_at="company")
+            os.rename(os.path.join(d, "company"), os.path.join(d, "Company"))
+            os.remove(os.path.join(d, "Company", "groundwork.pin"))
+            _write(d, "Company/governance/constitution/access.md", RULE_OK + "\nAppended.\n")
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "no pending proposal" in f.message
+                                for f in findings))
+
+    # --- Codex round-3 regressions ---
+
+    def test_length_changing_casefold_rename_still_governs(self):
+        # Codex r3: ß casefolds to ss, so whole-string folding with an
+        # unfolded-length slice misaligns the inner path. Component-wise
+        # matching must still govern the renamed tree.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d, pin_at="straße")
+            _write(d, "STRASSE/governance/constitution/new.md", RULE_OK)
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "no pending proposal" in f.message
+                                for f in findings))
+
+    def test_nfd_variant_of_governed_root_still_governs(self):
+        # Codex r3: git reports NFC while a mac filesystem lists NFD; the two
+        # spellings of the same root must not fall out of containment.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d, pin_at="café")
+            _write(d, "cafe\u0301" + "/governance/constitution/new.md", RULE_OK)  # NFD on disk
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "no pending proposal" in f.message
+                                for f in findings))
+
+    def test_distinct_case_sibling_roots_do_not_cross_demand(self):
+        # Codex r3: on a case-sensitive filesystem, company/ and Company/ can
+        # be two REAL pinned roots. The exact-match root is authoritative —
+        # demanding the other root's proposal would be an unsatisfiable gate.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d, pin_at="company")
+            try:
+                os.makedirs(os.path.join(d, "Company"))
+            except FileExistsError:
+                self.skipTest("case-insensitive filesystem")
+            if os.path.samefile(os.path.join(d, "Company"), os.path.join(d, "company")):
+                self.skipTest("case-insensitive filesystem")
+            _write(d, "Company/groundwork.pin", PIN_OK)
+            _write(d, "Company/governance/constitution/access.md", RULE_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "sibling root")
+            _write(d, "Company/governance/constitution/access.md", RULE_OK + "\nAppended.\n")
+            _write(d, "Company/proposals/p1.md",
+                   _proposal("governance/constitution/access.md"))
+            self.assertEqual([f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                              if f.level == "ERROR"], [])
+
+    def test_git_launch_failure_is_a_finding_not_a_crash(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            real_run = validate.subprocess.run
+
+            def broken_run(*a, **k):
+                raise OSError("cannot spawn git")
+            validate.subprocess.run = broken_run
+            try:
+                findings = validate.blast_radius_diff_findings(d, "HEAD")
+            finally:
+                validate.subprocess.run = real_run
+            self.assertTrue(any(f.level == "ERROR" for f in findings))
+
+
 if __name__ == "__main__":
     unittest.main()

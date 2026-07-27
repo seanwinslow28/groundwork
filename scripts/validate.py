@@ -1436,6 +1436,96 @@ def check_changelog(root, ignore=()):
     return findings
 
 
+def _governed_class(rel):
+    """Classify a path (relative to a governed root) into #17's routing domain:
+    'rule' (any constitution file), 'skill-md' (a package's own SKILL.md),
+    'skill-other' (anything else inside a skill package — the Owner's Card and
+    every nested file), or None (not governed by the proposal routing at all).
+    Top-level docs under skills/ (e.g. skills/work-package-spec.md) are not part
+    of a package and are not governed.
+
+    Directory names match case-insensitively (Codex r1): on a case-folding
+    filesystem, Governance/ IS governance/, so exact-case matching would let a
+    case-rename launder a rule out of the routing domain. On a case-sensitive
+    filesystem the case-variant is a different path, and classifying it governed
+    merely escalates — the safe direction. Only the canonical SKILL.md spelling
+    is ever auto-apply-eligible; a case-variant lands on skill-other."""
+    parts = rel.split("/")
+    low = [p.casefold() for p in parts]
+    if len(parts) >= 3 and low[0] == "governance" and low[1] == "constitution" \
+            and low[-1].endswith(".md"):
+        return "rule"
+    if len(parts) >= 3 and low[0] == "skills":
+        if len(parts) == 3 and parts[2] == "SKILL.md":
+            return "skill-md"
+        return "skill-other"
+    return None
+
+
+def classify_governed_change(kind, cls, old_text, new_text):
+    """PURE #17 blast-radius classification of ONE changed governed file. `kind`
+    is 'added' or 'modified' (deletions are the caller's, see #18 note below);
+    `cls` comes from _governed_class. Returns (radius, detail) with radius in
+    BLAST_RADIUS, or (None, None) when nothing actually changed.
+
+    Reasoning to carry: 'track1-body' is the ONLY auto-apply-eligible verdict, so
+    every uncertain path must resolve to 'escalating'. A misclassification in that
+    direction costs a human review; the other direction lets an unreviewed change
+    land. Unparseable frontmatter, a missing or invalid action_class, a nested or
+    non-SKILL.md package file, a brand-new SKILL.md (its description is a new
+    selection surface) — all escalate."""
+    if kind == "modified":
+        # No-op first, for EVERY class: the caller's candidate set is the whole
+        # base tree, so an untouched rule must not read as an escalating change.
+        # Line endings are normalized (a CRLF base blob against a text-mode read
+        # is not a rewrite); anything beyond that is a change.
+        old_n = (old_text or "").replace("\r\n", "\n").replace("\r", "\n")
+        new_n = (new_text or "").replace("\r\n", "\n").replace("\r", "\n")
+        if old_n == new_n:
+            return None, None
+    if cls == "rule":
+        return "escalating", "a constitution rule (rules never auto-apply, #17)"
+    if cls == "skill-other":
+        return "escalating", "a skill-package file other than SKILL.md (Owner's Card / package content)"
+    if kind == "added":
+        return "escalating", "a new SKILL.md (its description is a new selection surface)"
+
+    old_fm, old_body, _old_parse = _frontmatter_and_body(old_text or "", "base")
+    new_fm, new_body, new_parse = _frontmatter_and_body(new_text or "", "new")
+    if any(f.level == "ERROR" for f in new_parse):
+        return "escalating", "unparseable SKILL.md frontmatter (cannot prove the change is body-only)"
+    if old_fm != new_fm:
+        return "escalating", "SKILL.md frontmatter (description / action class / governance fields)"
+
+    old_b = old_body.replace("\r\n", "\n").replace("\r", "\n").strip()
+    new_b = new_body.replace("\r\n", "\n").replace("\r", "\n").strip()
+    if old_b == new_b:
+        return None, None
+
+    # Frontmatter is identical here, so old and new action_class agree; read it
+    # once and require it to be a valid class before conceding track-1.
+    ac = new_fm.get("action_class")
+    if not isinstance(ac, str) or ac not in ACTION_CLASSES:
+        return "escalating", ("SKILL.md body of a skill with no valid action_class "
+                              "(cannot prove track-1)")
+    if ac in TRACK2_CLASSES:
+        return "escalating", "SKILL.md body of a track-2 (%s) skill" % ac
+    return "track1-body", "SKILL.md body of a track-1 (%s) skill" % ac
+
+
+def _changelog_append_only(old_text, new_text):
+    """PURE. #17's changelog is an append-only index: every line committed at base
+    must survive, in order, as the head of the new file. Trailing blank lines on
+    the base side are ignored (an append lands after them). Line endings are
+    normalized first so a CRLF base blob is not a phantom rewrite."""
+    def _lines(t):
+        return t.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    old_lines = _lines(old_text)
+    while old_lines and not old_lines[-1].strip():
+        old_lines.pop()
+    return _lines(new_text)[:len(old_lines)] == old_lines
+
+
 def validate(root):
     """Walk root, run every check, return a flat list[Finding]."""
     root = os.path.abspath(root)
@@ -1490,9 +1580,11 @@ def _committed_path_status(toplevel, parts, cache=None):
     (a symlinked memory folder or record must not stand in for the committed
     one). Names are NFC-normalized on both sides — git core.precomposeunicode
     reports NFC while a mac filesystem may list NFD, and that mismatch must
-    not fake a deletion. Returns 'ok', 'symlink', or 'missing'. Pass a dict as
-    `cache` to reuse directory listings across records. Check-then-open is not
-    atomic — a concurrent writer race is a documented non-goal
+    not fake a deletion. Returns 'ok', 'symlink', 'missing', or 'unreadable' —
+    an unlistable ancestor is NOT a deletion (Codex r1: conflating them would
+    route an unclassifiable change through the caller's deletion path). Pass a
+    dict as `cache` to reuse directory listings across records. Check-then-open
+    is not atomic — a concurrent writer race is a documented non-goal
     (docs/known-limitations.md)."""
     if cache is None:
         cache = {}
@@ -1504,7 +1596,9 @@ def _committed_path_status(toplevel, parts, cache=None):
             except OSError:
                 cache[p] = None
         entries = cache[p]
-        if entries is None or unicodedata.normalize("NFC", part) not in entries:
+        if entries is None:
+            return "unreadable"
+        if unicodedata.normalize("NFC", part) not in entries:
             return "missing"
         p = os.path.join(p, part)
         if os.path.islink(p):
@@ -1512,43 +1606,75 @@ def _committed_path_status(toplevel, parts, cache=None):
     return "ok" if os.path.isfile(p) else "missing"
 
 
-def memory_diff_findings(root, base):
-    """Compare memory records that existed at <base> (a git ref) against the
-    working tree. Scoped to memory folders under root. New records are fine;
-    deletions and immutable-field edits are ERRORs. Driven by the BASE file
-    list, so no working-tree skip can exempt a committed record."""
+def _git_diff_context(root, base):
+    """Resolve the git layout and the BASE file list once, with 1.4b's hardening:
+    byte-safe paths, canonical-casing scope prefix, a verified base ref, and a
+    NUL-separated ls-tree listing. Returns (ctx, findings); ctx is None exactly
+    when the findings are fatal. Shared by every --diff mode so the plumbing is
+    hardened in one place."""
     try:
         # bytes + os.fsdecode: survives locale-undecodable repo paths; and
         # --show-prefix gives root's repo-relative path in git's canonical
         # casing, so a case-variant invocation cannot blind the scope filter
         rp = subprocess.run(["git", "-C", root, "rev-parse", "--show-toplevel", "--show-prefix"],
                             capture_output=True, check=True).stdout
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return [Finding("ERROR", root, None, "--diff requires a git repository")]
+    except (subprocess.CalledProcessError, OSError):
+        return None, [Finding("ERROR", root, None, "--diff requires a git repository")]
     rp_lines = os.fsdecode(rp).splitlines()
     if len(rp_lines) != 2 or not os.path.isdir(rp_lines[0]):
         # a newline/CR inside the repo path mis-splits this output; a wrong
         # scope would fail open, so refuse instead
-        return [Finding("ERROR", root, None,
-                        "--diff could not resolve the repository layout (unsupported path)")]
+        return None, [Finding("ERROR", root, None,
+                              "--diff could not resolve the repository layout (unsupported path)")]
     toplevel = rp_lines[0]
     scope = rp_lines[1].strip("/") or "."
     try:
         subprocess.run(["git", "-C", toplevel, "rev-parse", "--verify", "--quiet",
                         "%s^{commit}" % base], capture_output=True, check=True)
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, OSError):
         # a typo'd base must not report a clean bill of health
-        return [Finding("ERROR", root, None, "--diff base ref not found: %s" % base)]
+        return None, [Finding("ERROR", root, None, "--diff base ref not found: %s" % base)]
     try:
         # -z: NUL-terminated, unquoted paths (immune to core.quotePath mangling
         # of non-ASCII names); os.fsdecode round-trips odd bytes losslessly
         raw = subprocess.run(["git", "-C", toplevel, "ls-tree", "-r", "--name-only", "-z", base],
                              capture_output=True, check=True).stdout
-    except subprocess.CalledProcessError:
-        return [Finding("ERROR", root, None, "--diff could not list the base tree for %s" % base)]
+    except (subprocess.CalledProcessError, OSError):
+        return None, [Finding("ERROR", root, None, "--diff could not list the base tree for %s" % base)]
+    return {"toplevel": toplevel, "scope": scope,
+            "base_files": [os.fsdecode(b) for b in raw.split(b"\0") if b]}, []
+
+
+def _git_show(toplevel, base, repo_path):
+    """The base version of one committed file as text, or None when it cannot be
+    read (fetch failure, a git launch error, or non-UTF-8). Callers treat None
+    as fail-closed: the base LIST says the file exists, so an unreadable base is
+    never 'new'."""
+    try:
+        show = subprocess.run(["git", "-C", toplevel, "show", "%s:%s" % (base, repo_path)],
+                              capture_output=True)
+    except OSError:
+        return None
+    if show.returncode != 0:
+        return None
+    try:
+        return show.stdout.decode("utf-8")
+    except UnicodeError:
+        return None
+
+
+def memory_diff_findings(root, base):
+    """Compare memory records that existed at <base> (a git ref) against the
+    working tree. Scoped to memory folders under root. New records are fine;
+    deletions and immutable-field edits are ERRORs. Driven by the BASE file
+    list, so no working-tree skip can exempt a committed record."""
+    ctx, ctx_findings = _git_diff_context(root, base)
+    if ctx is None:
+        return ctx_findings
+    toplevel, scope = ctx["toplevel"], ctx["scope"]
     findings = []
     listdir_cache = {}
-    for bf in (os.fsdecode(b) for b in raw.split(b"\0") if b):
+    for bf in ctx["base_files"]:
         if scope != "." and not bf.startswith(scope + "/"):
             continue
         parts = bf.split("/")
@@ -1564,23 +1690,22 @@ def memory_diff_findings(root, base):
             findings.append(Finding("ERROR", bf, None,
                                     "memory record is or sits behind a symlink (cannot verify immutability)"))
             continue
+        if status == "unreadable":
+            findings.append(Finding("ERROR", bf, None,
+                                    "cannot verify immutability: a directory on this record's path is "
+                                    "unreadable — fail closed"))
+            continue
         if status == "missing":
             findings.append(Finding("ERROR", bf, None,
                                     "memory record deleted (records are superseded, never deleted)"))
             continue
-        show = subprocess.run(["git", "-C", toplevel, "show", "%s:%s" % (base, bf)],
-                              capture_output=True)
-        if show.returncode != 0:
-            # the base LIST says it exists, so a fetch failure is never "new" —
-            # fail closed rather than silently passing
+        old = _git_show(toplevel, base, bf)
+        if old is None:
+            # the base LIST says it exists, so a fetch failure (or an
+            # undecodable blob) is never "new" — fail closed
             findings.append(Finding("ERROR", bf, None,
-                                    "--diff could not read the base version of this record"))
-            continue
-        try:
-            old = show.stdout.decode("utf-8")
-        except UnicodeError:
-            findings.append(Finding("ERROR", bf, None,
-                                    "cannot verify immutability: base version is not valid UTF-8"))
+                                    "cannot verify immutability: the base version of this record is "
+                                    "unreadable or not valid UTF-8"))
             continue
         try:
             with open(abspath, encoding="utf-8") as fh:
@@ -1590,6 +1715,336 @@ def memory_diff_findings(root, base):
                                     "cannot verify immutability: working-tree record is unreadable or not valid UTF-8"))
             continue
         findings += check_memory_diff(old, new, rel)
+    return findings
+
+
+def _has_symlink_component(root, rel):
+    """True when any component of root/rel is a symlink. A symlinked rule, skill,
+    or ancestor directory cannot be classified honestly (it can point one place
+    and be spelled another), so the caller fails closed."""
+    p = root
+    for part in rel.split("/"):
+        p = os.path.join(p, part)
+        if os.path.islink(p):
+            return True
+    return False
+
+
+def _walk_working_tree(root):
+    """iter_files' walk (same SKIP_DIRS / dot-dir / SKIP_RELPATHS pruning, and
+    deliberately NO .gitignore), but an unlistable directory becomes an ERROR
+    instead of a silent prune (Codex r1): a directory the scan cannot descend
+    into could hide a new governed file or a pin, and silence would fail open.
+    Returns (abspaths, findings)."""
+    files, findings = [], []
+
+    def onerror(err):
+        bad = getattr(err, "filename", None) or root
+        rel = os.path.relpath(bad, root).replace(os.sep, "/")
+        findings.append(Finding("ERROR", rel, None,
+                                "--diff cannot scan this directory (unreadable) — a governed "
+                                "change could hide here, so fail closed"))
+
+    for dirpath, dirnames, filenames in os.walk(root, onerror=onerror):
+        rel_dir = os.path.relpath(dirpath, root)
+        dirnames[:] = [d for d in dirnames
+                       if d not in SKIP_DIRS and not d.startswith(".")
+                       and os.path.normpath(os.path.join(rel_dir, d)) not in SKIP_RELPATHS]
+        for fn in filenames:
+            files.append(os.path.join(dirpath, fn))
+    return files, findings
+
+
+def _pin_dirs(root, base_files, scope, wt_files):
+    """Governed roots: every directory carrying a #21 groundwork.pin, collected
+    from the BASE tree AND the working tree (wt_files, one shared scan). Both
+    sides matter — deleting the pin in the same diff must not un-govern the
+    change that deleted it. Returned as root-relative directories, where "" is
+    root itself. .gitignore is deliberately NOT honored: a pin hidden behind an
+    ignore rule must not un-govern content."""
+    dirs = set()
+    for bf in base_files:
+        if scope != "." and not bf.startswith(scope + "/"):
+            continue
+        rel = bf if scope == "." else bf[len(scope) + 1:]
+        if os.path.basename(rel) == "groundwork.pin":
+            dirs.add(os.path.dirname(rel).replace("\\", "/"))
+    for abspath in wt_files:
+        if os.path.basename(abspath) != "groundwork.pin":
+            continue
+        rel = os.path.relpath(abspath, root).replace(os.sep, "/")
+        dirs.add(os.path.dirname(rel))
+    return dirs
+
+
+def _pending_proposal_radii(root, gov_rel):
+    """{realpath(target) -> set(declared blast_radius)} for the pending proposals
+    in <governed root>/proposals/. Targets resolve through the filesystem
+    (realpath) and must stay contained in the governed root, so a symlink or a
+    '../' alias can never point one place and match another — the same
+    both-layers discipline check_proposals uses. Anything malformed is simply
+    absent from the map, which makes the change it would have covered fail
+    closed (no match -> the escalating ERROR fires)."""
+    out = {}
+    gov_abs = os.path.join(root, *gov_rel.split("/")) if gov_rel else root
+    pdir = os.path.join(gov_abs, "proposals")
+    if not os.path.isdir(pdir) or os.path.islink(pdir):
+        return out
+    try:
+        names = sorted(os.listdir(pdir))
+    except OSError:
+        return out
+    gov_real = os.path.realpath(gov_abs)
+    for name in names:
+        if not name.endswith(".md") or name in {"README.md", "_index.md"}:
+            continue
+        ppath = os.path.join(pdir, name)
+        if os.path.islink(ppath):
+            continue  # a symlinked proposal file cannot authorize anything —
+            # its content lives elsewhere and can change after review (Codex r1)
+        data, _f = _load_frontmatter(ppath, name)
+        if data is None:
+            continue
+        status = data.get("status")
+        if isinstance(status, str) and status.strip() and status.strip() != "pending":
+            continue  # not pending; check_proposals already ERRORs on the lifecycle
+        target, br = data.get("target"), data.get("blast_radius")
+        if not isinstance(target, str) or not isinstance(br, str) or br not in BLAST_RADIUS:
+            continue
+        tabs = os.path.join(gov_abs, os.path.normpath(target.strip().replace("\\", "/")))
+        if not os.path.isfile(tabs):
+            continue
+        treal = os.path.realpath(tabs)
+        if not treal.startswith(gov_real + os.sep):
+            continue
+        out.setdefault(treal, set()).add(br)
+    return out
+
+
+def _changelog_appended_targets(root, gov_abs, appended_lines):
+    """Realpaths of the skills named by changelog lines APPENDED since base. An
+    old line for the same skill does not excuse a new edit, so only the appended
+    span counts. Targets must resolve INSIDE the governed root (the same
+    containment discipline as proposal targets) — a line whose path escapes the
+    root names nothing here."""
+    targets = set()
+    gov_real = os.path.realpath(gov_abs)
+    for line in appended_lines:
+        s = line.strip()
+        if not s.startswith("- "):
+            continue
+        fields = [c.strip() for c in s[2:].split("|")]
+        if len(fields) != 5:
+            continue
+        p = os.path.join(gov_abs, os.path.normpath(fields[1].replace("\\", "/")))
+        if not os.path.isfile(p):
+            continue
+        rp = os.path.realpath(p)
+        if rp.startswith(gov_real + os.sep):
+            targets.add(rp)
+    return targets
+
+
+def blast_radius_diff_findings(root, base):
+    """#18's blast-radius tripwire. On --diff, classify every changed skill/rule
+    under a governed root (a directory carrying a #21 groundwork.pin) and require
+    each ESCALATING change to trace to a pending proposal whose DECLARED
+    blast_radius matches what the diff ACTUALLY touches. A track-1 body-only
+    change wants its changelog line (WARN — a stateless validator cannot tell an
+    agent auto-apply from the maintainer's own edit); the changelog itself is
+    append-only (ERROR).
+
+    What this cannot do: prove a human truthfully reviewed anything. That is the
+    commit bit's job (#18) — see docs/known-limitations.md."""
+    ctx, ctx_findings = _git_diff_context(root, base)
+    if ctx is None:
+        return ctx_findings
+    toplevel, scope, base_files = ctx["toplevel"], ctx["scope"], ctx["base_files"]
+    findings = []
+
+    base_rels = {}
+    for bf in base_files:
+        if scope != "." and not bf.startswith(scope + "/"):
+            continue
+        base_rels[(bf if scope == "." else bf[len(scope) + 1:])] = bf
+
+    # One shared working-tree scan: the pin discovery, the candidate union, and
+    # the unreadable-directory ERRORs all come from it. Scan trouble is reported
+    # even when the result looks dormant — an unlistable directory could be
+    # hiding the very pin that would activate the tripwire.
+    wt_files, wt_findings = _walk_working_tree(root)
+    findings += wt_findings
+
+    gov_roots = _pin_dirs(root, base_files, scope, wt_files)
+    if not gov_roots:
+        return findings  # no company instance in scope: the tripwire is dormant
+
+    def _fold(s):
+        # NFC first (git reports NFC while a mac filesystem lists NFD — the
+        # same mismatch _committed_path_status already bridges), then casefold.
+        return unicodedata.normalize("NFC", s).casefold()
+
+    def governed_classes(rel):
+        # EVERY containing root's classification (Codex r1+r2): picking one
+        # root — even the deepest with a non-None class — lets a planted inner
+        # pin reshape the inner path and downgrade an outer rule to a skill.
+        # A change must be licensed under each root that governs it; a
+        # pathological double-root only ever ADDS review, never removes it.
+        #
+        # Containment matches COMPONENT-WISE under NFC+casefold (Codex r2+r3):
+        # a case- or normalization-rename of the pinned directory must not walk
+        # the tree out of its governed root, and component matching is immune
+        # to length-changing folds (ß -> ss) that would misalign a string
+        # slice. Within one depth, an exact-case root is authoritative when it
+        # matches (Codex r3): two genuinely distinct case-sibling roots on a
+        # case-sensitive filesystem must not cross-demand each other's
+        # proposals — that gate would be unsatisfiable. The folded fallback
+        # applies exactly when no exact root claims the path (the rename case).
+        parts = rel.split("/")
+        fparts = [_fold(p) for p in parts]
+        by_depth = {}
+        for g in gov_roots:
+            gparts = g.split("/") if g else []
+            n = len(gparts)
+            if len(parts) <= n:
+                continue
+            if fparts[:n] != [_fold(p) for p in gparts]:
+                continue
+            by_depth.setdefault(n, []).append((parts[:n] == gparts, g))
+        out = []
+        for n, entries in sorted(by_depth.items()):
+            cls = _governed_class("/".join(parts[n:]))
+            if cls is None:
+                continue
+            chosen = [g for exact, g in entries if exact] or [g for _e, g in entries]
+            for g in chosen:
+                out.append((g, cls))
+        return out
+
+    # --- Pass 1: the changelog per governed root (append-only + appended span).
+    appended_targets = {}
+    for g in sorted(gov_roots):
+        gov_abs = os.path.join(root, *g.split("/")) if g else root
+        cl_rel = (g + "/" if g else "") + "governance/changelog.md"
+        appended_targets[g] = set()
+        bf = base_rels.get(cl_rel)
+        if bf is None:
+            continue  # no committed ledger at base: nothing to protect yet
+        old = _git_show(toplevel, base, bf)
+        if old is None:
+            findings.append(Finding("ERROR", cl_rel, None,
+                                    "cannot verify the governance changelog: its base version is "
+                                    "unreadable or not valid UTF-8"))
+            continue
+        abspath = os.path.join(root, *cl_rel.split("/"))
+        if _has_symlink_component(root, cl_rel):
+            findings.append(Finding("ERROR", cl_rel, None,
+                                    "the governance changelog is or sits behind a symlink "
+                                    "(cannot verify it is append-only)"))
+            continue
+        if not os.path.isfile(abspath):
+            findings.append(Finding("ERROR", cl_rel, None,
+                                    "the governance changelog was deleted — it is an append-only "
+                                    "index of auto-applied changes (#17)"))
+            continue
+        new, rd = _read_utf8(abspath, cl_rel)
+        if new is None:
+            findings += rd
+            continue
+        if not _changelog_append_only(old, new):
+            findings.append(Finding("ERROR", cl_rel, None,
+                                    "the governance changelog is append-only — an existing entry was "
+                                    "edited, reordered, or removed (#17)"))
+            continue
+        old_lines = old.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        while old_lines and not old_lines[-1].strip():
+            old_lines.pop()
+        new_lines = new.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        appended_targets[g] = _changelog_appended_targets(root, gov_abs, new_lines[len(old_lines):])
+
+    # --- Pass 2: every changed governed file.
+    candidates = set(base_rels)
+    for abspath in wt_files:
+        candidates.add(os.path.relpath(abspath, root).replace(os.sep, "/"))
+
+    proposals_cache = {}
+    for rel in sorted(candidates):
+        if _diff_in_workbench_skips(rel):
+            continue
+        pairs = governed_classes(rel)
+        if not pairs:
+            continue
+
+        abspath = os.path.join(root, *rel.split("/"))
+        bf = base_rels.get(rel)
+        if bf is not None:
+            status = _committed_path_status(toplevel, bf.split("/"), None)
+            if status == "symlink":
+                findings.append(Finding("ERROR", rel, None,
+                                        "governed file is or sits behind a symlink (cannot classify "
+                                        "its blast radius)"))
+                continue
+            if status == "unreadable":
+                # NOT the deletion WARN: an unlistable ancestor makes the change
+                # unclassifiable, and unclassifiable resolves to fail-closed.
+                findings.append(Finding("ERROR", rel, None,
+                                        "cannot classify this change: a directory on its path is "
+                                        "unreadable — fail closed"))
+                continue
+            if status == "missing":
+                findings.append(Finding("WARN", rel, None,
+                                        "governed file deleted — retiring a rule or skill is escalating, "
+                                        "and its record is the maintainer's consent commit; a proposal "
+                                        "cannot name a target that no longer exists (#18)"))
+                continue
+            old = _git_show(toplevel, base, bf)
+            if old is None:
+                findings.append(Finding("ERROR", rel, None,
+                                        "cannot classify this change: the base version is unreadable "
+                                        "or not valid UTF-8"))
+                continue
+            kind = "modified"
+        else:
+            if _has_symlink_component(root, rel):
+                findings.append(Finding("ERROR", rel, None,
+                                        "governed file is or sits behind a symlink (cannot classify "
+                                        "its blast radius)"))
+                continue
+            if not os.path.isfile(abspath):
+                continue
+            old, kind = None, "added"
+
+        new, rd = _read_utf8(abspath, rel)
+        if new is None:
+            findings += rd
+            continue
+
+        for g, cls in pairs:
+            radius, detail = classify_governed_change(kind, cls, old, new)
+            if radius is None:
+                continue
+
+            if g not in proposals_cache:
+                proposals_cache[g] = _pending_proposal_radii(root, g)
+            radii = proposals_cache[g].get(os.path.realpath(abspath), set())
+            prefix = (g + "/") if g else ""
+
+            if radius == "escalating":
+                if not radii:
+                    findings.append(Finding("ERROR", rel, None,
+                                            "escalating change (%s) with no pending proposal — an escalating "
+                                            "change reaches the main line only through a reviewable proposal "
+                                            "in %sproposals/ (#18)" % (detail, prefix)))
+                elif "escalating" not in radii:
+                    findings.append(Finding("ERROR", rel, None,
+                                            "declared-vs-actual blast-radius mismatch: the pending proposal "
+                                            "declares 'track1-body' but this change actually touches %s — "
+                                            "that is escalating (#18)" % detail))
+            elif not radii and os.path.realpath(abspath) not in appended_targets.get(g, set()):
+                findings.append(Finding("WARN", rel, None,
+                                        "track-1 body-only change with no new governance changelog entry — "
+                                        "an agent auto-apply must append its line (#17); a maintainer's own "
+                                        "edit needs none"))
     return findings
 
 
@@ -1606,7 +2061,15 @@ def main(argv):
     root = args[0] if args else "."
     findings = validate(root)
     if diff_base is not None:
-        findings += memory_diff_findings(root, diff_base)
+        mem = memory_diff_findings(root, diff_base)
+        findings += mem
+        # Both diff modes resolve the git context independently, so a fatal
+        # context ERROR (bad ref, not a repo) arrives identically from each —
+        # print it once. Dedupe against the memory pass ONLY (Codex r2): a
+        # stateless finding that legitimately recurs in the blast pass must
+        # not be swallowed.
+        mem_set = set(mem)
+        findings += [f for f in blast_radius_diff_findings(root, diff_base) if f not in mem_set]
     errors = [f for f in findings if f.level == "ERROR"]
     warns = [f for f in findings if f.level == "WARN"]
     for f in findings:
