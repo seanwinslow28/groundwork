@@ -3656,6 +3656,23 @@ class TestStripCode(unittest.TestCase):
         self.assertEqual(
             self._imports("- step\n\n    @AGENTS.md\n"), ["AGENTS.md"])
 
+    def test_two_spaces_after_list_marker(self):
+        # Codex round 7: 1-4 spaces may follow a list marker, and the item's
+        # continuation width includes them.
+        self.assertEqual(
+            self._imports("-  note\n\n   ~~~\n   @AGENTS.md\n   ~~~\n"), [])
+        self.assertEqual(
+            self._imports("-  note\n\n      ~~~\n      @AGENTS.md\n      ~~~\n"),
+            [])
+
+    def test_marker_only_list_item(self):
+        # Codex round 7: a bare '10.' (or '-') opens an EMPTY list item whose
+        # content starts on the next line at marker width + 1.
+        self.assertEqual(
+            self._imports("10.\n    ~~~\n    @AGENTS.md\n    ~~~\n"), [])
+        self.assertEqual(
+            self._imports("-\n  ~~~\n  @AGENTS.md\n  ~~~\n"), [])
+
 
 class TestAggregateDedupe(unittest.TestCase):
     def test_agents_md_counted_once(self):

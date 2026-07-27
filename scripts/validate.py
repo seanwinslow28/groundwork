@@ -226,7 +226,10 @@ _IMPORT = re.compile(r"(?:(?<=\s)|^)@([^\s`]+)", re.M)
 _FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 _TICKS = re.compile(r"`+")
 # Block-container markers a fence can nest under: blockquote, bullet, ordered.
-_CONTAINER = re.compile(r"^ {0,3}(> ?|[-*+] |\d{1,9}[.)] )")
+# A list marker may be followed by 1-4 spaces (all part of the item's
+# continuation width) or by end of line (an EMPTY item — content starts on the
+# next line at marker width + 1). Codex round 7.
+_CONTAINER = re.compile(r"^ {0,3}(> ?|(?:[-*+]|\d{1,9}[.)])(?: {1,4}|(?=$)))")
 _QUOTE_MARK = re.compile(r"^ {0,3}> ?")
 
 
@@ -251,7 +254,10 @@ def _new_markers(line):
         if m.group(1).startswith(">"):
             chain.append(("quote", 0))
         else:
-            chain.append(("list", m.end()))
+            width = m.end()
+            if m.end() == len(line):
+                width += 1  # empty item: content continues at marker + 1
+            chain.append(("list", width))
         line = line[m.end():]
 
 
