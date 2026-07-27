@@ -222,12 +222,65 @@ _AGENTS_NAMES = ("AGENTS.override.md", "AGENTS.md")
 _IMPORT = re.compile(r"(?:(?<=\s)|^)@([^\s`]+)", re.M)
 
 
+_FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+
+
+def _strip_spans(line):
+    """Remove inline code spans: a run of N backticks closed by a run of exactly
+    N. An unterminated run is literal text and is kept."""
+    out = []
+    i = 0
+    while i < len(line):
+        if line[i] != "`":
+            out.append(line[i])
+            i += 1
+            continue
+        n = 0
+        while i + n < len(line) and line[i + n] == "`":
+            n += 1
+        close = line.find("`" * n, i + n)
+        # the closing run must be EXACTLY n backticks, not part of a longer run
+        while close != -1 and close + n < len(line) and line[close + n] == "`":
+            close = line.find("`" * n, close + n + 1)
+        if close == -1:
+            out.append(line[i:i + n])
+            i += n
+        else:
+            i = close + n
+    return "".join(out)
+
+
 def _strip_code(text):
-    """Drop fenced blocks and inline code spans. Claude Code's import parser
-    "skips Markdown code spans and fenced code blocks", so `@README` inside
-    backticks is literal text and must NOT be followed."""
-    text = re.sub(r"```.*?(?:```|\Z)", "", text, flags=re.S)
-    return re.sub(r"`[^`\n]*`", "", text)
+    """Blank out fenced code blocks and inline code spans, the way a CommonMark
+    reader does — Claude Code's import parser "skips Markdown code spans and
+    fenced code blocks".
+
+    Why a scanner and not a regex: a regex that knows only ``` fences fails
+    OPEN. An `@AGENTS.md` inside a ~~~ block would be read as a real import, so
+    a CLAUDE.md that merely *documents* the import would satisfy the root-file
+    drift check while Claude Code loaded nothing.
+
+    Deliberate bias: when the two consumers disagree, OVER-strip. Missing a real
+    import makes the drift check ERROR (loud, safe); seeing a fake one makes it
+    pass (silent drift). The cost is that a backslash-escaped backtick reads as
+    opening a span — documented in docs/known-limitations.md."""
+    out = []
+    fence = None  # (char, length) of the currently open fence
+    for line in text.split("\n"):
+        m = _FENCE.match(line)
+        if fence is None:
+            if m:
+                fence = (m.group(1)[0], len(m.group(1)))
+                out.append("")
+                continue
+            out.append(_strip_spans(line))
+        else:
+            # a closing fence: same character, at least as long, no info string
+            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= fence[1] \
+                    and not m.group(2).strip():
+                fence = None
+            out.append("")
+    return "\n".join(out)
 
 
 def _agents_file(dirpath):
@@ -312,18 +365,34 @@ def _always_loaded_bytes(root):
     items = []
     findings = []
 
+    root_real = os.path.realpath(root)
+    counted = set()
+
+    def _take(abspath, rel_label, num_bytes):
+        """Count a file once. AGENTS.md is reachable both as the root
+        instruction file and as CLAUDE.md's import; no harness loads it twice,
+        and double-counting can only push a legitimate repo past the ERROR
+        threshold."""
+        real = os.path.realpath(abspath)
+        if real in counted or not num_bytes:
+            return False
+        counted.add(real)
+        items.append((rel_label, num_bytes))
+        return True
+
+    # The root instruction file goes into `counted` BEFORE imports are
+    # followed, so CLAUDE.md's '@AGENTS.md' import dedupes against it.
     f = _agents_file(root)
     if f is not None:
         n = _file_size(f)
-        if n:
-            items.append((os.path.relpath(f, root), n))
-        elif n is None:
+        if n is None:
             findings.append(Finding(
                 "ERROR", os.path.relpath(f, root), None,
                 "cannot read this instruction file — the always-loaded budget "
                 "cannot be verified (#13)"))
+        else:
+            _take(f, os.path.relpath(f, root), n)
 
-    root_real = os.path.realpath(root)
     seen = set()
 
     # Depth 0 is CLAUDE.md itself; each import edge is one hop, and Claude Code
@@ -349,7 +418,10 @@ def _always_loaded_bytes(root):
         findings.extend(rd)
         if text is None:
             continue
-        items.append((rel, len(text.encode("utf-8"))))
+        # _take may decline (already counted as the root instruction file);
+        # imports are still expanded — the file loads once, but what it
+        # imports is real context either way.
+        _take(abspath, rel, len(text.encode("utf-8")))
         base = os.path.dirname(abspath)
         for target in _IMPORT.findall(_strip_code(text)):
             if target.startswith("~") or os.path.isabs(target):
@@ -383,7 +455,7 @@ def _always_loaded_bytes(root):
                         continue
                 n = _file_size(abspath)
                 if n:
-                    items.append((rel, n))
+                    _take(abspath, rel, n)
 
     sdir = os.path.join(root, "skills")
     if os.path.isdir(sdir) and not os.path.islink(sdir):
@@ -456,10 +528,21 @@ def check_root_files(root):
             targets = _IMPORT.findall(_strip_code(text))
             if not any(os.path.normpath(t.replace("\\", "/")) == "AGENTS.md"
                        for t in targets):
-                findings.append(Finding(
-                    "ERROR", "CLAUDE.md", None,
-                    "CLAUDE.md does not import AGENTS.md — the root files have drifted into "
-                    "separate sources of truth; its content should be '@AGENTS.md' (§6)"))
+                abs_agents = [t for t in targets
+                              if (os.path.isabs(t) or t.startswith("~"))
+                              and os.path.basename(t) == "AGENTS.md"]
+                if abs_agents:
+                    findings.append(Finding(
+                        "ERROR", "CLAUDE.md", None,
+                        "CLAUDE.md imports AGENTS.md by absolute path (%s) — that resolves "
+                        "only on the machine that wrote it; use the repo-relative "
+                        "'@AGENTS.md' (§6)" % abs_agents[0]))
+                else:
+                    findings.append(Finding(
+                        "ERROR", "CLAUDE.md", None,
+                        "CLAUDE.md does not import AGENTS.md — the root files have drifted "
+                        "into separate sources of truth; its content should be "
+                        "'@AGENTS.md' (§6)"))
 
     cdir = os.path.join(root, ".cursor", "rules")
     if not os.path.isdir(cdir):

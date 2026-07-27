@@ -3501,5 +3501,81 @@ class TestRootFiles(unittest.TestCase):
                                 for f in validate.validate(d)))
 
 
+class TestStripCode(unittest.TestCase):
+    def _imports(self, text):
+        return validate._IMPORT.findall(validate._strip_code(text))
+
+    def test_plain_import_is_seen(self):
+        self.assertEqual(self._imports("@AGENTS.md\n"), ["AGENTS.md"])
+
+    def test_backtick_fence_is_stripped(self):
+        self.assertEqual(self._imports("```\n@AGENTS.md\n```\n"), [])
+
+    def test_tilde_fence_is_stripped(self):
+        # The fail-open this fold closes: a ~~~ block is a CommonMark fenced
+        # code block, so Claude Code imports nothing from it.
+        self.assertEqual(self._imports("~~~\n@AGENTS.md\n~~~\n"), [])
+
+    def test_four_backtick_fence_is_stripped(self):
+        self.assertEqual(self._imports("````\n@AGENTS.md\n````\n"), [])
+
+    def test_fence_with_info_string_is_stripped(self):
+        self.assertEqual(self._imports("```markdown\n@AGENTS.md\n```\n"), [])
+
+    def test_inner_shorter_fence_does_not_close_outer(self):
+        self.assertEqual(self._imports("````\n```\n@AGENTS.md\n```\n````\n"), [])
+
+    def test_single_backtick_span_is_stripped(self):
+        self.assertEqual(self._imports("Write `@AGENTS.md` here.\n"), [])
+
+    def test_double_backtick_span_is_stripped(self):
+        self.assertEqual(self._imports("Write ``@AGENTS.md`` here.\n"), [])
+
+    def test_unclosed_span_leaves_text(self):
+        # An unterminated backtick run is literal text, so the import is real.
+        self.assertEqual(self._imports("A ` stray tick then @AGENTS.md\n"), ["AGENTS.md"])
+
+    def test_import_after_a_closed_fence_is_seen(self):
+        self.assertEqual(self._imports("```\ncode\n```\n@AGENTS.md\n"), ["AGENTS.md"])
+
+    def test_unclosed_fence_swallows_to_end(self):
+        # Matches CommonMark: an unclosed fence runs to end of document.
+        self.assertEqual(self._imports("```\n@AGENTS.md\n"), [])
+
+
+class TestAggregateDedupe(unittest.TestCase):
+    def test_agents_md_counted_once(self):
+        # AGENTS.md is both the root instruction file and CLAUDE.md's import.
+        # No harness loads it twice; double-counting can only push a legitimate
+        # repo past an ERROR threshold.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "x" * 4000)
+            _write(d, "CLAUDE.md", "@AGENTS.md\n")
+            items, _findings = validate._always_loaded_bytes(d)
+            paths = [lbl for lbl, _n in items]
+            self.assertEqual(len(paths), len(set(paths)))
+            self.assertEqual(sum(n for _l, n in items), 4000 + len("@AGENTS.md\n"))
+
+    def test_symlinked_duplicate_counted_once(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "x" * 4000)
+            _write(d, "CLAUDE.md", "@alias.md\n")
+            os.symlink(os.path.join(d, "AGENTS.md"), os.path.join(d, "alias.md"))
+            items, _findings = validate._always_loaded_bytes(d)
+            total = sum(n for _l, n in items)
+            self.assertEqual(total, 4000 + len("@alias.md\n"))
+
+
+class TestAbsoluteImportMessage(unittest.TestCase):
+    def test_absolute_import_gets_its_own_message(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "@%s\n" % os.path.join(d, "AGENTS.md"))
+            findings = validate.check_root_files(d)
+            self.assertTrue(any(f.level == "ERROR" and "absolute" in f.message
+                                for f in findings))
+            self.assertFalse(any("drifted" in f.message for f in findings))
+
+
 if __name__ == "__main__":
     unittest.main()
