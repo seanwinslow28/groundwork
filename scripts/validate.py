@@ -392,7 +392,10 @@ def _strip_code(text):
                 continue
             cnt, rest = _consume(ctx, line)
             new, rest, code = _new_markers(rest)
-            if cnt < len(ctx) and not new and para_open:
+            # fence recognition comes BEFORE the lazy check: fenced code
+            # interrupts a paragraph, so a fence line is never lazy text
+            m = None if code else _fence_match(rest)
+            if m is None and cnt < len(ctx) and not new and para_open:
                 # lazy continuation: a paragraph line may continue the open
                 # containers without their prefix — plain text, ctx kept
                 para.append(line)
@@ -400,7 +403,6 @@ def _strip_code(text):
                 continue
             if cnt < len(ctx) or new:
                 ctx = ctx[:cnt] + new
-            m = None if code else _fence_match(rest)
             if m:
                 _flush()
                 fence = (m.group(1)[0], len(m.group(1)))
@@ -409,7 +411,12 @@ def _strip_code(text):
                 out.append("")
             else:
                 para.append(line)
-                para_open = True
+                # a paragraph is open only when this line can host lazy
+                # continuation: not indented-code content (the 5+-space
+                # marker case or, outside a paragraph, a 4+-column rest),
+                # and not a blank-content marker-only line
+                para_open = (not code) and bool(rest.strip()) and \
+                    (para_open or not rest.startswith("    "))
             i += 1
             continue
         # A blank line is fence content unless a blockquote in the chain ends

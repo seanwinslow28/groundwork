@@ -3719,6 +3719,23 @@ class TestStripCode(unittest.TestCase):
         self.assertEqual(
             self._imports("- item\n\noutside @AGENTS.md\n"), ["AGENTS.md"])
 
+    def test_fence_interrupts_a_list_paragraph(self):
+        # Codex round 11: a fence line is never lazy paragraph continuation —
+        # fenced code interrupts a paragraph (CommonMark).
+        self.assertEqual(
+            self._imports("- note\n~~~\n@AGENTS.md\n~~~\n"), [])
+        self.assertEqual(
+            self._imports("- note\n```\n@AGENTS.md\n````\n"), [])
+
+    def test_indented_code_item_has_no_lazy_continuation(self):
+        # Codex round 11: '-     seed' starts the item with indented CODE, so
+        # no paragraph is open and 'outside' cannot lazily continue the item —
+        # the list ends, '    ~~~' is top-level indented code, and '  ~~~' is
+        # a genuine fence.
+        self.assertEqual(
+            self._imports("-     seed\noutside\n\n    ~~~\n\n  ~~~\n"
+                          "@AGENTS.md\n  ~~~\n"), [])
+
 
 class TestAggregateDedupe(unittest.TestCase):
     def test_agents_md_counted_once(self):
