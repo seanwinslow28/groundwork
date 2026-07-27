@@ -244,21 +244,35 @@ def _fence_match(line):
 
 def _new_markers(line):
     """Strip the container markers a line itself carries. Returns (chain,
-    rest): each entry ("quote", 0) or ("list", continuation_columns — the
-    columns the marker occupied, which its continuation lines must match)."""
+    rest): each entry ("quote", 0) or ("list", continuation_columns). A list
+    marker followed by 1-4 spaces continues at the columns the whole marker
+    occupied. Followed by 5+ spaces (the item starts with indented CODE) or by
+    end of line (an empty item), continuation resets to the bare marker's
+    width + 1 — CommonMark's rule, and getting it wrong made a genuine fence
+    at that indent read as live text (Codex rounds 7-8)."""
     chain = []
     while True:
         m = _CONTAINER.match(line)
         if not m:
             return chain, line
-        if m.group(1).startswith(">"):
+        g = m.group(1)
+        end = m.end()
+        rest = line[end:]
+        if g.startswith(">"):
             chain.append(("quote", 0))
-        else:
-            width = m.end()
-            if m.end() == len(line):
-                width += 1  # empty item: content continues at marker + 1
-            chain.append(("list", width))
-        line = line[m.end():]
+            line = rest
+            continue
+        marker_end = end - (len(g) - len(g.rstrip(" ")))
+        if rest.startswith(" "):
+            # 5+ spaces after the marker: the rest is indented-code content,
+            # not further markers
+            chain.append(("list", marker_end + 1))
+            return chain, rest
+        if end == len(line):
+            chain.append(("list", marker_end + 1))
+            return chain, rest
+        chain.append(("list", end))
+        line = rest
 
 
 def _consume(chain, line):

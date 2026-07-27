@@ -3673,6 +3673,22 @@ class TestStripCode(unittest.TestCase):
         self.assertEqual(
             self._imports("-\n  ~~~\n  @AGENTS.md\n  ~~~\n"), [])
 
+    def test_marker_with_five_plus_spaces_resets_continuation(self):
+        # Codex round 8: 5+ spaces after a marker start indented CODE inside
+        # the item, and continuation resets to marker width + 1 — a fence at
+        # that indent is genuine and its import is documentation.
+        self.assertEqual(
+            self._imports("10.     seed\n\n    ~~~\n    @AGENTS.md\n    ~~~\n"),
+            [])
+        self.assertEqual(
+            self._imports("-      seed\n\n  ~~~\n  @AGENTS.md\n  ~~~\n"), [])
+
+    def test_marker_only_with_trailing_spaces(self):
+        # An empty item keeps marker + 1 continuation even when the marker
+        # line carries trailing spaces.
+        self.assertEqual(
+            self._imports("10.    \n    ~~~\n    @AGENTS.md\n    ~~~\n"), [])
+
 
 class TestAggregateDedupe(unittest.TestCase):
     def test_agents_md_counted_once(self):
