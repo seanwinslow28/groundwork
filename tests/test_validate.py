@@ -3620,6 +3620,29 @@ class TestStripCode(unittest.TestCase):
             self._imports("> ~~~\n> > ~~~\n> ~~~\n@AGENTS.md\n"),
             ["AGENTS.md"])
 
+    def test_list_boundary_in_quote_reopens(self):
+        # Codex round 5: '> - ~~~' then '> ~~~' — the list item ends (no
+        # continuation indent), so the bare fence line is a NEW opener at the
+        # quote level, not the old fence's closer; the import is inside it.
+        self.assertEqual(
+            self._imports("> - ~~~\n> ~~~\n> @AGENTS.md\n> ~~~\n"), [])
+
+    def test_ordered_list_quote_continuation_indent(self):
+        # Codex round 5: '10. > ~~~' continues at four columns, so the quoted
+        # fence stays open and the import inside it is documentation.
+        self.assertEqual(
+            self._imports("10. > ~~~\n    > @AGENTS.md\n    > ~~~\n"), [])
+
+    def test_tabbed_quote_fence_is_stripped(self):
+        # Tabs participate in block structure (tab stop 4).
+        self.assertEqual(
+            self._imports(">\t~~~\n>\t@AGENTS.md\n>\t~~~\n"), [])
+
+    def test_blank_line_inside_a_list_fence_is_content(self):
+        # A blank line does not end a fenced code block in a list item.
+        self.assertEqual(
+            self._imports("- ~~~\n  code\n\n  @AGENTS.md\n  ~~~\n"), [])
+
 
 class TestAggregateDedupe(unittest.TestCase):
     def test_agents_md_counted_once(self):

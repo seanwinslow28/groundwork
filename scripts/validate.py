@@ -241,38 +241,50 @@ def _fence_match(line):
 
 def _container_fence(line):
     """A fence nested in block containers (blockquote / list item): strip
-    leading markers, then match. Returns (match, quote_depth, listed); match
-    is None when no fence follows the markers. A `> ~~~` line is a real
-    CommonMark fence that Claude Code skips, so missing it would fail open
-    (Codex round 3)."""
-    qdepth = 0
-    listed = False
-    stripped = False
+    leading markers, then match. Returns (match, chain); match is None when no
+    fence follows the markers. `chain` records the ORDERED containers the
+    fence sits in — ("quote", 0) or ("list", continuation_columns) — because
+    a line only stays inside the fence while it continues every one of them
+    in order (Codex round 5: quote depth alone missed list boundaries and
+    list-then-quote nesting). A `> ~~~` line is a real CommonMark fence that
+    Claude Code skips, so missing it would fail open (Codex round 3)."""
+    chain = []
     while True:
         m = _CONTAINER.match(line)
         if not m:
             break
         if m.group(1).startswith(">"):
-            qdepth += 1
+            chain.append(("quote", 0))
         else:
-            listed = True
+            # a list item continues at the columns its marker occupied
+            chain.append(("list", m.end()))
         line = line[m.end():]
-        stripped = True
-    if not stripped:
-        return None, 0, False
-    return _fence_match(line), qdepth, listed
+    if not chain:
+        return None, chain
+    return _fence_match(line), chain
 
 
-def _quote_strip(line):
-    """(depth, rest): strip leading blockquote markers only, so an open
-    fence's quote depth can be compared with the current line's."""
-    depth = 0
-    while True:
-        m = _QUOTE_MARK.match(line)
-        if not m:
-            return depth, line
-        depth += 1
-        line = line[m.end():]
+def _continues(line, chain):
+    """Does this line continue every container in the open fence's chain?
+    Returns (bool, rest) with the chain's prefix consumed from `line`. A quote
+    continues via its '>' marker; a list item continues via its continuation
+    columns (tabs were already expanded). A line that fails a container ends
+    that container AND the fence — a code block cannot lazily continue."""
+    for kind, width in chain:
+        if kind == "quote":
+            m = _QUOTE_MARK.match(line)
+            if not m:
+                return False, line
+            line = line[m.end():]
+        else:
+            consumed = 0
+            while consumed < width and consumed < len(line) \
+                    and line[consumed] == " ":
+                consumed += 1
+            if consumed < width:
+                return False, line
+            line = line[consumed:]
+    return True, line
 
 
 def _strip_spans(text):
@@ -340,22 +352,21 @@ def _strip_code(text):
             del para[:]
 
     fence = None   # (char, length) of the currently open fence
-    f_qdepth = 0   # blockquote depth the open fence was opened at
-    f_listed = False  # the open fence lives inside a list item
+    f_chain = []   # ordered containers the open fence sits in
     lines = text.split("\n")
     i = 0
     while i < len(lines):
-        line = lines[i]
+        # tabs participate in CommonMark block structure at a tab stop of 4
+        line = lines[i].expandtabs(4)
         if fence is None:
             m = _fence_match(line)
-            qdepth = 0
-            listed = False
+            chain = []
             if m is None:
-                m, qdepth, listed = _container_fence(line)
+                m, chain = _container_fence(line)
             if m:
                 _flush()
                 fence = (m.group(1)[0], len(m.group(1)))
-                f_qdepth, f_listed = qdepth, listed
+                f_chain = chain
                 out.append("")
             elif not line.strip():
                 _flush()
@@ -364,23 +375,26 @@ def _strip_code(text):
                 para.append(line)
             i += 1
             continue
-        # Container termination comes BEFORE closer matching (Codex round 4):
-        # a line below the fence's quote depth ends the blockquote and the
-        # fence with it (a code block cannot lazily continue), and must be
-        # REPROCESSED — it may itself open a new fence at a shallower level.
-        qd, rest = _quote_strip(line)
-        if qd < f_qdepth:
+        # A blank line is fence content unless a blockquote in the chain ends
+        # at it (a blank ends a quote, but not a fenced block in a list item).
+        if not line.strip() and not any(k == "quote" for k, _w in f_chain):
+            out.append("")
+            i += 1
+            continue
+        # Container termination comes BEFORE closer matching (Codex rounds
+        # 4-5): a line that fails to continue every container the fence was
+        # opened under ends that container and the fence with it, and must be
+        # REPROCESSED — it may itself open a new fence at a shallower level
+        # ('> - ~~~' then '> ~~~' reopens at the quote level; '> ~~~' then
+        # bare '~~~' reopens at the top level).
+        cont, rest = _continues(line, f_chain)
+        if not cont:
             fence = None
             continue
         # a closing fence: same character, at least as long, no info string —
-        # and only at the fence's own quote depth. Inside a top-level fence a
-        # '> ```' line is literal content; inside a quoted fence a deeper
-        # '> > ```' line is literal content.
-        m = None
-        if qd == f_qdepth:
-            m = _fence_match(rest)
-            if m is None and f_listed:
-                m, _q2, _l2 = _container_fence(rest)
+        # matched on the rest AFTER the chain's prefix, so '> ```' inside a
+        # top-level fence and '> > ```' inside a '> '-deep fence stay content.
+        m = _fence_match(rest)
         if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= fence[1] \
                 and not m.group(2).strip():
             fence = None
