@@ -3130,6 +3130,51 @@ class TestBlastRadiusDiff(unittest.TestCase):
             self.assertTrue(any(f.level == "ERROR" and "no pending proposal" in f.message
                                 for f in findings))
 
+    # --- Codex round-3 regressions ---
+
+    def test_length_changing_casefold_rename_still_governs(self):
+        # Codex r3: ß casefolds to ss, so whole-string folding with an
+        # unfolded-length slice misaligns the inner path. Component-wise
+        # matching must still govern the renamed tree.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d, pin_at="straße")
+            _write(d, "STRASSE/governance/constitution/new.md", RULE_OK)
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "no pending proposal" in f.message
+                                for f in findings))
+
+    def test_nfd_variant_of_governed_root_still_governs(self):
+        # Codex r3: git reports NFC while a mac filesystem lists NFD; the two
+        # spellings of the same root must not fall out of containment.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d, pin_at="café")
+            _write(d, "cafe\u0301" + "/governance/constitution/new.md", RULE_OK)  # NFD on disk
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "no pending proposal" in f.message
+                                for f in findings))
+
+    def test_distinct_case_sibling_roots_do_not_cross_demand(self):
+        # Codex r3: on a case-sensitive filesystem, company/ and Company/ can
+        # be two REAL pinned roots. The exact-match root is authoritative —
+        # demanding the other root's proposal would be an unsatisfiable gate.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d, pin_at="company")
+            try:
+                os.makedirs(os.path.join(d, "Company"))
+            except FileExistsError:
+                self.skipTest("case-insensitive filesystem")
+            if os.path.samefile(os.path.join(d, "Company"), os.path.join(d, "company")):
+                self.skipTest("case-insensitive filesystem")
+            _write(d, "Company/groundwork.pin", PIN_OK)
+            _write(d, "Company/governance/constitution/access.md", RULE_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "sibling root")
+            _write(d, "Company/governance/constitution/access.md", RULE_OK + "\nAppended.\n")
+            _write(d, "Company/proposals/p1.md",
+                   _proposal("governance/constitution/access.md"))
+            self.assertEqual([f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                              if f.level == "ERROR"], [])
+
     def test_git_launch_failure_is_a_finding_not_a_crash(self):
         with tempfile.TemporaryDirectory() as d:
             self._repo(d)

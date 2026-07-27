@@ -1879,7 +1879,10 @@ def blast_radius_diff_findings(root, base):
     if not gov_roots:
         return findings  # no company instance in scope: the tripwire is dormant
 
-    ordered_roots = sorted(gov_roots, key=len, reverse=True)
+    def _fold(s):
+        # NFC first (git reports NFC while a mac filesystem lists NFD — the
+        # same mismatch _committed_path_status already bridges), then casefold.
+        return unicodedata.normalize("NFC", s).casefold()
 
     def governed_classes(rel):
         # EVERY containing root's classification (Codex r1+r2): picking one
@@ -1887,20 +1890,35 @@ def blast_radius_diff_findings(root, base):
         # pin reshape the inner path and downgrade an outer rule to a skill.
         # A change must be licensed under each root that governs it; a
         # pathological double-root only ever ADDS review, never removes it.
-        # Containment casefolds (Codex r2): on a case-folding filesystem
-        # Company/ IS company/, so exact-case matching would let a case-rename
-        # walk the whole tree out of its governed root; on a case-sensitive
-        # filesystem the variant is a different path and governing it merely
-        # escalates — the safe direction.
+        #
+        # Containment matches COMPONENT-WISE under NFC+casefold (Codex r2+r3):
+        # a case- or normalization-rename of the pinned directory must not walk
+        # the tree out of its governed root, and component matching is immune
+        # to length-changing folds (ß -> ss) that would misalign a string
+        # slice. Within one depth, an exact-case root is authoritative when it
+        # matches (Codex r3): two genuinely distinct case-sibling roots on a
+        # case-sensitive filesystem must not cross-demand each other's
+        # proposals — that gate would be unsatisfiable. The folded fallback
+        # applies exactly when no exact root claims the path (the rename case).
+        parts = rel.split("/")
+        fparts = [_fold(p) for p in parts]
+        by_depth = {}
+        for g in gov_roots:
+            gparts = g.split("/") if g else []
+            n = len(gparts)
+            if len(parts) <= n:
+                continue
+            if fparts[:n] != [_fold(p) for p in gparts]:
+                continue
+            by_depth.setdefault(n, []).append((parts[:n] == gparts, g))
         out = []
-        rl = rel.casefold()
-        for g in ordered_roots:
-            gl = g.casefold()
-            if g == "" or rl == gl or rl.startswith(gl + "/"):
-                inner = rel if g == "" else rel[len(g) + 1:]
-                cls = _governed_class(inner)
-                if cls is not None:
-                    out.append((g, cls))
+        for n, entries in sorted(by_depth.items()):
+            cls = _governed_class("/".join(parts[n:]))
+            if cls is None:
+                continue
+            chosen = [g for exact, g in entries if exact] or [g for _e, g in entries]
+            for g in chosen:
+                out.append((g, cls))
         return out
 
     # --- Pass 1: the changelog per governed root (append-only + appended span).
