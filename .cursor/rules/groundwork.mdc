@@ -1,0 +1,8 @@
+---
+description: How to work in the groundwork repository
+alwaysApply: true
+---
+
+Read AGENTS.md at the repository root before making changes. It is the canonical
+instruction surface for this repo: what is built, what is not, the repo map, and the
+authoring standard. CLAUDE.md and this rule are pointers to it — edit AGENTS.md.
