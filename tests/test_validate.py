@@ -3012,6 +3012,105 @@ class TestBlastRadiusDiff(unittest.TestCase):
             _write(d, "governance/constitution/access.md", RULE_OK + "\nAppended clause.\n")
             self.assertEqual(validate.main(["validate.py", d, "--diff", "HEAD"]), 1)
 
+    # --- Codex round-1 regressions ---
+
+    def test_nested_pin_cannot_shadow_the_governing_root(self):
+        # Codex r1: a pin planted INSIDE a skill package makes the innermost
+        # root's relative path unclassifiable; the outer root must still govern.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "skills/weekly-digest/groundwork.pin", PIN_OK)
+            _write(d, "skills/weekly-digest/SKILL.md",
+                   SKILL_T1.replace("Summarize the week's open threads for the team channel",
+                                    "Summarize anything at all"))
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "no pending proposal" in f.message
+                                and "SKILL.md" in f.path for f in findings))
+
+    def test_case_variant_rule_dir_still_governed(self):
+        # Codex r1: Governance/ must not launder a rule out of the routing
+        # domain (on a case-folding filesystem it IS governance/).
+        self.assertEqual(validate._governed_class("Governance/Constitution/access.md"), "rule")
+        self.assertEqual(validate._governed_class("SKILLS/x/helper.md"), "skill-other")
+        # Only the canonical SKILL.md spelling is auto-apply-eligible.
+        self.assertEqual(validate._governed_class("skills/x/Skill.md"), "skill-other")
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "Governance/constitution/evil.md", RULE_OK)
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "evil.md" in f.path for f in findings))
+
+    def test_symlinked_proposal_file_does_not_authorize(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "governance/constitution/access.md", RULE_OK + "\nAppended clause.\n")
+            _write(d, "elsewhere.md", _proposal("governance/constitution/access.md"))
+            os.makedirs(os.path.join(d, "proposals"))
+            os.symlink(os.path.join(d, "elsewhere.md"), os.path.join(d, "proposals", "p1.md"))
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "no pending proposal" in f.message
+                                for f in findings))
+
+    def test_unreadable_ancestor_dir_fails_closed_not_deletion_warn(self):
+        con = None
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                self._repo(d)
+                con = os.path.join(d, "governance", "constitution")
+                os.chmod(con, 0o000)
+                findings = validate.blast_radius_diff_findings(d, "HEAD")
+                os.chmod(con, 0o755)
+                con = None
+                self.assertTrue(any(f.level == "ERROR" and "unreadable" in f.message
+                                    for f in findings))
+                self.assertFalse(any(f.level == "WARN" and "deleted" in f.message
+                                     for f in findings))
+        finally:
+            if con is not None:
+                os.chmod(con, 0o755)
+
+    def test_new_rule_hidden_in_unreadable_dir_errors(self):
+        sub = None
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                self._repo(d)
+                sub = os.path.join(d, "governance", "constitution", "sub")
+                os.makedirs(sub)
+                _write(d, "governance/constitution/sub/new-rule.md", RULE_OK)
+                os.chmod(sub, 0o000)
+                findings = validate.blast_radius_diff_findings(d, "HEAD")
+                os.chmod(sub, 0o755)
+                sub = None
+                self.assertTrue(any(f.level == "ERROR" and "cannot scan" in f.message
+                                    for f in findings))
+        finally:
+            if sub is not None:
+                os.chmod(sub, 0o755)
+
+    def test_fatal_context_error_printed_once(self):
+        # Codex r1: both --diff modes resolve the context; the identical fatal
+        # ERROR must reach the report once.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                validate.main(["validate.py", d, "--diff", "no-such-ref"])
+            self.assertEqual(buf.getvalue().count("base ref not found"), 1)
+
+    def test_git_launch_failure_is_a_finding_not_a_crash(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            real_run = validate.subprocess.run
+
+            def broken_run(*a, **k):
+                raise OSError("cannot spawn git")
+            validate.subprocess.run = broken_run
+            try:
+                findings = validate.blast_radius_diff_findings(d, "HEAD")
+            finally:
+                validate.subprocess.run = real_run
+            self.assertTrue(any(f.level == "ERROR" for f in findings))
+
 
 if __name__ == "__main__":
     unittest.main()

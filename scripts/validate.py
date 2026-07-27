@@ -1442,12 +1442,20 @@ def _governed_class(rel):
     'skill-other' (anything else inside a skill package — the Owner's Card and
     every nested file), or None (not governed by the proposal routing at all).
     Top-level docs under skills/ (e.g. skills/work-package-spec.md) are not part
-    of a package and are not governed."""
+    of a package and are not governed.
+
+    Directory names match case-insensitively (Codex r1): on a case-folding
+    filesystem, Governance/ IS governance/, so exact-case matching would let a
+    case-rename launder a rule out of the routing domain. On a case-sensitive
+    filesystem the case-variant is a different path, and classifying it governed
+    merely escalates — the safe direction. Only the canonical SKILL.md spelling
+    is ever auto-apply-eligible; a case-variant lands on skill-other."""
     parts = rel.split("/")
-    if len(parts) >= 3 and parts[0] == "governance" and parts[1] == "constitution" \
-            and rel.endswith(".md"):
+    low = [p.casefold() for p in parts]
+    if len(parts) >= 3 and low[0] == "governance" and low[1] == "constitution" \
+            and low[-1].endswith(".md"):
         return "rule"
-    if len(parts) >= 3 and parts[0] == "skills":
+    if len(parts) >= 3 and low[0] == "skills":
         if len(parts) == 3 and parts[2] == "SKILL.md":
             return "skill-md"
         return "skill-other"
@@ -1572,9 +1580,11 @@ def _committed_path_status(toplevel, parts, cache=None):
     (a symlinked memory folder or record must not stand in for the committed
     one). Names are NFC-normalized on both sides — git core.precomposeunicode
     reports NFC while a mac filesystem may list NFD, and that mismatch must
-    not fake a deletion. Returns 'ok', 'symlink', or 'missing'. Pass a dict as
-    `cache` to reuse directory listings across records. Check-then-open is not
-    atomic — a concurrent writer race is a documented non-goal
+    not fake a deletion. Returns 'ok', 'symlink', 'missing', or 'unreadable' —
+    an unlistable ancestor is NOT a deletion (Codex r1: conflating them would
+    route an unclassifiable change through the caller's deletion path). Pass a
+    dict as `cache` to reuse directory listings across records. Check-then-open
+    is not atomic — a concurrent writer race is a documented non-goal
     (docs/known-limitations.md)."""
     if cache is None:
         cache = {}
@@ -1586,7 +1596,9 @@ def _committed_path_status(toplevel, parts, cache=None):
             except OSError:
                 cache[p] = None
         entries = cache[p]
-        if entries is None or unicodedata.normalize("NFC", part) not in entries:
+        if entries is None:
+            return "unreadable"
+        if unicodedata.normalize("NFC", part) not in entries:
             return "missing"
         p = os.path.join(p, part)
         if os.path.islink(p):
@@ -1606,7 +1618,7 @@ def _git_diff_context(root, base):
         # casing, so a case-variant invocation cannot blind the scope filter
         rp = subprocess.run(["git", "-C", root, "rev-parse", "--show-toplevel", "--show-prefix"],
                             capture_output=True, check=True).stdout
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    except (subprocess.CalledProcessError, OSError):
         return None, [Finding("ERROR", root, None, "--diff requires a git repository")]
     rp_lines = os.fsdecode(rp).splitlines()
     if len(rp_lines) != 2 or not os.path.isdir(rp_lines[0]):
@@ -1619,7 +1631,7 @@ def _git_diff_context(root, base):
     try:
         subprocess.run(["git", "-C", toplevel, "rev-parse", "--verify", "--quiet",
                         "%s^{commit}" % base], capture_output=True, check=True)
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, OSError):
         # a typo'd base must not report a clean bill of health
         return None, [Finding("ERROR", root, None, "--diff base ref not found: %s" % base)]
     try:
@@ -1627,7 +1639,7 @@ def _git_diff_context(root, base):
         # of non-ASCII names); os.fsdecode round-trips odd bytes losslessly
         raw = subprocess.run(["git", "-C", toplevel, "ls-tree", "-r", "--name-only", "-z", base],
                              capture_output=True, check=True).stdout
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, OSError):
         return None, [Finding("ERROR", root, None, "--diff could not list the base tree for %s" % base)]
     return {"toplevel": toplevel, "scope": scope,
             "base_files": [os.fsdecode(b) for b in raw.split(b"\0") if b]}, []
@@ -1635,10 +1647,14 @@ def _git_diff_context(root, base):
 
 def _git_show(toplevel, base, repo_path):
     """The base version of one committed file as text, or None when it cannot be
-    read (fetch failure or non-UTF-8). Callers treat None as fail-closed: the
-    base LIST says the file exists, so an unreadable base is never 'new'."""
-    show = subprocess.run(["git", "-C", toplevel, "show", "%s:%s" % (base, repo_path)],
-                          capture_output=True)
+    read (fetch failure, a git launch error, or non-UTF-8). Callers treat None
+    as fail-closed: the base LIST says the file exists, so an unreadable base is
+    never 'new'."""
+    try:
+        show = subprocess.run(["git", "-C", toplevel, "show", "%s:%s" % (base, repo_path)],
+                              capture_output=True)
+    except OSError:
+        return None
     if show.returncode != 0:
         return None
     try:
@@ -1673,6 +1689,11 @@ def memory_diff_findings(root, base):
         if status == "symlink":
             findings.append(Finding("ERROR", bf, None,
                                     "memory record is or sits behind a symlink (cannot verify immutability)"))
+            continue
+        if status == "unreadable":
+            findings.append(Finding("ERROR", bf, None,
+                                    "cannot verify immutability: a directory on this record's path is "
+                                    "unreadable — fail closed"))
             continue
         if status == "missing":
             findings.append(Finding("ERROR", bf, None,
@@ -1709,12 +1730,38 @@ def _has_symlink_component(root, rel):
     return False
 
 
-def _pin_dirs(root, base_files, scope):
+def _walk_working_tree(root):
+    """iter_files' walk (same SKIP_DIRS / dot-dir / SKIP_RELPATHS pruning, and
+    deliberately NO .gitignore), but an unlistable directory becomes an ERROR
+    instead of a silent prune (Codex r1): a directory the scan cannot descend
+    into could hide a new governed file or a pin, and silence would fail open.
+    Returns (abspaths, findings)."""
+    files, findings = [], []
+
+    def onerror(err):
+        bad = getattr(err, "filename", None) or root
+        rel = os.path.relpath(bad, root).replace(os.sep, "/")
+        findings.append(Finding("ERROR", rel, None,
+                                "--diff cannot scan this directory (unreadable) — a governed "
+                                "change could hide here, so fail closed"))
+
+    for dirpath, dirnames, filenames in os.walk(root, onerror=onerror):
+        rel_dir = os.path.relpath(dirpath, root)
+        dirnames[:] = [d for d in dirnames
+                       if d not in SKIP_DIRS and not d.startswith(".")
+                       and os.path.normpath(os.path.join(rel_dir, d)) not in SKIP_RELPATHS]
+        for fn in filenames:
+            files.append(os.path.join(dirpath, fn))
+    return files, findings
+
+
+def _pin_dirs(root, base_files, scope, wt_files):
     """Governed roots: every directory carrying a #21 groundwork.pin, collected
-    from the BASE tree AND the working tree. Both sides matter — deleting the pin
-    in the same diff must not un-govern the change that deleted it. Returned as
-    root-relative directories, where "" is root itself. .gitignore is deliberately
-    NOT honored: a pin hidden behind an ignore rule must not un-govern content."""
+    from the BASE tree AND the working tree (wt_files, one shared scan). Both
+    sides matter — deleting the pin in the same diff must not un-govern the
+    change that deleted it. Returned as root-relative directories, where "" is
+    root itself. .gitignore is deliberately NOT honored: a pin hidden behind an
+    ignore rule must not un-govern content."""
     dirs = set()
     for bf in base_files:
         if scope != "." and not bf.startswith(scope + "/"):
@@ -1722,7 +1769,7 @@ def _pin_dirs(root, base_files, scope):
         rel = bf if scope == "." else bf[len(scope) + 1:]
         if os.path.basename(rel) == "groundwork.pin":
             dirs.add(os.path.dirname(rel).replace("\\", "/"))
-    for abspath in iter_files(root, ()):
+    for abspath in wt_files:
         if os.path.basename(abspath) != "groundwork.pin":
             continue
         rel = os.path.relpath(abspath, root).replace(os.sep, "/")
@@ -1751,7 +1798,11 @@ def _pending_proposal_radii(root, gov_rel):
     for name in names:
         if not name.endswith(".md") or name in {"README.md", "_index.md"}:
             continue
-        data, _f = _load_frontmatter(os.path.join(pdir, name), name)
+        ppath = os.path.join(pdir, name)
+        if os.path.islink(ppath):
+            continue  # a symlinked proposal file cannot authorize anything —
+            # its content lives elsewhere and can change after review (Codex r1)
+        data, _f = _load_frontmatter(ppath, name)
         if data is None:
             continue
         status = data.get("status")
@@ -1773,8 +1824,11 @@ def _pending_proposal_radii(root, gov_rel):
 def _changelog_appended_targets(root, gov_abs, appended_lines):
     """Realpaths of the skills named by changelog lines APPENDED since base. An
     old line for the same skill does not excuse a new edit, so only the appended
-    span counts."""
+    span counts. Targets must resolve INSIDE the governed root (the same
+    containment discipline as proposal targets) — a line whose path escapes the
+    root names nothing here."""
     targets = set()
+    gov_real = os.path.realpath(gov_abs)
     for line in appended_lines:
         s = line.strip()
         if not s.startswith("- "):
@@ -1783,8 +1837,11 @@ def _changelog_appended_targets(root, gov_abs, appended_lines):
         if len(fields) != 5:
             continue
         p = os.path.join(gov_abs, os.path.normpath(fields[1].replace("\\", "/")))
-        if os.path.isfile(p):
-            targets.add(os.path.realpath(p))
+        if not os.path.isfile(p):
+            continue
+        rp = os.path.realpath(p)
+        if rp.startswith(gov_real + os.sep):
+            targets.add(rp)
     return targets
 
 
@@ -1811,17 +1868,32 @@ def blast_radius_diff_findings(root, base):
             continue
         base_rels[(bf if scope == "." else bf[len(scope) + 1:])] = bf
 
-    gov_roots = _pin_dirs(root, base_files, scope)
+    # One shared working-tree scan: the pin discovery, the candidate union, and
+    # the unreadable-directory ERRORs all come from it. Scan trouble is reported
+    # even when the result looks dormant — an unlistable directory could be
+    # hiding the very pin that would activate the tripwire.
+    wt_files, wt_findings = _walk_working_tree(root)
+    findings += wt_findings
+
+    gov_roots = _pin_dirs(root, base_files, scope, wt_files)
     if not gov_roots:
         return findings  # no company instance in scope: the tripwire is dormant
 
-    def governed_root_of(rel):
-        best = None
-        for g in gov_roots:
+    ordered_roots = sorted(gov_roots, key=len, reverse=True)
+
+    def governed_class_under_root(rel):
+        # Deepest containing root whose classification is non-None (Codex r1):
+        # a pin planted INSIDE a package would make the innermost root's
+        # relative path unclassifiable, and picking that root would silently
+        # un-govern the file — the outer root that actually governs it must
+        # still see it.
+        for g in ordered_roots:
             if g == "" or rel == g or rel.startswith(g + "/"):
-                if best is None or len(g) > len(best):
-                    best = g
-        return best
+                inner = rel if g == "" else rel[len(g) + 1:]
+                cls = _governed_class(inner)
+                if cls is not None:
+                    return g, cls
+        return None, None
 
     # --- Pass 1: the changelog per governed root (append-only + appended span).
     appended_targets = {}
@@ -1866,19 +1938,15 @@ def blast_radius_diff_findings(root, base):
 
     # --- Pass 2: every changed governed file.
     candidates = set(base_rels)
-    for abspath in iter_files(root, ()):
+    for abspath in wt_files:
         candidates.add(os.path.relpath(abspath, root).replace(os.sep, "/"))
 
     proposals_cache = {}
     for rel in sorted(candidates):
         if _diff_in_workbench_skips(rel):
             continue
-        g = governed_root_of(rel)
+        g, cls = governed_class_under_root(rel)
         if g is None:
-            continue
-        inner = rel if g == "" else rel[len(g) + 1:]
-        cls = _governed_class(inner)
-        if cls is None:
             continue
 
         abspath = os.path.join(root, *rel.split("/"))
@@ -1889,6 +1957,13 @@ def blast_radius_diff_findings(root, base):
                 findings.append(Finding("ERROR", rel, None,
                                         "governed file is or sits behind a symlink (cannot classify "
                                         "its blast radius)"))
+                continue
+            if status == "unreadable":
+                # NOT the deletion WARN: an unlistable ancestor makes the change
+                # unclassifiable, and unclassifiable resolves to fail-closed.
+                findings.append(Finding("ERROR", rel, None,
+                                        "cannot classify this change: a directory on its path is "
+                                        "unreadable — fail closed"))
                 continue
             if status == "missing":
                 findings.append(Finding("WARN", rel, None,
@@ -1960,7 +2035,11 @@ def main(argv):
     findings = validate(root)
     if diff_base is not None:
         findings += memory_diff_findings(root, diff_base)
-        findings += blast_radius_diff_findings(root, diff_base)
+        # Both diff modes resolve the git context independently, so a fatal
+        # context ERROR (bad ref, not a repo) arrives identically from each —
+        # print it once, not twice.
+        seen = set(findings)
+        findings += [f for f in blast_radius_diff_findings(root, diff_base) if f not in seen]
     errors = [f for f in findings if f.level == "ERROR"]
     warns = [f for f in findings if f.level == "WARN"]
     for f in findings:
