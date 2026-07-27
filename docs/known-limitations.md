@@ -89,3 +89,39 @@ Honest limits of the current build. This file grows as the product does (brief �
 - **Dot-directories are not otherwise scanned.** `.claude/rules/` and `.cursor/rules/` are
   read by name for these checks, but the generic walker still skips dot-directories, so
   secret-scanning and link-checking do not cover them.
+- **Code-span detection is deliberately biased toward over-stripping.** `_strip_code`
+  scans fences (backtick and tilde, any length ≥ 3, including fences nested under
+  blockquote and list-item markers, with container context tracked across lines: blank
+  lines and lazy paragraph continuation keep a list or quote open, and a dedented line
+  after anything else ends it) and inline spans, but it does not
+  implement backslash escapes: `` \` `` reads as opening a code span. The bias is
+  chosen, not accidental — the root-file drift check is an ERROR-level guarantee where
+  *under*-stripping fails open (a fenced `@AGENTS.md` would satisfy the check while
+  Claude Code imported nothing), so ambiguity resolves toward stripping. The cost is a
+  possible false drift ERROR next to an escaped backtick, and an undercount in the
+  budget aggregate — in the worst case an unclosed fence (e.g. a list-nested fence that
+  never sees a closing fence line) swallows everything to end of file, hiding every
+  later import from both consumers: loud for the drift check (false ERROR), silent for
+  the budget (the swallowed imports' bytes go uncounted).
+- **The §6 drift check accepts exactly one form: the first content line of
+  `CLAUDE.md` (after optional leading YAML front matter) is the standalone
+  `@AGENTS.md` at under 4 columns of indent.** Claude Code's import walker skips
+  code tokens (spans, fenced and indented blocks), every HTML token (comments
+  included), link-reference definitions, image and link destinations — including
+  MULTILINE destinations, where a `[x]:` line above re-tokens the import line — and
+  leading front matter (stripped with the consumer's own regex, whose lazy closer
+  may sit mid-line, using ECMAScript whitespace semantics — a set that
+  neither contains nor is contained by Python's `\s`; an unclosed block strips nothing, leaving the literal `---` as the failing
+  first content line). Trusting an import found anywhere richer therefore means
+  betting on Markdown token classification, where any divergence makes a
+  merely-documented import count as real. With nothing above it, the accepted line
+  is a paragraph (or a heading if underlined) and both are import-scanned under
+  every reading. Anything else — an import in prose, mid-file, below a code
+  example — draws a loud false ERROR telling the author to use the canonical
+  one-line `CLAUDE.md`. The budget aggregate still follows the full scanner, where
+  a misread shifts measurement (bytes counted, imports followed, per-file read
+  findings) rather than the §6 guarantee.
+- **The always-loaded aggregate models the union of harnesses, deduplicated by real
+  path.** `AGENTS.md` reached both directly and through `CLAUDE.md`'s import counts once:
+  no single harness loads it twice, and double-counting could push a legitimate repo past
+  the ERROR threshold for budget it does not spend.

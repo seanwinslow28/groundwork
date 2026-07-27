@@ -3501,5 +3501,919 @@ class TestRootFiles(unittest.TestCase):
                                 for f in validate.validate(d)))
 
 
+class TestStripCode(unittest.TestCase):
+    def _imports(self, text):
+        return validate._IMPORT.findall(validate._strip_code(text))
+
+    def test_plain_import_is_seen(self):
+        self.assertEqual(self._imports("@AGENTS.md\n"), ["AGENTS.md"])
+
+    def test_backtick_fence_is_stripped(self):
+        self.assertEqual(self._imports("```\n@AGENTS.md\n```\n"), [])
+
+    def test_tilde_fence_is_stripped(self):
+        # The fail-open this fold closes: a ~~~ block is a CommonMark fenced
+        # code block, so Claude Code imports nothing from it.
+        self.assertEqual(self._imports("~~~\n@AGENTS.md\n~~~\n"), [])
+
+    def test_four_backtick_fence_is_stripped(self):
+        self.assertEqual(self._imports("````\n@AGENTS.md\n````\n"), [])
+
+    def test_fence_with_info_string_is_stripped(self):
+        self.assertEqual(self._imports("```markdown\n@AGENTS.md\n```\n"), [])
+
+    def test_inner_shorter_fence_does_not_close_outer(self):
+        self.assertEqual(self._imports("````\n```\n@AGENTS.md\n```\n````\n"), [])
+
+    def test_single_backtick_span_is_stripped(self):
+        self.assertEqual(self._imports("Write `@AGENTS.md` here.\n"), [])
+
+    def test_double_backtick_span_is_stripped(self):
+        self.assertEqual(self._imports("Write ``@AGENTS.md`` here.\n"), [])
+
+    def test_unclosed_span_leaves_text(self):
+        # An unterminated backtick run is literal text, so the import is real.
+        self.assertEqual(self._imports("A ` stray tick then @AGENTS.md\n"), ["AGENTS.md"])
+
+    def test_import_after_a_closed_fence_is_seen(self):
+        self.assertEqual(self._imports("```\ncode\n```\n@AGENTS.md\n"), ["AGENTS.md"])
+
+    def test_unclosed_fence_swallows_to_end(self):
+        # Matches CommonMark: an unclosed fence runs to end of document.
+        self.assertEqual(self._imports("```\n@AGENTS.md\n"), [])
+
+    def test_multiline_span_is_stripped(self):
+        # Codex round 1: a CommonMark code span may cross line endings within a
+        # paragraph, so per-line span scanning was a fail-open on the drift check.
+        self.assertEqual(self._imports("`documentation:\n@AGENTS.md\n`\n"), [])
+
+    def test_span_does_not_cross_a_blank_line(self):
+        # A blank line ends the paragraph, so the backticks never pair and the
+        # import between them is real.
+        self.assertEqual(
+            self._imports("A ` stray\n\n@AGENTS.md\n\nanother ` tick\n"),
+            ["AGENTS.md"])
+
+    def test_longer_run_tail_is_not_a_closer(self):
+        # Codex round 1: a 2-backtick opener must not be closed by the tail of
+        # a 5-backtick run — the closer is the NEXT run of exactly N.
+        self.assertEqual(self._imports("`` @AGENTS.md `````\n"), ["AGENTS.md"])
+
+    def test_backtick_info_string_is_not_a_fence(self):
+        # Codex round 1: a backtick fence's info string cannot contain a
+        # backtick (CommonMark), so this line is a paragraph with a code span,
+        # not a fence opener that swallows the rest of the file.
+        self.assertEqual(
+            self._imports("``` `x` ```\n@AGENTS.md\n"), ["AGENTS.md"])
+
+    def test_stripped_span_does_not_join_its_neighbors(self):
+        # Codex round 2: stripping the span out of "@`doc:\n`AGENTS.md" must
+        # not synthesize a real-looking "@AGENTS.md" import from the fragments
+        # on either side — that would satisfy the drift check while Claude Code
+        # imported nothing (fail-open).
+        self.assertEqual(self._imports("@`documentation:\n`AGENTS.md\n"), [])
+        self.assertEqual(self._imports("x`span`@AGENTS.md\n"), [])
+
+    def test_real_import_after_a_span_is_still_seen(self):
+        # The placeholder must not hide a genuinely whitespace-separated import.
+        self.assertEqual(self._imports("See `x` @AGENTS.md\n"), ["AGENTS.md"])
+
+    def test_blockquoted_fence_is_stripped(self):
+        # Codex round 3: a fence nested in a blockquote is a real CommonMark
+        # fenced block, so the import inside it is documentation, not loaded.
+        self.assertEqual(self._imports("> ~~~\n> @AGENTS.md\n> ~~~\n"), [])
+
+    def test_list_item_fence_is_stripped(self):
+        self.assertEqual(self._imports("- ```\n  @AGENTS.md\n  ```\n"), [])
+
+    def test_quote_end_closes_its_fence(self):
+        # Leaving the blockquote closes the fence (a code block cannot lazily
+        # continue), and the NEW top-level fence then swallows the import.
+        self.assertEqual(
+            self._imports("> ~~~\ntext\n~~~\n@AGENTS.md\n~~~\n"), [])
+
+    def test_import_after_a_closed_quoted_fence_is_seen(self):
+        self.assertEqual(
+            self._imports("> ~~~\n> code\n> ~~~\n@AGENTS.md\n"), ["AGENTS.md"])
+
+    def test_quoted_fence_line_does_not_close_a_top_level_fence(self):
+        # Inside a top-level fence, '> ```' is content, not a closer.
+        self.assertEqual(
+            self._imports("```\n> ```\n@AGENTS.md\n```\n"), [])
+
+    def test_unquoted_fence_after_quoted_opener_reopens(self):
+        # Codex round 4: '> ~~~' then bare '~~~' — the blockquote (and its
+        # fence) end BEFORE the bare line, which then opens a NEW top-level
+        # fence swallowing the import; consuming it as a closer failed open.
+        self.assertEqual(self._imports("> ~~~\n~~~\n@AGENTS.md\n~~~\n"), [])
+
+    def test_nested_quote_dedent_reopens_at_outer_level(self):
+        # '> > ~~~' then '> ~~~': the inner quote ends, closing its fence, and
+        # a new fence opens at the outer quote level — the import is inside it.
+        self.assertEqual(
+            self._imports("> > ~~~\n> ~~~\n> @AGENTS.md\n"), [])
+
+    def test_deeper_quoted_fence_line_is_content(self):
+        # Inside a '> ~~~' fence, a '> > ~~~' line is literal content; the
+        # fence still closes at '> ~~~' and the later import is real.
+        self.assertEqual(
+            self._imports("> ~~~\n> > ~~~\n> ~~~\n@AGENTS.md\n"),
+            ["AGENTS.md"])
+
+    def test_list_boundary_in_quote_reopens(self):
+        # Codex round 5: '> - ~~~' then '> ~~~' — the list item ends (no
+        # continuation indent), so the bare fence line is a NEW opener at the
+        # quote level, not the old fence's closer; the import is inside it.
+        self.assertEqual(
+            self._imports("> - ~~~\n> ~~~\n> @AGENTS.md\n> ~~~\n"), [])
+
+    def test_ordered_list_quote_continuation_indent(self):
+        # Codex round 5: '10. > ~~~' continues at four columns, so the quoted
+        # fence stays open and the import inside it is documentation.
+        self.assertEqual(
+            self._imports("10. > ~~~\n    > @AGENTS.md\n    > ~~~\n"), [])
+
+    def test_tabbed_quote_fence_is_stripped(self):
+        # Tabs participate in block structure (tab stop 4).
+        self.assertEqual(
+            self._imports(">\t~~~\n>\t@AGENTS.md\n>\t~~~\n"), [])
+
+    def test_blank_line_inside_a_list_fence_is_content(self):
+        # A blank line does not end a fenced code block in a list item.
+        self.assertEqual(
+            self._imports("- ~~~\n  code\n\n  @AGENTS.md\n  ~~~\n"), [])
+
+    def test_fence_in_open_list_item_is_stripped(self):
+        # Codex round 6: the list item is opened by an EARLIER line; the
+        # fence line itself carries only continuation indentation, and is
+        # still a real CommonMark fence inside the item.
+        self.assertEqual(
+            self._imports("10. note\n\n    ~~~\n    @AGENTS.md\n    ~~~\n"),
+            [])
+
+    def test_import_in_list_continuation_text_is_seen(self):
+        # Persistent list context alone strips nothing — only a fence does.
+        self.assertEqual(
+            self._imports("- step\n\n    @AGENTS.md\n"), ["AGENTS.md"])
+
+    def test_two_spaces_after_list_marker(self):
+        # Codex round 7: 1-4 spaces may follow a list marker, and the item's
+        # continuation width includes them.
+        self.assertEqual(
+            self._imports("-  note\n\n   ~~~\n   @AGENTS.md\n   ~~~\n"), [])
+        self.assertEqual(
+            self._imports("-  note\n\n      ~~~\n      @AGENTS.md\n      ~~~\n"),
+            [])
+
+    def test_marker_only_list_item(self):
+        # Codex round 7: a bare '10.' (or '-') opens an EMPTY list item whose
+        # content starts on the next line at marker width + 1.
+        self.assertEqual(
+            self._imports("10.\n    ~~~\n    @AGENTS.md\n    ~~~\n"), [])
+        self.assertEqual(
+            self._imports("-\n  ~~~\n  @AGENTS.md\n  ~~~\n"), [])
+
+    def test_marker_with_five_plus_spaces_resets_continuation(self):
+        # Codex round 8: 5+ spaces after a marker start indented CODE inside
+        # the item, and continuation resets to marker width + 1 — a fence at
+        # that indent is genuine and its import is documentation.
+        self.assertEqual(
+            self._imports("10.     seed\n\n    ~~~\n    @AGENTS.md\n    ~~~\n"),
+            [])
+        self.assertEqual(
+            self._imports("-      seed\n\n  ~~~\n  @AGENTS.md\n  ~~~\n"), [])
+
+    def test_marker_only_with_trailing_spaces(self):
+        # An empty item keeps marker + 1 continuation even when the marker
+        # line carries trailing spaces.
+        self.assertEqual(
+            self._imports("10.    \n    ~~~\n    @AGENTS.md\n    ~~~\n"), [])
+
+    def test_fence_looking_indented_code_is_not_an_opener(self):
+        # Codex round 9: '10.     ~~~' — the 5+-space content is indented
+        # CODE, not a fence opener; treating it as one consumed the later
+        # GENUINE fence as its closer and exposed the import.
+        self.assertEqual(
+            self._imports("10.     ~~~\n\n    ~~~\n    @AGENTS.md\n    ~~~\n"),
+            [])
+        self.assertEqual(
+            self._imports("-      ```\n\n  ```\n  @AGENTS.md\n  ```\n"), [])
+
+    def test_stale_list_context_ends_at_dedent(self):
+        # Codex round 10: after 'outside' ends the list, '    ~~~' is TOP-
+        # LEVEL indented code (live text), and '  ~~~' is a genuine fence —
+        # stale list context must not turn the code line into a false fence
+        # that steals the genuine opener.
+        self.assertEqual(
+            self._imports("- item\n\noutside\n\n    ~~~\n\n  ~~~\n"
+                          "@AGENTS.md\n  ~~~\n"), [])
+
+    def test_lazy_continuation_keeps_the_item_open(self):
+        # A paragraph line may lazily continue the item, so the indented
+        # fence after it is still inside the item.
+        self.assertEqual(
+            self._imports("- note\nlazy line\n  ~~~\n  @AGENTS.md\n  ~~~\n"),
+            [])
+
+    def test_import_after_a_dedent_closed_list_is_seen(self):
+        self.assertEqual(
+            self._imports("- item\n\noutside @AGENTS.md\n"), ["AGENTS.md"])
+
+    def test_fence_interrupts_a_list_paragraph(self):
+        # Codex round 11: a fence line is never lazy paragraph continuation —
+        # fenced code interrupts a paragraph (CommonMark).
+        self.assertEqual(
+            self._imports("- note\n~~~\n@AGENTS.md\n~~~\n"), [])
+        self.assertEqual(
+            self._imports("- note\n```\n@AGENTS.md\n````\n"), [])
+
+    def test_indented_code_item_has_no_lazy_continuation(self):
+        # Codex round 11: '-     seed' starts the item with indented CODE, so
+        # no paragraph is open and 'outside' cannot lazily continue the item —
+        # the list ends, '    ~~~' is top-level indented code, and '  ~~~' is
+        # a genuine fence.
+        self.assertEqual(
+            self._imports("-     seed\noutside\n\n    ~~~\n\n  ~~~\n"
+                          "@AGENTS.md\n  ~~~\n"), [])
+
+    def test_heading_in_item_opens_no_paragraph(self):
+        # Codex round 12: '- # heading' is an ATX heading, not a paragraph —
+        # 'outside' cannot lazily continue the item.
+        self.assertEqual(
+            self._imports("- # heading\noutside\n\n    ~~~\n\n  ~~~\n"
+                          "@AGENTS.md\n  ~~~\n"), [])
+
+    def test_thematic_break_in_item_opens_no_paragraph(self):
+        self.assertEqual(
+            self._imports("- ***\noutside\n\n    ~~~\n\n  ~~~\n"
+                          "@AGENTS.md\n  ~~~\n"), [])
+
+    def test_heading_interrupts_a_list_paragraph(self):
+        # A heading line is never lazy continuation either.
+        self.assertEqual(
+            self._imports("- note\n# heading\n\n    ~~~\n\n  ~~~\n"
+                          "@AGENTS.md\n  ~~~\n"), [])
+
+    def test_dash_run_is_a_thematic_break_not_nested_lists(self):
+        # CommonMark precedence: '- - -' is a thematic break, not list
+        # markers — it must not open a list context.
+        self.assertEqual(
+            self._imports("- - -\noutside\n\n    ~~~\n\n  ~~~\n"
+                          "@AGENTS.md\n  ~~~\n"), [])
+
+    def test_setext_underline_closes_the_paragraph(self):
+        # Codex round 13: a setext underline turns the paragraph into a
+        # heading and closes it — 'outside' cannot lazily continue the item.
+        self.assertEqual(
+            self._imports("- heading\n  ===\noutside\n\n    ~~~\n\n  ~~~\n"
+                          "@AGENTS.md\n  ~~~\n"), [])
+
+    def test_html_block_content_is_not_a_fence(self):
+        # Codex round 13: a fence-looking line inside a type-6 HTML block
+        # (which runs to the blank line) is raw HTML content, not a fence
+        # opener; the genuine fence comes after the blank.
+        self.assertEqual(
+            self._imports("- <div>\n  ~~~\n\n  ~~~\n  @AGENTS.md\n  ~~~\n"),
+            [])
+        self.assertEqual(
+            self._imports("- <div>\n  ```\n\n  ```\n  @AGENTS.md\n  ```\n"),
+            [])
+
+    def test_import_inside_html_block_is_live(self):
+        # Scanner (budget-side) model: raw HTML stays live text, which can
+        # only OVERcount the aggregate. The §6 drift check independently
+        # distrusts everything at or below the first HTML-looking line —
+        # Claude Code's import walker skips every HTML token (round 18).
+        self.assertEqual(
+            self._imports("<div>\n@AGENTS.md\n</div>\n"), ["AGENTS.md"])
+
+    def test_type1_html_block_spans_blank_lines(self):
+        # Codex round 14: <script>/<pre> blocks run through blank lines to
+        # their closing tag — a fence-looking line inside one is raw content,
+        # and the genuine fence comes after the block ends.
+        self.assertEqual(
+            self._imports("<script>\n\n~~~\n</script>\n\n~~~\n@AGENTS.md\n"
+                          "~~~\n"), [])
+        self.assertEqual(
+            self._imports("<pre>\n\n```\n</pre>\n\n```\n@AGENTS.md\n```\n"),
+            [])
+
+    def test_html_block_interrupts_a_list_paragraph(self):
+        # Codex round 14: a type-6 start is a block start, never lazy
+        # continuation of the item's paragraph.
+        self.assertEqual(
+            self._imports("- note\n<div>\n~~~\n\n~~~\n@AGENTS.md\n~~~\n"), [])
+
+    def test_inline_html_in_prose_is_a_paragraph(self):
+        # Codex round 14: '<em> prose' is paragraph text (type 7 needs the
+        # tag alone on the line), so the following fence is genuine.
+        self.assertEqual(
+            self._imports("<em> prose\n~~~\n@AGENTS.md\n~~~\n"), [])
+
+    def test_html_comment_block_spans_blanks(self):
+        # Codex round 15: types 2-5 (comment, processing instruction,
+        # declaration, CDATA) end on their own marker, spanning blank lines.
+        self.assertEqual(
+            self._imports("<!--\n~~~\n-->\n\n~~~\n@AGENTS.md\n~~~\n"), [])
+        self.assertEqual(
+            self._imports("<?php\n~~~\n?>\n\n~~~\n@AGENTS.md\n~~~\n"), [])
+
+    def test_type1_closes_on_its_opening_line(self):
+        self.assertEqual(
+            self._imports("<script></script>\n~~~\n@AGENTS.md\n~~~\n"), [])
+
+    def test_type7_attribute_may_contain_gt(self):
+        # CommonMark allows '>' inside a quoted attribute value.
+        self.assertEqual(
+            self._imports("<em title=\">\">\n~~~\n\n~~~\n@AGENTS.md\n~~~\n"),
+            [])
+
+    def test_html_block_ends_with_its_list_item(self):
+        # An HTML block ends when its containing list item ends (dedent).
+        self.assertEqual(
+            self._imports("- <div>\noutside\n~~~\n@AGENTS.md\n~~~\n"), [])
+
+
+class TestDriftFenceBelt(unittest.TestCase):
+    # The ERROR-level drift check accepts exactly one form: the FIRST content
+    # line after optional leading front matter is the standalone '@AGENTS.md'
+    # at under 4 columns of indent. Anything richer bets on Markdown token
+    # classification (code, HTML, comments, multiline destinations — Codex
+    # rounds 15-21) and is rejected: loud false ERROR at worst, never a
+    # silent pass.
+    def test_import_after_fenceish_line_does_not_satisfy_drift(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "```\nexample\n```\n@AGENTS.md\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
+    def test_import_before_fence_satisfies_drift(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "@AGENTS.md\n\n```\nexample\n```\n")
+            self.assertEqual([f for f in validate.check_root_files(d)
+                              if f.level == "ERROR"], [])
+
+    def test_span_crossing_the_cut_cannot_expose_an_import(self):
+        # Codex round 16: truncating at a fence-ish line broke span pairing
+        # ('`code\n@AGENTS.md\n    ~~~\nclose`' is ONE multiline code span,
+        # so Claude imports nothing) and exposed the spanned import — the cut
+        # now also stops at the first backtick-bearing line.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "`code\n@AGENTS.md\n    ~~~\nclose`\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
+    def test_multiline_destination_is_not_trusted(self):
+        # Codex round 20: '[x]:\n@AGENTS.md' makes the import a link-
+        # definition destination (never scanned); link/image forms likewise.
+        # Only the FIRST content line being the canonical import counts.
+        for body in ("[x]:\n@AGENTS.md\n",
+                     "[x](\n@AGENTS.md\n)\n",
+                     "![x](\n@AGENTS.md\n)\n"):
+            with tempfile.TemporaryDirectory() as d:
+                _write(d, "AGENTS.md", "# a\n")
+                _write(d, "CLAUDE.md", body)
+                self.assertTrue(any(f.level == "ERROR"
+                                    for f in validate.check_root_files(d)),
+                                body)
+
+    def test_import_not_on_first_content_line_is_not_trusted(self):
+        # Deliberately strict (loud): any line above the import could
+        # re-token it, so the canonical line must be the first content line.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "Intro prose.\n\n@AGENTS.md\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
+    def test_indented_import_is_not_trusted(self):
+        # Codex round 19: a 4-column-indented import is an indented CODE
+        # token, and Claude Code's walker skips all code tokens.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "    @AGENTS.md\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
+    def test_link_definition_import_is_not_trusted(self):
+        # '[x]: @AGENTS.md' lexes as a link-reference definition whose href
+        # is never scanned for imports.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "[x]: @AGENTS.md\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
+    def test_frontmatter_import_is_not_trusted(self):
+        # Claude Code strips leading YAML front matter before lexing imports.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "---\n@AGENTS.md\n---\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
+    def test_import_after_frontmatter_is_trusted(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "---\ntitle: t\n---\n\n@AGENTS.md\n")
+            self.assertEqual([f for f in validate.check_root_files(d)
+                              if f.level == "ERROR"], [])
+
+    def test_dot_delimiter_does_not_close_frontmatter(self):
+        # Codex round 21: the consumer's front-matter regex recognizes only
+        # '---' as the closer, so '...' keeps the block open and the import
+        # is swallowed with it.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "---\ntitle: x\n...\n@AGENTS.md\n---\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
+    def test_inline_frontmatter_closer_matches_the_consumer(self):
+        # Codex round 22: the consumer's lazy front-matter regex can close
+        # MID-LINE ('key: ---'), so the body starts earlier than a line-based
+        # reading — and here begins with an HTML block that swallows the
+        # import.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md",
+                   "---\nkey: ---\n<script>\n---\n@AGENTS.md\n</script>\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
+    def test_unclosed_frontmatter_is_not_trusted(self):
+        # No closer anywhere: the consumer strips nothing, and the literal
+        # '---' becomes the first content line (not the canonical import).
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "---\ntitle: x\n@AGENTS.md\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
+    def test_python_only_whitespace_is_not_a_frontmatter_delimiter(self):
+        # Codex round 23: Python's \s has characters ECMAScript's lacks (U+0085,
+        # U+001C-001F). '---\x85' is NOT a front-matter opener to the
+        # consumer, so nothing may be stripped here — and the import below
+        # sits inside a fence.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "---\x85\n```\n---\n@AGENTS.md\n```\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
+    def test_python_only_whitespace_on_the_import_line(self):
+        # '@AGENTS.md\x1c': the consumer keeps U+001C in the import target
+        # and resolves 'AGENTS.md\x1c', not AGENTS.md.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "@AGENTS.md\x1c\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
+    def test_indented_frontmatter_opener_is_not_frontmatter(self):
+        # The consumer requires the opener at byte zero; ' ---' is body text,
+        # so nothing here is the canonical first content line.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", " ---\n<script>\n---\n@AGENTS.md\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
+    def test_prose_wrapped_import_is_not_trusted(self):
+        # Deliberately over-strict (loud): only the standalone canonical
+        # '@AGENTS.md' line counts — token classification of anything richer
+        # is exactly what rounds 15-19 showed to be unprovable.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "See @AGENTS.md for details\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
+    def test_import_inside_html_block_is_not_trusted(self):
+        # Codex round 18: Claude Code's import walker skips every HTML token,
+        # so an import wrapped in <script>/<pre>/any raw HTML loads nothing.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "<script>\n@AGENTS.md\n</script>\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
+    def test_import_before_html_is_trusted(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "@AGENTS.md\n\n<div>note</div>\n")
+            self.assertEqual([f for f in validate.check_root_files(d)
+                              if f.level == "ERROR"], [])
+
+    def test_commented_import_is_not_trusted(self):
+        # Codex round 17: Claude Code removes HTML comments before scanning
+        # for imports, so '<!-- @AGENTS.md -->' loads nothing — nothing at or
+        # after the first '<!--' is trusted.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "<!-- @AGENTS.md -->\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
+    def test_backtick_before_import_is_not_trusted(self):
+        # '# `' then '` @AGENTS.md `': the import sits in a code span, and
+        # nothing after a backtick-bearing line is trusted.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "# `\n` @AGENTS.md `\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
+
+class TestAggregateDedupe(unittest.TestCase):
+    def test_agents_md_counted_once(self):
+        # AGENTS.md is both the root instruction file and CLAUDE.md's import.
+        # No harness loads it twice; double-counting can only push a legitimate
+        # repo past an ERROR threshold.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "x" * 4000)
+            _write(d, "CLAUDE.md", "@AGENTS.md\n")
+            items, _findings = validate._always_loaded_bytes(d)
+            paths = [lbl for lbl, _n in items]
+            self.assertEqual(len(paths), len(set(paths)))
+            self.assertEqual(sum(n for _l, n in items), 4000 + len("@AGENTS.md\n"))
+
+    def test_symlinked_duplicate_counted_once(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "x" * 4000)
+            _write(d, "CLAUDE.md", "@alias.md\n")
+            os.symlink(os.path.join(d, "AGENTS.md"), os.path.join(d, "alias.md"))
+            items, _findings = validate._always_loaded_bytes(d)
+            total = sum(n for _l, n in items)
+            self.assertEqual(total, 4000 + len("@alias.md\n"))
+
+
+class TestExecTableHardening(unittest.TestCase):
+    def _exec(self, d, body, fn="sales"):
+        _write(d, "ontologies/%s/_executive-view.md" % fn, body)
+
+    def test_misspelled_header_errors_instead_of_passing_silently(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "# Sales\n\n| Activity | Diretcion |\n|---|---|\n| Forecast | up |\n")
+            self.assertTrue(any(f.level == "ERROR" and "activity table" in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_missing_table_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "# Sales\n\nProse only, no table.\n")
+            self.assertTrue(any(f.level == "ERROR" and "activity table" in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_header_present_but_no_rows_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "# Sales\n\n| Activity | Direction |\n|---|---|\n")
+            self.assertTrue(any(f.level == "ERROR" and "activity table" in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_empty_file_is_silent(self):
+        # An untouched worksheet stays silent (#5): only a file with content
+        # that fails to parse is a problem.
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "")
+            self.assertEqual(validate.check_ontology(d), [])
+
+    def test_empty_activity_cell_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "# Sales\n\n| Activity | Direction |\n|---|---|\n|  | up |\n")
+            self.assertTrue(any(f.level == "ERROR" and "Activity" in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_escaped_pipe_does_not_split_a_cell(self):
+        rows = validate.parse_exec_table(
+            "| Activity | Direction |\n|---|---|\n| Quote \\| order handoff | down |\n")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0][0], "Quote | order handoff")
+        self.assertEqual(rows[0][1], "down")
+
+    def test_good_table_still_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, EXEC_OK)
+            self.assertEqual([f for f in validate.check_ontology(d)
+                              if f.level == "ERROR"], [])
+
+    def test_header_needs_a_direction_cell_not_a_substring(self):
+        # Codex round 24: 'Misdirection' must not select the table — the
+        # header needs a cell that IS 'Direction'.
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "# Sales\n\n| Misdirection |\n|---|\n| Forecast | up |\n")
+            self.assertTrue(any(f.level == "ERROR" and "activity table" in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_decoy_table_does_not_shadow_the_real_one(self):
+        # A header merely MENTIONING direction must not swallow the real
+        # table below it, whose Directions would then go unchecked.
+        rows = validate.parse_exec_table(
+            "| Notes about direction here |\n|---|\n| prose |\n\n"
+            "| Activity | Direction |\n|---|---|\n| Forecast | up |\n")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0][0], "Forecast")
+        self.assertEqual(rows[0][1], "up")
+
+    def test_columns_found_by_header_position(self):
+        rows = validate.parse_exec_table(
+            "| Direction | Activity |\n|---|---|\n| up | Forecast |\n")
+        self.assertEqual(rows[0][0], "Forecast")
+        self.assertEqual(rows[0][1], "up")
+
+    def test_every_direction_table_is_validated(self):
+        # Codex round 25: an earlier table with a real Direction cell must
+        # not shadow a later one — every Direction-headed table's rows parse,
+        # so the later table's invalid value still reaches the check.
+        rows = validate.parse_exec_table(
+            "| Report | Direction |\n|---|---|\n| Decoy row | up |\n\n"
+            "| Activity | Direction | Deep record |\n|---|---|---|\n"
+            "| Forecast | sideways | — |\n")
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[1][0], "Forecast")
+        self.assertEqual(rows[1][1], "sideways")
+
+    def test_double_backslash_before_pipe_is_a_delimiter(self):
+        # Codex round 26: two backslashes escape each other, so the pipe IS
+        # a delimiter — parity, not a single-character lookbehind.
+        rows = validate.parse_exec_table(
+            "| Activity | Direction |\n|---|---|\n| A \\\\| sideways |\n")
+        self.assertEqual(rows[0][1], "sideways")
+
+    def test_zero_row_direction_table_errors_even_beside_a_valid_one(self):
+        # Codex round 26: a headered-but-empty table must still ERROR when
+        # another table in the file parses fine.
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "# Sales\n\n| Activity | Direction |\n|---|---|\n\n"
+                          "| Activity | Direction |\n|---|---|\n| F | up |\n")
+            self.assertTrue(any(f.level == "ERROR" and "zero activity rows"
+                                in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_all_empty_row_is_not_a_separator(self):
+        # '|  |  |' is a row with an empty Activity cell, not a separator.
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "# Sales\n\n| Activity | Direction |\n|---|---|\n"
+                          "|  |  |\n| F | up |\n")
+            self.assertTrue(any(f.level == "ERROR" and "Activity" in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_fenced_example_table_is_not_live(self):
+        # A valid table inside a code fence is documentation; it must not
+        # suppress the unparsable-table ERROR for the live view.
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "# Sales\n\n```\n| Activity | Direction |\n"
+                          "|---|---|\n| F | up |\n```\n\n"
+                          "| Activity | Diretcion |\n|---|---|\n| G | up |\n")
+            self.assertTrue(any(f.level == "ERROR" and "activity table"
+                                in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_masked_misspelled_table_errors(self):
+        # Codex round 27: a valid table must not mask a second, misspelled
+        # activity table — every table in an executive view must parse.
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "# Sales\n\n| Activity | Direction |\n|---|---|\n"
+                          "| Good | up |\n\n"
+                          "| Activity | Diretcion |\n|---|---|\n"
+                          "| Hidden | sideways |\n")
+            self.assertTrue(any(f.level == "ERROR" and "activity table"
+                                in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_list_nested_fenced_table_is_not_live(self):
+        # Codex round 27: a '- ```' fenced example is handled by the full
+        # container-aware stripper; its closing line must not read as a
+        # top-level opener that swallows the real table below.
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "- ```\n  | Activity | Direction |\n  |---|---|\n"
+                          "  | Example | up |\n  ```\n\n"
+                          "| Activity | Diretcion |\n|---|---|\n"
+                          "| Real | sideways |\n")
+            self.assertTrue(any(f.level == "ERROR" and "activity table"
+                                in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_comment_wrapped_table_is_not_live(self):
+        # Codex round 28: a table inside an HTML comment is documentation,
+        # not a live activity table.
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "# Sales\n\n<!--\n| Activity | Direction |\n"
+                          "|---|---|\n| X | up |\n-->\n")
+            self.assertTrue(any(f.level == "ERROR" and "activity table"
+                                in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_stray_backticks_do_not_merge_rows(self):
+        # Codex round 28: spans strip per LINE in table mode — a stray
+        # backtick on one row must not pair with a later row and erase the
+        # invalid Direction between them.
+        rows = validate.parse_exec_table(
+            "| Activity | Direction |\n|---|---|\n"
+            "| Hidden ` | up |\n| Bad | sideways |\n| tail ` | down |\n")
+        self.assertTrue(any(r[1] == "sideways" for r in rows))
+
+    def test_comment_wrapped_link_does_not_satisfy_listing(self):
+        # A link inside an HTML comment renders as nothing — it must not
+        # populate the listing set.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/sales/_executive-view.md",
+                   "| Activity | Direction | Deep record |\n|---|---|---|\n"
+                   "| Renewal | down | <!-- [h](renewal.md) --> |\n")
+            _write(d, "ontologies/sales/renewal.md", AUTOMATE_OK)
+            self.assertTrue(any(f.level == "WARN" and "not listed" in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_no_leading_pipe_table_is_seen(self):
+        # GFM rows need not start with '|' — a misspelled pipeless-margin
+        # table must not hide behind a valid one.
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "# Sales\n\n| Activity | Direction |\n|---|---|\n"
+                          "| Good | up |\n\n"
+                          "Activity | Diretcion\n---|---\nHidden | sideways\n")
+            self.assertTrue(any(f.level == "ERROR" and "activity table"
+                                in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_blockquoted_table_is_validated(self):
+        rows = validate.parse_exec_table(
+            "> | Activity | Direction |\n> |---|---|\n> | F | sideways |\n")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0][1], "sideways")
+
+    def test_comment_only_activity_cell_is_empty(self):
+        # Codex round 29: '<!-- hidden -->' renders as an EMPTY Activity
+        # cell and must reach the existing empty-Activity ERROR.
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "# Sales\n\n| Activity | Direction |\n|---|---|\n"
+                          "| <!-- hidden --> | up |\n")
+            self.assertTrue(any(f.level == "ERROR" and "Activity" in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_non_links_do_not_satisfy_listing(self):
+        # Codex round 29: link-like text inside an HTML attribute, or
+        # backslash-escaped link syntax, renders as no link at all.
+        for cell in ('<a title="[h](renewal.md)">x</a>',
+                     '\\[h\\](renewal.md)'):
+            with tempfile.TemporaryDirectory() as d:
+                _write(d, "ontologies/sales/_executive-view.md",
+                       "| Activity | Direction | Deep record |\n"
+                       "|---|---|---|\n| Renewal | down | %s |\n" % cell)
+                _write(d, "ontologies/sales/renewal.md", AUTOMATE_OK)
+                self.assertTrue(
+                    any(f.level == "WARN" and "not listed" in f.message
+                        for f in validate.check_ontology(d)), cell)
+
+    def test_missing_delimiter_row_errors(self):
+        # Codex round 31: without a delimiter row GFM renders NO table at
+        # all — the gate must say so, not silently 'validate' prose. The
+        # rows are still checked (loud on both axes).
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "# Sales\n\n| Activity | Direction |\n"
+                          "| Good | up |\n")
+            self.assertTrue(any(f.level == "ERROR" and "activity table"
+                                in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_image_syntax_does_not_satisfy_listing(self):
+        # Codex round 30: '![h](renewal.md)' renders an IMAGE, not a link to
+        # the record — a one-character typo must not silence the WARN.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/sales/_executive-view.md",
+                   "| Activity | Direction | Deep record |\n|---|---|---|\n"
+                   "| Renewal | down | ![h](renewal.md) |\n")
+            _write(d, "ontologies/sales/renewal.md", AUTOMATE_OK)
+            self.assertTrue(any(f.level == "WARN" and "not listed" in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_escaped_bang_link_still_counts(self):
+        # '\![d](r.md)' renders a literal '!' followed by a real link.
+        rows = validate.parse_exec_table(
+            "| Activity | Direction | Deep record |\n|---|---|---|\n"
+            "| R | down | \\![d](r.md) |\n")
+        self.assertEqual(rows[0][2], "r.md")
+
+    def test_deep_record_header_must_be_an_exact_cell(self):
+        # Codex round 27: 'Not a Deep record' must not designate the link
+        # column — the listing WARN would be suppressed by an unrelated link.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/sales/_executive-view.md",
+                   "| Activity | Direction | Not a Deep record |\n"
+                   "|---|---|---|\n| Renewal | down | [a](renewal.md) |\n")
+            _write(d, "ontologies/sales/renewal.md", AUTOMATE_OK)
+            self.assertTrue(any(f.level == "WARN" and "not listed" in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_link_only_from_a_deep_record_column(self):
+        # Codex round 26: without a 'Deep record' header cell, a link in an
+        # unrelated column must not satisfy the listing check.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/sales/_executive-view.md",
+                   "| Activity | Direction | Attachment |\n|---|---|---|\n"
+                   "| Renewal | down | [a](renewal.md) |\n")
+            _write(d, "ontologies/sales/renewal.md", AUTOMATE_OK)
+            self.assertTrue(any(f.level == "WARN" and "not listed" in f.message
+                                for f in validate.check_ontology(d)))
+
+
+class TestAggregateListingFailures(unittest.TestCase):
+    # Codex round 26: a contributor directory this check cannot LIST must
+    # surface as a finding, not vanish from the aggregate (fail closed, #13).
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0,
+                     "chmod(0) does not restrict root")
+    def test_unlistable_rules_dir_fails_closed(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, ".claude/rules/r.md", "---\nx: y\n---\nbody\n")
+            locked = os.path.join(d, ".claude", "rules")
+            os.chmod(locked, 0)
+            try:
+                _items, findings = validate._always_loaded_bytes(d)
+            finally:
+                os.chmod(locked, 0o755)
+            self.assertTrue(any(f.level == "ERROR" and "budget" in f.message
+                                for f in findings))
+
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0,
+                     "chmod(0) does not restrict root")
+    def test_unstattable_skill_package_fails_closed(self):
+        # Codex round 27: a mode-000 skill package made isfile() return False
+        # and the skill silently vanished from the aggregate.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "skills/locked/SKILL.md", "---\ndescription: x\n---\n")
+            locked = os.path.join(d, "skills", "locked")
+            os.chmod(locked, 0)
+            try:
+                _items, findings = validate._always_loaded_bytes(d)
+            finally:
+                os.chmod(locked, 0o755)
+            self.assertTrue(any(f.level == "ERROR" and "budget" in f.message
+                                for f in findings))
+
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0,
+                     "chmod(0) does not restrict root")
+    def test_unlistable_skills_dir_fails_closed(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "skills/s/SKILL.md", "---\ndescription: x\n---\n")
+            locked = os.path.join(d, "skills")
+            os.chmod(locked, 0)
+            try:
+                _items, findings = validate._always_loaded_bytes(d)
+            finally:
+                os.chmod(locked, 0o755)
+            self.assertTrue(any(f.level == "ERROR" and "budget" in f.message
+                                for f in findings))
+
+
+class TestOntologyFileSafety(unittest.TestCase):
+    def test_directory_named_md_does_not_crash(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/sales/_executive-view.md", EXEC_OK)
+            os.makedirs(os.path.join(d, "ontologies", "sales", "notes.md"))
+            findings = validate.check_ontology(d)  # must not raise
+            self.assertTrue(any(f.level == "ERROR" and "regular file" in f.message
+                                for f in findings))
+
+    def test_non_utf8_deep_record_fails_closed(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/sales/_executive-view.md", EXEC_OK)
+            _write_bytes(d, "ontologies/sales/bad.md", b"---\nmotion: automate\n---\n\xff\xfe\n")
+            self.assertTrue(any(f.level == "ERROR" for f in validate.check_ontology(d)))
+
+    def test_deep_record_linked_by_path_not_basename(self):
+        # A link to another function's file must not satisfy the listing check.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/sales/_executive-view.md",
+                   "| Activity | Direction | Deep record |\n|---|---|---|\n"
+                   "| Renewal | down | [d](../people-hr/renewal.md) |\n")
+            _write(d, "ontologies/people-hr/_executive-view.md", EXEC_OK)
+            _write(d, "ontologies/people-hr/renewal.md", AUTOMATE_OK)
+            _write(d, "ontologies/sales/renewal.md", AUTOMATE_OK)
+            self.assertTrue(any(f.level == "WARN" and "not listed" in f.message
+                                and "sales/renewal.md" in f.path.replace(os.sep, "/")
+                                for f in validate.check_ontology(d)))
+
+    def test_fragment_link_still_counts_as_listed(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/sales/_executive-view.md",
+                   "| Activity | Direction | Deep record |\n|---|---|---|\n"
+                   "| Renewal | down | [d](renewal.md#scores) |\n")
+            _write(d, "ontologies/sales/renewal.md", AUTOMATE_OK)
+            self.assertFalse(any("not listed" in f.message
+                                 for f in validate.check_ontology(d)))
+
+
+class TestAbsoluteImportMessage(unittest.TestCase):
+    def test_absolute_import_gets_its_own_message(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "@%s\n" % os.path.join(d, "AGENTS.md"))
+            findings = validate.check_root_files(d)
+            self.assertTrue(any(f.level == "ERROR" and "absolute" in f.message
+                                for f in findings))
+            self.assertFalse(any("drifted" in f.message for f in findings))
+
+
 if __name__ == "__main__":
     unittest.main()

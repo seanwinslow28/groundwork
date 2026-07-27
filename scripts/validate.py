@@ -220,14 +220,367 @@ SKILL_DESCRIPTION_CAP = 1536
 _AGENTS_NAMES = ("AGENTS.override.md", "AGENTS.md")
 
 _IMPORT = re.compile(r"(?:(?<=\s)|^)@([^\s`]+)", re.M)
+# The installed consumer's leading-front-matter regex, mirrored verbatim:
+# /^---\s*\n([\s\S]*?)---\s*\n?/ (the closer may sit mid-line). Its \s is
+# ECMAScript's, which is NEITHER a subset nor a superset of Python's (JS has
+# U+FEFF; Python additionally has U+0085 and U+001C-001F) — so the class is
+# spelled out and used on BOTH sides of every comparison (Codex round 23).
+_ES_WS_CHARS = ("\t\n\x0b\f\r \u00a0\u1680"
+                "\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007"
+                "\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000"
+                "\ufeff")
+_ES_WS_CLASS = "[" + re.escape(_ES_WS_CHARS) + "]"
+_FRONT_MATTER = re.compile(
+    "---{0}*\\n[\\s\\S]*?---{0}*\\n?".format(_ES_WS_CLASS))
 
 
-def _strip_code(text):
-    """Drop fenced blocks and inline code spans. Claude Code's import parser
-    "skips Markdown code spans and fenced code blocks", so `@README` inside
-    backticks is literal text and must NOT be followed."""
-    text = re.sub(r"```.*?(?:```|\Z)", "", text, flags=re.S)
-    return re.sub(r"`[^`\n]*`", "", text)
+def _es_strip(s):
+    """Strip ECMAScript whitespace only — Python's str.strip() removes more
+    (U+001C-001F, U+0085), which the consumer would keep inside an import
+    target."""
+    return s.strip(_ES_WS_CHARS)
+
+
+_FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+_TICKS = re.compile(r"`+")
+# Block-container markers a fence can nest under: blockquote, bullet, ordered.
+# A list marker may be followed by 1-4 spaces (all part of the item's
+# continuation width) or by end of line (an EMPTY item — content starts on the
+# next line at marker width + 1). Codex round 7.
+_CONTAINER = re.compile(r"^ {0,3}(> ?|(?:[-*+]|\d{1,9}[.)])(?: {1,4}|(?=$)))")
+# Non-paragraph leaf starts: an ATX heading or a thematic break cannot host
+# lazy continuation and interrupts a paragraph (Codex round 12). A thematic
+# break also outranks list-marker interpretation ('- - -' is a break, not
+# nested items — CommonMark precedence).
+_ATX_HEADING = re.compile(r" {0,3}#{1,6}(?:[ \t]|$)")
+_THEMATIC = re.compile(r" {0,3}(?:(?:\* *){3,}|(?:- *){3,}|(?:_ *){3,})[ \t]*$")
+# A setext underline (only meaningful while a paragraph is open) turns the
+# paragraph into a heading and closes it; it can never be lazy continuation.
+_SETEXT = re.compile(r" {0,3}(?:=+|-+)[ \t]*$")
+# HTML blocks (Codex rounds 13-15): a fence-looking line inside one is raw
+# HTML content, not a fence. Types 1-5 run THROUGH blank lines and end on a
+# line containing their end marker (which may be the opening line itself);
+# type 6 (the CommonMark block-tag list, open or close) and type 7 (any
+# complete tag ALONE on the line, and only outside a paragraph) run to the
+# next blank line. Every type but 7 interrupts a paragraph, and every type
+# ends when its containing block (list item / quote) ends.
+_HTML1_START = re.compile(r" {0,3}<(?:script|pre|style|textarea)(?:[ \t>]|$)",
+                          re.I)
+_HTML1_END = re.compile(r"</(?:script|pre|style|textarea)>", re.I)
+_HTML2_START = re.compile(r" {0,3}<!--")
+_HTML2_END = re.compile(r"-->")
+_HTML3_START = re.compile(r" {0,3}<\?")
+_HTML3_END = re.compile(r"\?>")
+_HTML4_START = re.compile(r" {0,3}<![A-Za-z]")
+_HTML4_END = re.compile(r">")
+_HTML5_START = re.compile(r" {0,3}<!\[CDATA\[")
+_HTML5_END = re.compile(r"\]\]>")
+_HTML6_START = re.compile(r" {0,3}</?([A-Za-z][A-Za-z0-9-]*)(?:[ \t>]|/>|$)")
+_HTML7_LINE = re.compile(
+    r" {0,3}(?:<[A-Za-z][A-Za-z0-9-]*"
+    r"(?:\s+[A-Za-z_:][A-Za-z0-9_.:-]*"
+    r"(?:\s*=\s*(?:\"[^\"]*\"|'[^']*'|[^\s\"'=<>`]+))?)*"
+    r"\s*/?>|</[A-Za-z][A-Za-z0-9-]*\s*>)[ \t]*$")
+_HTML6_TAGS = frozenset("""address article aside base basefont blockquote
+    body caption center col colgroup dd details dialog dir div dl dt fieldset
+    figcaption figure footer form frame frameset h1 h2 h3 h4 h5 h6 head
+    header hr html iframe legend li link main menu menuitem nav noframes ol
+    optgroup option p param search section summary table tbody td tfoot th
+    thead title tr track ul""".split())
+_QUOTE_MARK = re.compile(r"^ {0,3}> ?")
+
+
+def _fence_match(line):
+    """A _FENCE match honoring CommonMark's backtick rule: a backtick fence's
+    info string cannot contain a backtick. None when the line is not a fence."""
+    m = _FENCE.match(line)
+    if m and m.group(1)[0] == "`" and "`" in m.group(2):
+        return None
+    return m
+
+
+def _new_markers(line):
+    """Strip the container markers a line itself carries. Returns (chain,
+    rest, code): each chain entry ("quote", 0) or ("list",
+    continuation_columns). A list marker followed by 1-4 spaces continues at
+    the columns the whole marker occupied. Followed by 5+ spaces (the item
+    starts with indented CODE) or by end of line (an empty item), continuation
+    resets to the bare marker's width + 1 — CommonMark's rule, and getting it
+    wrong made a genuine fence at that indent read as live text (Codex rounds
+    7-8). `code` is True when the rest is indented-code content: it is live
+    text, never a fence opener — fence-matching it would let the NEXT genuine
+    fence read as its closer and expose what that fence contains (round 9)."""
+    chain = []
+    while True:
+        m = _CONTAINER.match(line)
+        if not m:
+            return chain, line, False
+        g = m.group(1)
+        end = m.end()
+        rest = line[end:]
+        if g.startswith(">"):
+            chain.append(("quote", 0))
+            line = rest
+            continue
+        marker_end = end - (len(g) - len(g.rstrip(" ")))
+        if rest.startswith(" "):
+            # 5+ spaces after the marker: the rest is indented-code content,
+            # not further markers and not a fence
+            chain.append(("list", marker_end + 1))
+            return chain, rest, True
+        if end == len(line):
+            chain.append(("list", marker_end + 1))
+            return chain, rest, False
+        chain.append(("list", end))
+        line = rest
+
+
+def _consume(chain, line):
+    """Consume as much of `chain`'s continuation prefix as the line offers, in
+    order. Returns (count, rest). A quote continues via its '>' marker; a list
+    item continues via its continuation columns (tabs already expanded). The
+    ORDERED chain is what makes nesting come out right (Codex rounds 5-6):
+    quote depth alone missed list boundaries, list-then-quote continuation
+    indent, and a fence line that carries only its item's indentation."""
+    count = 0
+    for kind, width in chain:
+        if kind == "quote":
+            m = _QUOTE_MARK.match(line)
+            if not m:
+                break
+            line = line[m.end():]
+        else:
+            consumed = 0
+            while consumed < width and consumed < len(line) \
+                    and line[consumed] == " ":
+                consumed += 1
+            if consumed < width:
+                break
+            line = line[consumed:]
+        count += 1
+    return count, line
+
+
+def _strip_spans(text):
+    """Remove inline code spans: a run of N backticks closed by the NEXT run of
+    EXACTLY N (CommonMark — a longer run's tail is not a closer, which the old
+    find()-based scan got wrong). An unterminated run is literal text and is
+    kept. `text` is one paragraph; a span may cross line endings within it.
+
+    Each stripped span leaves a single backtick behind: bare removal would join
+    the span's neighbors into a new token, so stripping "@`doc:\\n`AGENTS.md"
+    would SYNTHESIZE "@AGENTS.md" and satisfy the drift check while Claude Code
+    imported nothing (fail-open). A backtick placeholder is safe in both
+    directions — _IMPORT targets cannot start with one and an @ preceded by one
+    is not an import — so ambiguity still resolves toward a loud false ERROR."""
+    runs = [(m.start(), m.end()) for m in _TICKS.finditer(text)]
+    out = []
+    pos = 0
+    ri = 0
+    while ri < len(runs):
+        start, end = runs[ri]
+        n = end - start
+        close = next((rj for rj in range(ri + 1, len(runs))
+                      if runs[rj][1] - runs[rj][0] == n), None)
+        if close is None:
+            ri += 1
+            continue
+        out.append(text[pos:start])
+        out.append("`")
+        pos = runs[close][1]
+        ri = close + 1
+    out.append(text[pos:])
+    return "".join(out)
+
+
+def _strip_code(text, table_mode=False):
+    """Blank out fenced code blocks and inline code spans, the way a CommonMark
+    reader does — Claude Code's import parser "skips Markdown code spans and
+    fenced code blocks".
+
+    Why a scanner and not a regex: a regex that knows only ``` fences fails
+    OPEN. An `@AGENTS.md` inside a ~~~ block would be read as a real import, so
+    a CLAUDE.md that merely *documents* the import would satisfy the root-file
+    drift check while Claude Code loaded nothing.
+
+    Deliberate bias: when the two consumers disagree, OVER-strip. Missing a real
+    import makes the drift check ERROR (loud, safe); seeing a fake one makes it
+    pass (silent drift). The cost is that a backslash-escaped backtick reads as
+    opening a span — documented in docs/known-limitations.md.
+
+    Spans are matched within a PARAGRAPH (a run of non-blank, non-fence lines):
+    a CommonMark code span may cross line endings, so per-line scanning would
+    fail open on a multiline span, while a blank line ends the paragraph and no
+    span crosses it.
+
+    Fences nested in block containers (`> ~~~`, `- ```` ``` ````) are fences
+    too. A fence opened inside a blockquote closes when the quote's `>` lines
+    stop (a code block cannot lazily continue), and the ending line is
+    reprocessed — it may itself open a new top-level fence.
+
+    table_mode (Codex round 28), for the exec-table parser: HTML-block
+    content is blanked (a comment-wrapped table is documentation, not live)
+    and spans strip per LINE (GFM parses tables row-first, so a stray
+    backtick on one row must not pair across rows and erase the row between
+    them). Line count is exactly preserved in this mode."""
+    out = []
+    para = []  # non-fence lines accumulated until a paragraph boundary
+
+    def _flush():
+        if para:
+            if table_mode:
+                out.append("\n".join(_strip_spans(x) for x in para))
+            else:
+                out.append(_strip_spans("\n".join(para)))
+            del para[:]
+
+    fence = None   # (char, length) of the currently open fence
+    f_chain = []   # ordered containers the open fence sits in
+    ctx = []       # containers opened by EARLIER lines, still open.
+    # ctx tracks CommonMark block structure across lines (Codex round 6): a
+    # fence line inside an item may carry only indentation. Blank lines and
+    # lazy paragraph continuation keep ctx alive; a dedented line after
+    # anything else ends the unconsumed containers (round 10: keeping a stale
+    # list context turned top-level indented code into a false fence whose
+    # 'closer' consumed a genuine fence opener — a silent fail-open).
+    para_open = False  # the previous line was paragraph text (lazy-continuable)
+    html_open = None   # "blank": HTML block until a blank; regex: until its end
+    h_chain = []       # containers the open HTML block sits in
+    lines = text.split("\n")
+    i = 0
+    while i < len(lines):
+        # tabs participate in CommonMark block structure at a tab stop of 4
+        line = lines[i].expandtabs(4)
+        if fence is None:
+            if not line.strip():
+                _flush()
+                out.append(line)
+                para_open = False
+                if html_open == "blank":
+                    html_open = None  # types 6/7 end at a blank; 1-5 span it
+                i += 1
+                continue
+            if html_open is not None:
+                cnt, _r = _consume(h_chain, line)
+                if cnt < len(h_chain):
+                    # the containing block ended, and the HTML block with it —
+                    # reprocess this line outside it
+                    html_open = None
+                    continue
+                # raw HTML-block content — live text, never a fence opener
+                # (blanked in table_mode: it renders as no table)
+                if table_mode:
+                    _flush()
+                    out.append("")
+                else:
+                    para.append(line)
+                if html_open != "blank" and html_open.search(line):
+                    html_open = None
+                i += 1
+                continue
+            cnt, rest = _consume(ctx, line)
+            html_end = None
+            if _THEMATIC.match(rest) or (para_open and _SETEXT.match(rest)):
+                new, code = [], False
+                block_start = True
+            else:
+                new, rest, code = _new_markers(rest)
+                block_start = bool(_ATX_HEADING.match(rest)) or \
+                    bool(_THEMATIC.match(rest))
+                if not code and not block_start:
+                    if _HTML1_START.match(rest):
+                        html_end = _HTML1_END
+                    elif _HTML2_START.match(rest):
+                        html_end = _HTML2_END
+                    elif _HTML5_START.match(rest):
+                        html_end = _HTML5_END
+                    elif _HTML4_START.match(rest):
+                        html_end = _HTML4_END
+                    elif _HTML3_START.match(rest):
+                        html_end = _HTML3_END
+                    else:
+                        h6 = _HTML6_START.match(rest)
+                        if h6 and h6.group(1).lower() in _HTML6_TAGS:
+                            html_end = "blank"
+                        elif not para_open and _HTML7_LINE.match(rest):
+                            html_end = "blank7"
+                # every type but 7 interrupts a paragraph (7 is only
+                # recognized outside one)
+                block_start = block_start or \
+                    (html_end is not None and html_end != "blank7")
+            # fence recognition comes BEFORE the lazy check: fenced code —
+            # like a heading or thematic break — interrupts a paragraph, so
+            # none of them is ever lazy text
+            m = None if code else _fence_match(rest)
+            if m is None and not block_start and cnt < len(ctx) \
+                    and not new and para_open:
+                # lazy continuation: a paragraph line may continue the open
+                # containers without their prefix — plain text, ctx kept
+                para.append(line)
+                i += 1
+                continue
+            if cnt < len(ctx) or new:
+                ctx = ctx[:cnt] + new
+            if m:
+                _flush()
+                fence = (m.group(1)[0], len(m.group(1)))
+                f_chain = ctx
+                para_open = False
+                out.append("")
+            elif html_end is not None:
+                if table_mode:
+                    _flush()
+                    out.append("")
+                else:
+                    para.append(line)
+                para_open = False
+                if html_end in ("blank", "blank7"):
+                    html_open = "blank"
+                    h_chain = ctx
+                elif html_end.search(rest):
+                    pass  # end condition met on the opening line itself
+                else:
+                    html_open = html_end
+                    h_chain = ctx
+            else:
+                para.append(line)
+                # a paragraph is open only when this line can host lazy
+                # continuation: not a heading or thematic break, not
+                # indented-code content (the 5+-space marker case or, outside
+                # a paragraph, a 4+-column rest), and not a blank-content
+                # marker-only line
+                para_open = (not code) and (not block_start) and \
+                    bool(rest.strip()) and \
+                    (para_open or not rest.startswith("    "))
+            i += 1
+            continue
+        # A blank line is fence content unless a blockquote in the chain ends
+        # at it (a blank ends a quote, but not a fenced block in a list item).
+        if not line.strip() and not any(k == "quote" for k, _w in f_chain):
+            out.append("")
+            i += 1
+            continue
+        # Container termination comes BEFORE closer matching (Codex rounds
+        # 4-5): a line that fails to continue every container the fence was
+        # opened under ends that container and the fence with it, and must be
+        # REPROCESSED — it may itself open a new fence at a shallower level
+        # ('> - ~~~' then '> ~~~' reopens at the quote level; '> ~~~' then
+        # bare '~~~' reopens at the top level).
+        cnt, rest = _consume(f_chain, line)
+        if cnt < len(f_chain):
+            fence = None
+            continue
+        # a closing fence: same character, at least as long, no info string —
+        # matched on the rest AFTER the chain's prefix, so '> ```' inside a
+        # top-level fence and '> > ```' inside a '> '-deep fence stay content.
+        m = _fence_match(rest)
+        if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= fence[1] \
+                and not m.group(2).strip():
+            fence = None
+        out.append("")
+        i += 1
+    _flush()
+    return "\n".join(out)
 
 
 def _agents_file(dirpath):
@@ -312,18 +665,34 @@ def _always_loaded_bytes(root):
     items = []
     findings = []
 
+    root_real = os.path.realpath(root)
+    counted = set()
+
+    def _take(abspath, rel_label, num_bytes):
+        """Count a file once. AGENTS.md is reachable both as the root
+        instruction file and as CLAUDE.md's import; no harness loads it twice,
+        and double-counting can only push a legitimate repo past the ERROR
+        threshold."""
+        real = os.path.realpath(abspath)
+        if real in counted or not num_bytes:
+            return False
+        counted.add(real)
+        items.append((rel_label, num_bytes))
+        return True
+
+    # The root instruction file goes into `counted` BEFORE imports are
+    # followed, so CLAUDE.md's '@AGENTS.md' import dedupes against it.
     f = _agents_file(root)
     if f is not None:
         n = _file_size(f)
-        if n:
-            items.append((os.path.relpath(f, root), n))
-        elif n is None:
+        if n is None:
             findings.append(Finding(
                 "ERROR", os.path.relpath(f, root), None,
                 "cannot read this instruction file — the always-loaded budget "
                 "cannot be verified (#13)"))
+        else:
+            _take(f, os.path.relpath(f, root), n)
 
-    root_real = os.path.realpath(root)
     seen = set()
 
     # Depth 0 is CLAUDE.md itself; each import edge is one hop, and Claude Code
@@ -349,7 +718,10 @@ def _always_loaded_bytes(root):
         findings.extend(rd)
         if text is None:
             continue
-        items.append((rel, len(text.encode("utf-8"))))
+        # _take may decline (already counted as the root instruction file);
+        # imports are still expanded — the file loads once, but what it
+        # imports is real context either way.
+        _take(abspath, rel, len(text.encode("utf-8")))
         base = os.path.dirname(abspath)
         for target in _IMPORT.findall(_strip_code(text)):
             if target.startswith("~") or os.path.isabs(target):
@@ -363,7 +735,16 @@ def _always_loaded_bytes(root):
         d = os.path.join(root, rel_dir)
         if not os.path.isdir(d):
             continue
-        for dirpath, _dn, filenames in os.walk(d):
+
+        def _walk_err(exc, _rel=rel_dir):
+            # an unlistable rules directory must not silently vanish from
+            # the aggregate (fail closed, #13 — Codex round 26)
+            findings.append(Finding(
+                "ERROR", _rel, None,
+                "cannot list this rules directory — the always-loaded "
+                "budget cannot be verified (#13)"))
+
+        for dirpath, _dn, filenames in os.walk(d, onerror=_walk_err):
             for fn in sorted(filenames):
                 if not fn.endswith(ext):
                     continue
@@ -383,7 +764,7 @@ def _always_loaded_bytes(root):
                         continue
                 n = _file_size(abspath)
                 if n:
-                    items.append((rel, n))
+                    _take(abspath, rel, n)
 
     sdir = os.path.join(root, "skills")
     if os.path.isdir(sdir) and not os.path.islink(sdir):
@@ -391,8 +772,24 @@ def _always_loaded_bytes(root):
             names = sorted(os.listdir(sdir))
         except OSError:
             names = []
+            findings.append(Finding(
+                "ERROR", "skills", None,
+                "cannot list the skills directory — the always-loaded "
+                "budget cannot be verified (#13)"))
         for name in names:
             sp = os.path.join(sdir, name, "SKILL.md")
+            try:
+                os.stat(sp)
+            except (FileNotFoundError, NotADirectoryError):
+                continue
+            except OSError:
+                # isfile() swallows EACCES, so a mode-000 skill package would
+                # silently vanish from the aggregate (Codex round 27)
+                findings.append(Finding(
+                    "ERROR", os.path.relpath(sp, root), None,
+                    "cannot stat this skill — the always-loaded budget "
+                    "cannot be verified (#13)"))
+                continue
             if not os.path.isfile(sp):
                 continue
             rel = os.path.relpath(sp, root)
@@ -453,13 +850,50 @@ def check_root_files(root):
         text, rd = _read_utf8(claude, "CLAUDE.md")
         findings += rd
         if text is not None:
-            targets = _IMPORT.findall(_strip_code(text))
-            if not any(os.path.normpath(t.replace("\\", "/")) == "AGENTS.md"
-                       for t in targets):
-                findings.append(Finding(
-                    "ERROR", "CLAUDE.md", None,
-                    "CLAUDE.md does not import AGENTS.md — the root files have drifted into "
-                    "separate sources of truth; its content should be '@AGENTS.md' (§6)"))
+            # This ERROR-level guarantee is satisfied ONLY when the FIRST
+            # non-blank line after optional YAML front matter is the
+            # standalone canonical '@AGENTS.md' at under 4 columns of indent
+            # (Codex rounds 15-20: any construct ABOVE the line can change
+            # its token — code, HTML, comments, multiline link/image/
+            # definition destinations — and betting on token classification
+            # keeps losing. With nothing above it, the line is a paragraph,
+            # or a heading if underlined, and both are import-scanned under
+            # every reading; 4+ columns would be an indented code token).
+            # Front matter is stripped with the CONSUMER'S OWN regex (Codex
+            # rounds 21-22): /^---\s*\n([\s\S]*?)---\s*\n?/ — the closer may
+            # sit MID-LINE ('key: ---'), so no line-based reading can mirror
+            # it. The regex uses the explicit ECMAScript whitespace class
+            # (_ES_WS_CHARS — neither a subset nor a superset of Python's
+            # \s), so the boundary lands exactly where the consumer's does. No match (unclosed) strips nothing, and the
+            # literal '---' fails the first-content-line test below.
+            fm = _FRONT_MATTER.match(text)
+            body = text[fm.end():] if fm else text
+            satisfied = False
+            for ln in body.split("\n"):
+                x = ln.expandtabs(4)
+                if not _es_strip(x):
+                    continue
+                satisfied = _es_strip(x) == "@AGENTS.md" and \
+                    not x.startswith("    ")
+                break
+            if not satisfied:
+                targets = _IMPORT.findall(_strip_code(text))
+                abs_agents = [t for t in targets
+                              if (os.path.isabs(t) or t.startswith("~"))
+                              and os.path.basename(t) == "AGENTS.md"]
+                if abs_agents:
+                    findings.append(Finding(
+                        "ERROR", "CLAUDE.md", None,
+                        "CLAUDE.md imports AGENTS.md by absolute path (%s) — that resolves "
+                        "only on the machine that wrote it; use the repo-relative "
+                        "'@AGENTS.md' (§6)" % abs_agents[0]))
+                else:
+                    findings.append(Finding(
+                        "ERROR", "CLAUDE.md", None,
+                        "CLAUDE.md does not import AGENTS.md — the root files have drifted "
+                        "into separate sources of truth; its content should be "
+                        "'@AGENTS.md' (§6; the first content line must be the "
+                        "standalone '@AGENTS.md' import)"))
 
     cdir = os.path.join(root, ".cursor", "rules")
     if not os.path.isdir(cdir):
@@ -506,34 +940,146 @@ GATE_FIELDS = ["gate_inputs", "gate_output", "gate_standard", "gate_source_of_tr
                "gate_exception_path", "gate_error_cost", "gate_owner", "gate_review_gate"]
 
 
-def parse_exec_table(text):
-    """Parse the first markdown table whose header row contains 'Direction'.
-    Returns [(activity, direction_lower, deep_link_or_None, line_no)]."""
+def _split_cells(line):
+    """Split a table row on unescaped pipes. Backslash PARITY decides: an odd
+    run before a pipe escapes it (one backslash is consumed), an even run is
+    escaped backslashes and the pipe delimits (Codex round 26 — a
+    single-character lookbehind treated '\\\\|' as escaped)."""
+    s = line.strip().strip("|")
+    cells, buf, bs = [], [], 0
+    for ch in s:
+        if ch == "\\":
+            bs += 1
+            continue
+        if bs:
+            if ch == "|" and bs % 2 == 1:
+                buf.append("\\" * (bs - 1) + "|")
+                bs = 0
+                continue
+            buf.append("\\" * bs)
+            bs = 0
+        if ch == "|":
+            cells.append("".join(buf).strip())
+            buf = []
+        else:
+            buf.append(ch)
+    if bs:
+        buf.append("\\" * bs)
+    cells.append("".join(buf).strip())
+    return cells
+
+
+_QUOTE_PREFIX = re.compile(r"^(?: {0,3}> ?)+")
+_INLINE_TAG = re.compile(r"<[^>]*>")
+
+
+def _is_separator(cells):
+    joined = "".join(cells)
+    return "-" in joined and set(joined) <= set("-: ")
+
+
+def _cell_link(cell):
+    """The deep-record link a RENDERED cell actually carries: inline HTML
+    tags removed (attribute text is not a link), a bracket behind an odd
+    backslash run is literal text (Codex round 29), and image syntax is an
+    image, not a navigable listing — unless its '!' is itself escaped
+    (round 30)."""
+    cleaned = _INLINE_TAG.sub("", cell)
+    for m in _LINK.finditer(cleaned):
+        bs = 0
+        while m.start() - 1 - bs >= 0 and cleaned[m.start() - 1 - bs] == "\\":
+            bs += 1
+        if bs % 2 == 1:
+            continue  # escaped bracket: literal text, not a link
+        if bs == 0 and m.start() > 0 and cleaned[m.start() - 1] == "!":
+            ebs = 0
+            while m.start() - 2 - ebs >= 0 and \
+                    cleaned[m.start() - 2 - ebs] == "\\":
+                ebs += 1
+            if ebs % 2 == 0:
+                continue  # an image, not a link
+        return m.group(1)
+    return None
+
+
+def _parse_exec_tables(text):
+    """Parse EVERY live markdown table whose header row has a cell that IS
+    'Direction'. Returns (rows, n_tables, n_empty_tables, n_unrecognized).
+
+    Hardening history: a substring match let a decoy header select the wrong
+    table (Codex round 24); first-match selection let an earlier table shadow
+    a later one (round 25); round 26: an all-empty row is a row (its empty
+    Activity must reach the check), a headered table with zero rows is
+    reported even beside a valid one, and a deep-record link is read only
+    from an explicit 'Deep record' cell. Round 27: the text is pre-stripped
+    with the full container-aware _strip_code, so fenced/HTML example tables
+    (including list-nested fences) are gone before scanning; and a
+    TABLE-SHAPED pipe block (one carrying a separator row) whose header lacks
+    a Direction cell counts as unrecognized — a valid table must not mask a
+    misspelled one."""
     rows = []
-    lines = text.split("\n")
-    header_idx = None
-    for idx, line in enumerate(lines):
-        if line.lstrip().startswith("|") and "direction" in line.lower():
-            header_idx = idx
-            break
-    if header_idx is None:
-        return rows
-    for j in range(header_idx + 1, len(lines)):
-        line = lines[j]
-        if not line.lstrip().startswith("|"):
-            break
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if not cells or set("".join(cells)) <= set("-: "):
-            continue  # the |---|---| separator row
-        activity = cells[0] if len(cells) > 0 else ""
-        direction = cells[1].lower() if len(cells) > 1 else ""
-        link = None
-        if len(cells) > 2:
-            m = _LINK.search(cells[2])
-            if m:
-                link = m.group(1)
-        rows.append((activity, direction, link, j + 1))
-    return rows
+    n_tables = 0
+    n_empty = 0
+    n_unrecognized = 0
+    # GFM rows need not start with '|' and tables may sit in blockquotes
+    # (Codex round 28), so a "tabular" line is one whose quote-stripped text
+    # contains a pipe; blocks are contiguous runs of them.
+    stripped = [_QUOTE_PREFIX.sub("", ln)
+                for ln in _strip_code(text, table_mode=True).split("\n")]
+    idx = 0
+    while idx < len(stripped):
+        if "|" not in stripped[idx]:
+            idx += 1
+            continue
+        end = idx + 1
+        while end < len(stripped) and "|" in stripped[end]:
+            end += 1
+        header = [_HTML_COMMENT.sub("", c).strip().lower()
+                  for c in _split_cells(stripped[idx])]
+        if "direction" not in header:
+            if any(_is_separator(_split_cells(stripped[k]))
+                   for k in range(idx, end)):
+                n_unrecognized += 1
+            idx = end
+            continue
+        n_tables += 1
+        dir_col = header.index("direction")
+        act_col = header.index("activity") if "activity" in header else 0
+        link_col = header.index("deep record") \
+            if "deep record" in header else None
+        table_rows = 0
+        has_sep = False
+        for j in range(idx + 1, end):
+            # cells are evaluated as RENDERED: a comment-only Activity is an
+            # empty Activity, and a comment-wrapped link is no link at all
+            # (Codex rounds 28-29)
+            cells = [_HTML_COMMENT.sub("", c).strip()
+                     for c in _split_cells(stripped[j])]
+            if _is_separator(cells):
+                has_sep = True
+                continue
+            activity = cells[act_col] if len(cells) > act_col else ""
+            direction = cells[dir_col].lower() if len(cells) > dir_col else ""
+            link = None
+            if link_col is not None and len(cells) > link_col:
+                link = _cell_link(cells[link_col])
+            rows.append((activity, direction, link, j + 1))
+            table_rows += 1
+        if not table_rows:
+            n_empty += 1
+        if not has_sep:
+            # without a delimiter row GFM renders NO table at all (Codex
+            # round 31) — the rows above were still checked, but the view
+            # must be told its table does not render
+            n_unrecognized += 1
+        idx = end
+    return rows, n_tables, n_empty, n_unrecognized
+
+
+def parse_exec_table(text):
+    """Compatibility wrapper: the row list only (see _parse_exec_tables).
+    Returns [(activity, direction_lower, deep_link_or_None, line_no)]."""
+    return _parse_exec_tables(text)[0]
 
 
 def check_deep_record(abspath, root):
@@ -620,16 +1166,53 @@ def check_ontology(root, ignore=()):
             rel_exec = os.path.relpath(exec_path, root)
             exec_text, exec_findings = _read_utf8(exec_path, rel_exec)
             findings += exec_findings
-            rows = parse_exec_table(exec_text) if exec_text is not None else []
+            if exec_text is None:
+                rows = []
+            else:
+                rows, _n_tables, n_empty, n_unrec = \
+                    _parse_exec_tables(exec_text)
+                if exec_text.strip() and not rows:
+                    # A misspelled or missing 'Direction' header parses to zero
+                    # rows, which would leave every Direction in this file
+                    # UNCHECKED while the gate stayed green. Fail closed (#5).
+                    findings.append(Finding("ERROR", rel_exec, None,
+                                            "executive view has no parsable activity table — a header "
+                                            "row containing 'Direction' and at least one activity row "
+                                            "are required (#5 exec tier)"))
+                else:
+                    if n_empty:
+                        findings.append(Finding("ERROR", rel_exec, None,
+                                                "executive view has a Direction-headed table with zero "
+                                                "activity rows (#5 exec tier)"))
+                    if n_unrec:
+                        # a valid table must not mask a misspelled one: every
+                        # table-shaped block here must be a parsable activity
+                        # table (#5; Codex rounds 27 and 31)
+                        findings.append(Finding("ERROR", rel_exec, None,
+                                                "executive view has a table that does not parse as an "
+                                                "activity table (missing 'Direction' header cell or "
+                                                "delimiter row) — every table in an executive view must "
+                                                "be a parsable activity table (#5 exec tier)"))
             for activity, direction, link, ln in rows:
+                if not activity:
+                    findings.append(Finding("ERROR", rel_exec, ln,
+                                            "executive-view row has an empty Activity cell"))
                 if direction not in DIRECTIONS:
                     findings.append(Finding("ERROR", rel_exec, ln,
                                             "Direction must be 'up' or 'down', got %r" % direction))
                 if link:
-                    linked.add(os.path.basename(link))
+                    target = os.path.normpath(
+                        os.path.join(fdir, link.split("#", 1)[0]))
+                    linked.add(os.path.realpath(target))
         for df in deep_files:
-            findings += check_deep_record(os.path.join(fdir, df), root)
-            if df not in linked:
+            dpath = os.path.join(fdir, df)
+            if not os.path.isfile(dpath):
+                # a directory (or FIFO) named x.md would crash or block the read
+                findings.append(Finding("ERROR", os.path.join(rel_fdir, df), None,
+                                        "ontology entry ending in .md is not a regular file"))
+                continue
+            findings += check_deep_record(dpath, root)
+            if os.path.realpath(dpath) not in linked:
                 findings.append(Finding("WARN", os.path.join(rel_fdir, df), None,
                                         "deep record not listed in the executive view"))
     return findings
