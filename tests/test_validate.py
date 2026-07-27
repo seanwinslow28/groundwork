@@ -3542,6 +3542,30 @@ class TestStripCode(unittest.TestCase):
         # Matches CommonMark: an unclosed fence runs to end of document.
         self.assertEqual(self._imports("```\n@AGENTS.md\n"), [])
 
+    def test_multiline_span_is_stripped(self):
+        # Codex round 1: a CommonMark code span may cross line endings within a
+        # paragraph, so per-line span scanning was a fail-open on the drift check.
+        self.assertEqual(self._imports("`documentation:\n@AGENTS.md\n`\n"), [])
+
+    def test_span_does_not_cross_a_blank_line(self):
+        # A blank line ends the paragraph, so the backticks never pair and the
+        # import between them is real.
+        self.assertEqual(
+            self._imports("A ` stray\n\n@AGENTS.md\n\nanother ` tick\n"),
+            ["AGENTS.md"])
+
+    def test_longer_run_tail_is_not_a_closer(self):
+        # Codex round 1: a 2-backtick opener must not be closed by the tail of
+        # a 5-backtick run — the closer is the NEXT run of exactly N.
+        self.assertEqual(self._imports("`` @AGENTS.md `````\n"), ["AGENTS.md"])
+
+    def test_backtick_info_string_is_not_a_fence(self):
+        # Codex round 1: a backtick fence's info string cannot contain a
+        # backtick (CommonMark), so this line is a paragraph with a code span,
+        # not a fence opener that swallows the rest of the file.
+        self.assertEqual(
+            self._imports("``` `x` ```\n@AGENTS.md\n"), ["AGENTS.md"])
+
 
 class TestAggregateDedupe(unittest.TestCase):
     def test_agents_md_counted_once(self):

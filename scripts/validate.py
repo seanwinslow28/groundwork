@@ -224,30 +224,30 @@ _IMPORT = re.compile(r"(?:(?<=\s)|^)@([^\s`]+)", re.M)
 
 
 _FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+_TICKS = re.compile(r"`+")
 
 
-def _strip_spans(line):
-    """Remove inline code spans: a run of N backticks closed by a run of exactly
-    N. An unterminated run is literal text and is kept."""
+def _strip_spans(text):
+    """Remove inline code spans: a run of N backticks closed by the NEXT run of
+    EXACTLY N (CommonMark — a longer run's tail is not a closer, which the old
+    find()-based scan got wrong). An unterminated run is literal text and is
+    kept. `text` is one paragraph; a span may cross line endings within it."""
+    runs = [(m.start(), m.end()) for m in _TICKS.finditer(text)]
     out = []
-    i = 0
-    while i < len(line):
-        if line[i] != "`":
-            out.append(line[i])
-            i += 1
+    pos = 0
+    ri = 0
+    while ri < len(runs):
+        start, end = runs[ri]
+        n = end - start
+        close = next((rj for rj in range(ri + 1, len(runs))
+                      if runs[rj][1] - runs[rj][0] == n), None)
+        if close is None:
+            ri += 1
             continue
-        n = 0
-        while i + n < len(line) and line[i + n] == "`":
-            n += 1
-        close = line.find("`" * n, i + n)
-        # the closing run must be EXACTLY n backticks, not part of a longer run
-        while close != -1 and close + n < len(line) and line[close + n] == "`":
-            close = line.find("`" * n, close + n + 1)
-        if close == -1:
-            out.append(line[i:i + n])
-            i += n
-        else:
-            i = close + n
+        out.append(text[pos:start])
+        pos = runs[close][1]
+        ri = close + 1
+    out.append(text[pos:])
     return "".join(out)
 
 
@@ -264,23 +264,42 @@ def _strip_code(text):
     Deliberate bias: when the two consumers disagree, OVER-strip. Missing a real
     import makes the drift check ERROR (loud, safe); seeing a fake one makes it
     pass (silent drift). The cost is that a backslash-escaped backtick reads as
-    opening a span — documented in docs/known-limitations.md."""
+    opening a span — documented in docs/known-limitations.md.
+
+    Spans are matched within a PARAGRAPH (a run of non-blank, non-fence lines):
+    a CommonMark code span may cross line endings, so per-line scanning would
+    fail open on a multiline span, while a blank line ends the paragraph and no
+    span crosses it."""
     out = []
+    para = []  # non-fence lines accumulated until a paragraph boundary
+
+    def _flush():
+        if para:
+            out.append(_strip_spans("\n".join(para)))
+            del para[:]
+
     fence = None  # (char, length) of the currently open fence
     for line in text.split("\n"):
         m = _FENCE.match(line)
+        if m and m.group(1)[0] == "`" and "`" in m.group(2):
+            m = None  # a backtick fence's info string cannot contain a backtick
         if fence is None:
             if m:
+                _flush()
                 fence = (m.group(1)[0], len(m.group(1)))
                 out.append("")
-                continue
-            out.append(_strip_spans(line))
+            elif not line.strip():
+                _flush()
+                out.append(line)
+            else:
+                para.append(line)
         else:
             # a closing fence: same character, at least as long, no info string
             if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= fence[1] \
                     and not m.group(2).strip():
                 fence = None
             out.append("")
+    _flush()
     return "\n".join(out)
 
 
