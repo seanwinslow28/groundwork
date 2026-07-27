@@ -3566,6 +3566,18 @@ class TestStripCode(unittest.TestCase):
         self.assertEqual(
             self._imports("``` `x` ```\n@AGENTS.md\n"), ["AGENTS.md"])
 
+    def test_stripped_span_does_not_join_its_neighbors(self):
+        # Codex round 2: stripping the span out of "@`doc:\n`AGENTS.md" must
+        # not synthesize a real-looking "@AGENTS.md" import from the fragments
+        # on either side — that would satisfy the drift check while Claude Code
+        # imported nothing (fail-open).
+        self.assertEqual(self._imports("@`documentation:\n`AGENTS.md\n"), [])
+        self.assertEqual(self._imports("x`span`@AGENTS.md\n"), [])
+
+    def test_real_import_after_a_span_is_still_seen(self):
+        # The placeholder must not hide a genuinely whitespace-separated import.
+        self.assertEqual(self._imports("See `x` @AGENTS.md\n"), ["AGENTS.md"])
+
 
 class TestAggregateDedupe(unittest.TestCase):
     def test_agents_md_counted_once(self):

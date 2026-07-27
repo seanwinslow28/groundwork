@@ -231,7 +231,14 @@ def _strip_spans(text):
     """Remove inline code spans: a run of N backticks closed by the NEXT run of
     EXACTLY N (CommonMark — a longer run's tail is not a closer, which the old
     find()-based scan got wrong). An unterminated run is literal text and is
-    kept. `text` is one paragraph; a span may cross line endings within it."""
+    kept. `text` is one paragraph; a span may cross line endings within it.
+
+    Each stripped span leaves a single backtick behind: bare removal would join
+    the span's neighbors into a new token, so stripping "@`doc:\\n`AGENTS.md"
+    would SYNTHESIZE "@AGENTS.md" and satisfy the drift check while Claude Code
+    imported nothing (fail-open). A backtick placeholder is safe in both
+    directions — _IMPORT targets cannot start with one and an @ preceded by one
+    is not an import — so ambiguity still resolves toward a loud false ERROR."""
     runs = [(m.start(), m.end()) for m in _TICKS.finditer(text)]
     out = []
     pos = 0
@@ -245,6 +252,7 @@ def _strip_spans(text):
             ri += 1
             continue
         out.append(text[pos:start])
+        out.append("`")
         pos = runs[close][1]
         ri = close + 1
     out.append(text[pos:])
