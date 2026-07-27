@@ -3313,5 +3313,86 @@ class TestAlwaysLoadedBudget(unittest.TestCase):
                                 for f in validate.check_always_loaded_budget(d)))
 
 
+class TestRootFiles(unittest.TestCase):
+    def test_no_agents_md_is_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "CLAUDE.md", "# anything\n")
+            self.assertEqual(validate.check_root_files(d), [])
+
+    def test_import_satisfies_the_check(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "@AGENTS.md\n")
+            _write(d, ".cursor/rules/g.mdc", CURSOR_ALWAYS)
+            self.assertEqual(validate.check_root_files(d), [])
+
+    def test_missing_claude_md_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            self.assertTrue(any(f.level == "ERROR" and "CLAUDE.md" in f.path
+                                for f in validate.check_root_files(d)))
+
+    def test_claude_md_without_import_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "# separate instructions\n")
+            self.assertTrue(any(f.level == "ERROR" and "drift" in f.message
+                                for f in validate.check_root_files(d)))
+
+    def test_import_in_backticks_does_not_satisfy(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "Write `@AGENTS.md` to import it.\n")
+            self.assertTrue(any(f.level == "ERROR" and "drift" in f.message
+                                for f in validate.check_root_files(d)))
+
+    def test_symlinked_claude_md_is_accepted(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, ".cursor/rules/g.mdc", CURSOR_ALWAYS)
+            os.symlink(os.path.join(d, "AGENTS.md"), os.path.join(d, "CLAUDE.md"))
+            self.assertEqual([f for f in validate.check_root_files(d)
+                              if f.level == "ERROR"], [])
+
+    def test_symlink_to_the_wrong_target_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "other.md", "# o\n")
+            os.symlink(os.path.join(d, "other.md"), os.path.join(d, "CLAUDE.md"))
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
+    def test_missing_cursor_rules_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "@AGENTS.md\n")
+            findings = validate.check_root_files(d)
+            self.assertEqual([f for f in findings if f.level == "ERROR"], [])
+            self.assertTrue(any(f.level == "WARN" and "cursor" in f.path for f in findings))
+
+    def test_cursor_rule_without_always_apply_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "@AGENTS.md\n")
+            _write(d, ".cursor/rules/g.mdc",
+                   "---\ndescription: d\nalwaysApply: false\n---\n\nSee AGENTS.md.\n")
+            self.assertTrue(any(f.level == "WARN" for f in validate.check_root_files(d)))
+
+    def test_cursor_rule_not_referencing_agents_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "@AGENTS.md\n")
+            _write(d, ".cursor/rules/g.mdc",
+                   "---\ndescription: d\nalwaysApply: true\n---\n\nUnrelated guidance.\n")
+            self.assertTrue(any(f.level == "WARN" for f in validate.check_root_files(d)))
+
+    def test_wired_into_validate(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "# drifted\n")
+            self.assertTrue(any(f.level == "ERROR" and "drift" in f.message
+                                for f in validate.validate(d)))
+
+
 if __name__ == "__main__":
     unittest.main()

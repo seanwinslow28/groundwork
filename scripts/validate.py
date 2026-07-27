@@ -396,6 +396,74 @@ def check_always_loaded_budget(root):
     return findings
 
 
+def check_root_files(root):
+    """§6 root-file set. AGENTS.md is canonical. Claude Code reads CLAUDE.md and
+    NOT AGENTS.md (verified live 2026-07-27), so CLAUDE.md must point at it —
+    either the documented '@AGENTS.md' import or a symlink resolving to it.
+    Two root files that each look canonical are two sources of truth, and that
+    drift is exactly what this catches. Silent when there is no AGENTS.md."""
+    findings = []
+    agents = os.path.join(root, "AGENTS.md")
+    if not os.path.isfile(agents):
+        return findings
+
+    claude = os.path.join(root, "CLAUDE.md")
+    if not os.path.lexists(claude):
+        findings.append(Finding(
+            "ERROR", "CLAUDE.md", None,
+            "AGENTS.md is present but CLAUDE.md is missing — Claude Code reads CLAUDE.md, "
+            "not AGENTS.md; add a CLAUDE.md whose content is '@AGENTS.md' (§6)"))
+    elif os.path.islink(claude):
+        if os.path.realpath(claude) != os.path.realpath(agents):
+            findings.append(Finding(
+                "ERROR", "CLAUDE.md", None,
+                "CLAUDE.md is a symlink that does not resolve to AGENTS.md — the root files "
+                "have drifted into separate sources of truth (§6)"))
+    else:
+        text, rd = _read_utf8(claude, "CLAUDE.md")
+        findings += rd
+        if text is not None:
+            targets = _IMPORT.findall(_strip_code(text))
+            if not any(os.path.normpath(t.replace("\\", "/")) == "AGENTS.md"
+                       for t in targets):
+                findings.append(Finding(
+                    "ERROR", "CLAUDE.md", None,
+                    "CLAUDE.md does not import AGENTS.md — the root files have drifted into "
+                    "separate sources of truth; its content should be '@AGENTS.md' (§6)"))
+
+    cdir = os.path.join(root, ".cursor", "rules")
+    if not os.path.isdir(cdir):
+        findings.append(Finding(
+            "WARN", os.path.join(".cursor", "rules"), None,
+            "no .cursor/rules/*.mdc pointer — Cursor loads .mdc rules from this directory; "
+            "add an always-apply rule pointing at AGENTS.md (§6)"))
+        return findings
+
+    pointer = False
+    for dirpath, _dn, filenames in os.walk(cdir):
+        for fn in sorted(filenames):
+            if not fn.endswith(".mdc"):
+                continue
+            abspath = os.path.join(dirpath, fn)
+            rel = os.path.relpath(abspath, root)
+            data, fm = _load_frontmatter(abspath, rel)
+            findings += fm
+            if data is None:
+                continue
+            aa = data.get("alwaysApply")
+            if not (isinstance(aa, str) and aa.strip().lower() == "true"):
+                continue
+            text, _rd = _read_utf8(abspath, rel)
+            if text is not None and "AGENTS.md" in text:
+                pointer = True
+    if not pointer:
+        findings.append(Finding(
+            "WARN", os.path.join(".cursor", "rules"), None,
+            "no always-apply .cursor/rules/*.mdc rule references AGENTS.md — Cursor users "
+            "get no route to the canonical instructions (§6)"))
+    return findings
+
+
 DIRECTIONS = {"up", "down"}
 MOTIONS = {"automate", "build", "buy", "hire", "wait"}
 AUTOMATION_MOTIONS = {"automate", "build"}
@@ -1751,6 +1819,7 @@ def validate(root):
     findings += check_changelog(root, ignore)
     findings += check_agents_chain(root, ignore)
     findings += check_always_loaded_budget(root)
+    findings += check_root_files(root)
     return findings
 
 
