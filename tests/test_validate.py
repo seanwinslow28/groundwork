@@ -4171,6 +4171,42 @@ class TestExecTableHardening(unittest.TestCase):
                                 in f.message
                                 for f in validate.check_ontology(d)))
 
+    def test_masked_misspelled_table_errors(self):
+        # Codex round 27: a valid table must not mask a second, misspelled
+        # activity table — every table in an executive view must parse.
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "# Sales\n\n| Activity | Direction |\n|---|---|\n"
+                          "| Good | up |\n\n"
+                          "| Activity | Diretcion |\n|---|---|\n"
+                          "| Hidden | sideways |\n")
+            self.assertTrue(any(f.level == "ERROR" and "activity table"
+                                in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_list_nested_fenced_table_is_not_live(self):
+        # Codex round 27: a '- ```' fenced example is handled by the full
+        # container-aware stripper; its closing line must not read as a
+        # top-level opener that swallows the real table below.
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "- ```\n  | Activity | Direction |\n  |---|---|\n"
+                          "  | Example | up |\n  ```\n\n"
+                          "| Activity | Diretcion |\n|---|---|\n"
+                          "| Real | sideways |\n")
+            self.assertTrue(any(f.level == "ERROR" and "activity table"
+                                in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_deep_record_header_must_be_an_exact_cell(self):
+        # Codex round 27: 'Not a Deep record' must not designate the link
+        # column — the listing WARN would be suppressed by an unrelated link.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/sales/_executive-view.md",
+                   "| Activity | Direction | Not a Deep record |\n"
+                   "|---|---|---|\n| Renewal | down | [a](renewal.md) |\n")
+            _write(d, "ontologies/sales/renewal.md", AUTOMATE_OK)
+            self.assertTrue(any(f.level == "WARN" and "not listed" in f.message
+                                for f in validate.check_ontology(d)))
+
     def test_link_only_from_a_deep_record_column(self):
         # Codex round 26: without a 'Deep record' header cell, a link in an
         # unrelated column must not satisfy the listing check.
@@ -4192,6 +4228,22 @@ class TestAggregateListingFailures(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             _write(d, ".claude/rules/r.md", "---\nx: y\n---\nbody\n")
             locked = os.path.join(d, ".claude", "rules")
+            os.chmod(locked, 0)
+            try:
+                _items, findings = validate._always_loaded_bytes(d)
+            finally:
+                os.chmod(locked, 0o755)
+            self.assertTrue(any(f.level == "ERROR" and "budget" in f.message
+                                for f in findings))
+
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0,
+                     "chmod(0) does not restrict root")
+    def test_unstattable_skill_package_fails_closed(self):
+        # Codex round 27: a mode-000 skill package made isfile() return False
+        # and the skill silently vanished from the aggregate.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "skills/locked/SKILL.md", "---\ndescription: x\n---\n")
+            locked = os.path.join(d, "skills", "locked")
             os.chmod(locked, 0)
             try:
                 _items, findings = validate._always_loaded_bytes(d)

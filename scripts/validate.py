@@ -760,6 +760,18 @@ def _always_loaded_bytes(root):
                 "budget cannot be verified (#13)"))
         for name in names:
             sp = os.path.join(sdir, name, "SKILL.md")
+            try:
+                os.stat(sp)
+            except (FileNotFoundError, NotADirectoryError):
+                continue
+            except OSError:
+                # isfile() swallows EACCES, so a mode-000 skill package would
+                # silently vanish from the aggregate (Codex round 27)
+                findings.append(Finding(
+                    "ERROR", os.path.relpath(sp, root), None,
+                    "cannot stat this skill — the always-loaded budget "
+                    "cannot be verified (#13)"))
+                continue
             if not os.path.isfile(sp):
                 continue
             rel = os.path.relpath(sp, root)
@@ -939,60 +951,58 @@ def _split_cells(line):
     return cells
 
 
+def _is_separator(cells):
+    joined = "".join(cells)
+    return "-" in joined and set(joined) <= set("-: ")
+
+
 def _parse_exec_tables(text):
     """Parse EVERY live markdown table whose header row has a cell that IS
-    'Direction'. Returns (rows, n_tables, n_empty_tables). A substring match
-    let a decoy header select the wrong table (Codex round 24); first-match
-    selection let an earlier table shadow a later one (round 25); and round
-    26: tables inside code fences are examples, not live; an all-empty row is
-    a row (its empty Activity must reach the check), not a separator; a
-    headered table with zero rows is reported even beside a valid one; and a
-    deep-record link is read only from an explicit 'Deep record' column."""
+    'Direction'. Returns (rows, n_tables, n_empty_tables, n_unrecognized).
+
+    Hardening history: a substring match let a decoy header select the wrong
+    table (Codex round 24); first-match selection let an earlier table shadow
+    a later one (round 25); round 26: an all-empty row is a row (its empty
+    Activity must reach the check), a headered table with zero rows is
+    reported even beside a valid one, and a deep-record link is read only
+    from an explicit 'Deep record' cell. Round 27: the text is pre-stripped
+    with the full container-aware _strip_code, so fenced/HTML example tables
+    (including list-nested fences) are gone before scanning; and a
+    TABLE-SHAPED pipe block (one carrying a separator row) whose header lacks
+    a Direction cell counts as unrecognized — a valid table must not mask a
+    misspelled one."""
     rows = []
     n_tables = 0
     n_empty = 0
-    lines = text.split("\n")
-    fence = None
+    n_unrecognized = 0
+    lines = _strip_code(text).split("\n")
     idx = 0
     while idx < len(lines):
         line = lines[idx]
-        m = _fence_match(line)
-        if fence is not None:
-            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= fence[1] \
-                    and not m.group(2).strip():
-                fence = None
-            idx += 1
-            continue
-        if m:
-            fence = (m.group(1)[0], len(m.group(1)))
-            idx += 1
-            continue
         if not line.lstrip().startswith("|"):
             idx += 1
             continue
+        # the contiguous pipe block starting here
+        end = idx + 1
+        while end < len(lines) and lines[end].lstrip().startswith("|"):
+            end += 1
         header = [c.lower() for c in _split_cells(line)]
         if "direction" not in header:
-            idx += 1
+            if any(_is_separator(_split_cells(lines[k]))
+                   for k in range(idx, end)):
+                n_unrecognized += 1
+            idx = end
             continue
         n_tables += 1
         dir_col = header.index("direction")
         act_col = header.index("activity") if "activity" in header else 0
-        link_col = None
-        for j2, c in enumerate(header):
-            if "deep record" in c:
-                link_col = j2
-                break
+        link_col = header.index("deep record") \
+            if "deep record" in header else None
         table_rows = 0
-        j = idx + 1
-        while j < len(lines):
-            line = lines[j]
-            if not line.lstrip().startswith("|"):
-                break
-            cells = _split_cells(line)
-            joined = "".join(cells)
-            if "-" in joined and set(joined) <= set("-: "):
-                j += 1
-                continue  # the |---|---| separator row
+        for j in range(idx + 1, end):
+            cells = _split_cells(lines[j])
+            if _is_separator(cells):
+                continue
             activity = cells[act_col] if len(cells) > act_col else ""
             direction = cells[dir_col].lower() if len(cells) > dir_col else ""
             link = None
@@ -1002,11 +1012,10 @@ def _parse_exec_tables(text):
                     link = lm.group(1)
             rows.append((activity, direction, link, j + 1))
             table_rows += 1
-            j += 1
         if not table_rows:
             n_empty += 1
-        idx = j
-    return rows, n_tables, n_empty
+        idx = end
+    return rows, n_tables, n_empty, n_unrecognized
 
 
 def parse_exec_table(text):
@@ -1102,7 +1111,8 @@ def check_ontology(root, ignore=()):
             if exec_text is None:
                 rows = []
             else:
-                rows, _n_tables, n_empty = _parse_exec_tables(exec_text)
+                rows, _n_tables, n_empty, n_unrec = \
+                    _parse_exec_tables(exec_text)
                 if exec_text.strip() and not rows:
                     # A misspelled or missing 'Direction' header parses to zero
                     # rows, which would leave every Direction in this file
@@ -1111,10 +1121,19 @@ def check_ontology(root, ignore=()):
                                             "executive view has no parsable activity table — a header "
                                             "row containing 'Direction' and at least one activity row "
                                             "are required (#5 exec tier)"))
-                elif n_empty:
-                    findings.append(Finding("ERROR", rel_exec, None,
-                                            "executive view has a Direction-headed table with zero "
-                                            "activity rows (#5 exec tier)"))
+                else:
+                    if n_empty:
+                        findings.append(Finding("ERROR", rel_exec, None,
+                                                "executive view has a Direction-headed table with zero "
+                                                "activity rows (#5 exec tier)"))
+                    if n_unrec:
+                        # a valid table must not mask a misspelled one: every
+                        # table-shaped block here must be a parsable activity
+                        # table (#5; Codex round 27)
+                        findings.append(Finding("ERROR", rel_exec, None,
+                                                "executive view has a table without a 'Direction' header "
+                                                "cell — every table in an executive view must be a "
+                                                "parsable activity table (#5 exec tier)"))
             for activity, direction, link, ln in rows:
                 if not activity:
                     findings.append(Finding("ERROR", rel_exec, ln,
