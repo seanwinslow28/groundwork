@@ -393,7 +393,7 @@ def _strip_spans(text):
     return "".join(out)
 
 
-def _strip_code(text, table_mode=False):
+def _strip_code(text):
     """Blank out fenced code blocks and inline code spans, the way a CommonMark
     reader does — Claude Code's import parser "skips Markdown code spans and
     fenced code blocks".
@@ -416,22 +416,13 @@ def _strip_code(text, table_mode=False):
     Fences nested in block containers (`> ~~~`, `- ```` ``` ````) are fences
     too. A fence opened inside a blockquote closes when the quote's `>` lines
     stop (a code block cannot lazily continue), and the ending line is
-    reprocessed — it may itself open a new top-level fence.
-
-    table_mode (Codex round 28), for the exec-table parser: HTML-block
-    content is blanked (a comment-wrapped table is documentation, not live)
-    and spans strip per LINE (GFM parses tables row-first, so a stray
-    backtick on one row must not pair across rows and erase the row between
-    them). Line count is exactly preserved in this mode."""
+    reprocessed — it may itself open a new top-level fence."""
     out = []
     para = []  # non-fence lines accumulated until a paragraph boundary
 
     def _flush():
         if para:
-            if table_mode:
-                out.append("\n".join(_strip_spans(x) for x in para))
-            else:
-                out.append(_strip_spans("\n".join(para)))
+            out.append(_strip_spans("\n".join(para)))
             del para[:]
 
     fence = None   # (char, length) of the currently open fence
@@ -468,12 +459,7 @@ def _strip_code(text, table_mode=False):
                     html_open = None
                     continue
                 # raw HTML-block content — live text, never a fence opener
-                # (blanked in table_mode: it renders as no table)
-                if table_mode:
-                    _flush()
-                    out.append("")
-                else:
-                    para.append(line)
+                para.append(line)
                 if html_open != "blank" and html_open.search(line):
                     html_open = None
                 i += 1
@@ -528,11 +514,7 @@ def _strip_code(text, table_mode=False):
                 para_open = False
                 out.append("")
             elif html_end is not None:
-                if table_mode:
-                    _flush()
-                    out.append("")
-                else:
-                    para.append(line)
+                para.append(line)
                 para_open = False
                 if html_end in ("blank", "blank7"):
                     html_open = "blank"
@@ -940,146 +922,106 @@ GATE_FIELDS = ["gate_inputs", "gate_output", "gate_standard", "gate_source_of_tr
                "gate_exception_path", "gate_error_cost", "gate_owner", "gate_review_gate"]
 
 
-def _split_cells(line):
-    """Split a table row on unescaped pipes. Backslash PARITY decides: an odd
-    run before a pipe escapes it (one backslash is consumed), an even run is
-    escaped backslashes and the pipe delimits (Codex round 26 — a
-    single-character lookbehind treated '\\\\|' as escaped)."""
-    s = line.strip().strip("|")
-    cells, buf, bs = [], [], 0
-    for ch in s:
-        if ch == "\\":
-            bs += 1
-            continue
-        if bs:
-            if ch == "|" and bs % 2 == 1:
-                buf.append("\\" * (bs - 1) + "|")
-                bs = 0
-                continue
-            buf.append("\\" * bs)
-            bs = 0
-        if ch == "|":
-            cells.append("".join(buf).strip())
-            buf = []
-        else:
-            buf.append(ch)
-    if bs:
-        buf.append("\\" * bs)
-    cells.append("".join(buf).strip())
+_EXEC_HEADER = ("activity", "direction", "deep record")
+_EXEC_DELIM_CELL = re.compile(r"^-{3,}$")
+# canonical cells are plain text: no inline markup, no escapes, no cell pipes
+_EXEC_CELL_OK = re.compile(r"^[^<>|\\`]*$")
+_EXEC_LINK = re.compile(r"^\[[^\[\]]+\]\(([^()\s]+)\)$")
+_EXEC_NO_RECORD = {"—", "–", "-", ""}
+
+
+def _canonical_row(line):
+    """The three cells of one canonical table line, or None when the line is not
+    canonical: it must start with '|', end with '|', hold exactly three cells
+    between them, and carry no escapes or inline markup. Leading whitespace is
+    NOT tolerated — an indented line is a code block to a markdown reader."""
+    s = line.rstrip()
+    if len(s) < 2 or not s.startswith("|") or not s.endswith("|"):
+        return None
+    cells = [c.strip() for c in s[1:-1].split("|")]
+    if len(cells) != 3 or not all(_EXEC_CELL_OK.match(c) for c in cells):
+        return None
     return cells
 
 
-_QUOTE_PREFIX = re.compile(r"^(?: {0,3}> ?)+")
-_INLINE_TAG = re.compile(r"<[^>]*>")
+def parse_exec_table(text, path="<unknown>"):
+    """Parse the ONE canonical executive-view table. Returns (rows, findings);
+    rows are (activity, direction_lower, deep_link_or_None, line_no).
 
+    DOCTRINE — #11 applied to the second structured surface. This is a
+    RESTRICTED GRAMMAR, not a markdown-table parser. groundwork owns this format
+    (its own generator writes it), so the honest design is to define one exact
+    shape and ERROR on everything else, exactly as the frontmatter reader does:
+    "any other syntax ERRORs". Emulating GFM here cost eight review rounds and
+    still diverged, because GFM is a large spec and each round only closes the
+    case it found. Under a canonical grammar the whole class — decoy tables,
+    fenced or comment-wrapped examples, blockquoted or non-leading-pipe rows,
+    delimiter arity and position, boundary pipes, duplicate columns, span-vs-cell
+    precedence, indentation, column deletion — is not handled. It is unreachable.
 
-def _is_separator(cells):
-    joined = "".join(cells)
-    return "-" in joined and set(joined) <= set("-: ")
+    Absence of a table is NOT a finding here; check_ontology decides whether an
+    empty worksheet is silent (#5) or a missing table is an error."""
+    rows, findings = [], []
+    lines = text.split("\n")
+    pipe_lines = [i for i, ln in enumerate(lines) if "|" in ln]
+    if not pipe_lines:
+        return rows, findings
 
+    start = pipe_lines[0]
+    end = start
+    while end + 1 < len(lines) and "|" in lines[end + 1]:
+        end += 1
+    if pipe_lines[-1] != end:
+        findings.append(Finding(
+            "ERROR", path, pipe_lines[-1] + 1,
+            "an executive view holds exactly one activity table; this line carries a "
+            "'|' outside it (#5 canonical form)"))
+        return rows, findings
 
-def _cell_link(cell):
-    """The deep-record link a RENDERED cell actually carries: inline HTML
-    tags removed (attribute text is not a link), a bracket behind an odd
-    backslash run is literal text (Codex round 29), and image syntax is an
-    image, not a navigable listing — unless its '!' is itself escaped
-    (round 30)."""
-    cleaned = _INLINE_TAG.sub("", cell)
-    for m in _LINK.finditer(cleaned):
-        bs = 0
-        while m.start() - 1 - bs >= 0 and cleaned[m.start() - 1 - bs] == "\\":
-            bs += 1
-        if bs % 2 == 1:
-            continue  # escaped bracket: literal text, not a link
-        if bs == 0 and m.start() > 0 and cleaned[m.start() - 1] == "!":
-            ebs = 0
-            while m.start() - 2 - ebs >= 0 and \
-                    cleaned[m.start() - 2 - ebs] == "\\":
-                ebs += 1
-            if ebs % 2 == 0:
-                continue  # an image, not a link
-        return m.group(1)
-    return None
+    header = _canonical_row(lines[start])
+    if header is None or tuple(c.lower() for c in header) != _EXEC_HEADER:
+        findings.append(Finding(
+            "ERROR", path, start + 1,
+            "executive-view table header must be exactly "
+            "'| Activity | Direction | Deep record |' (#5 canonical form)"))
+        return rows, findings
 
+    if end < start + 2:
+        findings.append(Finding(
+            "ERROR", path, start + 1,
+            "executive-view table needs its delimiter row and at least one activity "
+            "row (#5 canonical form)"))
+        return rows, findings
 
-def _parse_exec_tables(text):
-    """Parse EVERY live markdown table whose header row has a cell that IS
-    'Direction'. Returns (rows, n_tables, n_empty_tables, n_unrecognized).
+    delim = _canonical_row(lines[start + 1])
+    if delim is None or not all(_EXEC_DELIM_CELL.match(c) for c in delim):
+        findings.append(Finding(
+            "ERROR", path, start + 2,
+            "the row under the header must be the delimiter '|---|---|---|' — no "
+            "alignment colons, exactly three cells (#5 canonical form)"))
+        return rows, findings
 
-    Hardening history: a substring match let a decoy header select the wrong
-    table (Codex round 24); first-match selection let an earlier table shadow
-    a later one (round 25); round 26: an all-empty row is a row (its empty
-    Activity must reach the check), a headered table with zero rows is
-    reported even beside a valid one, and a deep-record link is read only
-    from an explicit 'Deep record' cell. Round 27: the text is pre-stripped
-    with the full container-aware _strip_code, so fenced/HTML example tables
-    (including list-nested fences) are gone before scanning; and a
-    TABLE-SHAPED pipe block (one carrying a separator row) whose header lacks
-    a Direction cell counts as unrecognized — a valid table must not mask a
-    misspelled one."""
-    rows = []
-    n_tables = 0
-    n_empty = 0
-    n_unrecognized = 0
-    # GFM rows need not start with '|' and tables may sit in blockquotes
-    # (Codex round 28), so a "tabular" line is one whose quote-stripped text
-    # contains a pipe; blocks are contiguous runs of them.
-    stripped = [_QUOTE_PREFIX.sub("", ln)
-                for ln in _strip_code(text, table_mode=True).split("\n")]
-    idx = 0
-    while idx < len(stripped):
-        if "|" not in stripped[idx]:
-            idx += 1
+    for j in range(start + 2, end + 1):
+        cells = _canonical_row(lines[j])
+        if cells is None:
+            findings.append(Finding(
+                "ERROR", path, j + 1,
+                "executive-view row is not canonical — exactly three plain-text cells "
+                "between a leading and a trailing '|' (#5 canonical form)"))
             continue
-        end = idx + 1
-        while end < len(stripped) and "|" in stripped[end]:
-            end += 1
-        header = [_HTML_COMMENT.sub("", c).strip().lower()
-                  for c in _split_cells(stripped[idx])]
-        if "direction" not in header:
-            if any(_is_separator(_split_cells(stripped[k]))
-                   for k in range(idx, end)):
-                n_unrecognized += 1
-            idx = end
-            continue
-        n_tables += 1
-        dir_col = header.index("direction")
-        act_col = header.index("activity") if "activity" in header else 0
-        link_col = header.index("deep record") \
-            if "deep record" in header else None
-        table_rows = 0
-        has_sep = False
-        for j in range(idx + 1, end):
-            # cells are evaluated as RENDERED: a comment-only Activity is an
-            # empty Activity, and a comment-wrapped link is no link at all
-            # (Codex rounds 28-29)
-            cells = [_HTML_COMMENT.sub("", c).strip()
-                     for c in _split_cells(stripped[j])]
-            if _is_separator(cells):
-                has_sep = True
+        activity, direction, deep = cells
+        link = None
+        if deep not in _EXEC_NO_RECORD:
+            m = _EXEC_LINK.match(deep)
+            if m is None:
+                findings.append(Finding(
+                    "ERROR", path, j + 1,
+                    "Deep record cell must be '—' or exactly one link '[text](path)' "
+                    "(#5 canonical form)"))
                 continue
-            activity = cells[act_col] if len(cells) > act_col else ""
-            direction = cells[dir_col].lower() if len(cells) > dir_col else ""
-            link = None
-            if link_col is not None and len(cells) > link_col:
-                link = _cell_link(cells[link_col])
-            rows.append((activity, direction, link, j + 1))
-            table_rows += 1
-        if not table_rows:
-            n_empty += 1
-        if not has_sep:
-            # without a delimiter row GFM renders NO table at all (Codex
-            # round 31) — the rows above were still checked, but the view
-            # must be told its table does not render
-            n_unrecognized += 1
-        idx = end
-    return rows, n_tables, n_empty, n_unrecognized
-
-
-def parse_exec_table(text):
-    """Compatibility wrapper: the row list only (see _parse_exec_tables).
-    Returns [(activity, direction_lower, deep_link_or_None, line_no)]."""
-    return _parse_exec_tables(text)[0]
+            link = m.group(1)
+        rows.append((activity, direction.lower(), link, j + 1))
+    return rows, findings
 
 
 def check_deep_record(abspath, root):
@@ -1166,33 +1108,16 @@ def check_ontology(root, ignore=()):
             rel_exec = os.path.relpath(exec_path, root)
             exec_text, exec_findings = _read_utf8(exec_path, rel_exec)
             findings += exec_findings
-            if exec_text is None:
-                rows = []
-            else:
-                rows, _n_tables, n_empty, n_unrec = \
-                    _parse_exec_tables(exec_text)
-                if exec_text.strip() and not rows:
-                    # A misspelled or missing 'Direction' header parses to zero
-                    # rows, which would leave every Direction in this file
-                    # UNCHECKED while the gate stayed green. Fail closed (#5).
-                    findings.append(Finding("ERROR", rel_exec, None,
-                                            "executive view has no parsable activity table — a header "
-                                            "row containing 'Direction' and at least one activity row "
-                                            "are required (#5 exec tier)"))
-                else:
-                    if n_empty:
-                        findings.append(Finding("ERROR", rel_exec, None,
-                                                "executive view has a Direction-headed table with zero "
-                                                "activity rows (#5 exec tier)"))
-                    if n_unrec:
-                        # a valid table must not mask a misspelled one: every
-                        # table-shaped block here must be a parsable activity
-                        # table (#5; Codex rounds 27 and 31)
-                        findings.append(Finding("ERROR", rel_exec, None,
-                                                "executive view has a table that does not parse as an "
-                                                "activity table (missing 'Direction' header cell or "
-                                                "delimiter row) — every table in an executive view must "
-                                                "be a parsable activity table (#5 exec tier)"))
+            rows, table_findings = ((), [])
+            if exec_text is not None:
+                rows, table_findings = parse_exec_table(exec_text, rel_exec)
+            findings += table_findings
+            if exec_text is not None and exec_text.strip() and not rows \
+                    and not table_findings:
+                findings.append(Finding("ERROR", rel_exec, None,
+                                        "executive view has no activity table — a canonical "
+                                        "'| Activity | Direction | Deep record |' table with at "
+                                        "least one row is required (#5 exec tier)"))
             for activity, direction, link, ln in rows:
                 if not activity:
                     findings.append(Finding("ERROR", rel_exec, ln,
