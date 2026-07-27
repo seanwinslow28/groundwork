@@ -23,6 +23,41 @@ Depth is earned by acting, not by planning to act. An activity with no deep reco
 not a gap; it is an activity nobody has chosen to work on yet, and the validator stays
 silent about it.
 
+## The executive-view table has exactly one legal shape
+
+The validator does not parse markdown tables generously — it accepts one canonical
+form and ERRORs on everything else, the same way the frontmatter reader accepts one
+restricted grammar (#11). This is a format groundwork writes, so defining it beats
+guessing at it.
+
+```
+| Activity | Direction | Deep record |
+|---|---|---|
+| Escalation management | up | — |
+| Renewal preparation | down | [deep record](customer-success/renewal-prep.md) |
+```
+
+A deep-record path is relative to the **function directory**, so inside
+`customer-success/_executive-view.md` that last cell links to plain `renewal-prep.md`
+with no directory part. It carries the `customer-success/` prefix above only because
+this example sits one level up, in `ontologies/` — the validator checks every relative
+link in this repository, fenced examples and inline code included, so an example link
+has to resolve from the file it is written in.
+
+- The header row is exactly those three columns, in that order.
+- The delimiter row comes immediately after it: three cells of three-or-more dashes,
+  no alignment colons.
+- Every row starts and ends with `|` and has exactly three cells, unindented.
+- Cells are plain text — no code spans, HTML, escaped pipes, or images.
+- The Deep record cell is `—` or exactly one link.
+- The file contains **one** such table and no other line carrying a `|`.
+
+The cost of this is real and deliberate: benign formatting variance — reordering the
+columns, `| :--- |` alignment, indenting the table, a row without its trailing pipe —
+fails the gate rather than being tolerated. That is the same trade #11 already took
+for frontmatter, and it is why a header typo can no longer silently disable every
+Direction check in a file.
+
 ## These files are templates
 
 The ontologies in this repository are **engine exemplars** — a plausible starting map

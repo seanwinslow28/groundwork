@@ -1,8 +1,9 @@
 # Customer success — executive view
 
 Every activity this function does, with its Direction — **up** (deserves more human
-time) or **down** (should stop being hand-run). No deep records yet: depth is earned
-by acting, not by planning to act.
+time) or **down** (should stop being hand-run). Deep records exist only for the
+activities the company has chosen to act on first; the rest are listed but not yet
+worked (depth is earned by acting, not by planning to act).
 
 *A starting template, not a claim about your company — edit it (see
 [ontologies/README.md](../README.md)).*
@@ -13,7 +14,7 @@ by acting, not by planning to act.
 | Churn-risk intervention | up | — |
 | Expansion-opportunity identification | up | — |
 | Voice-of-customer synthesis | up | — |
-| Renewal preparation | down | — |
+| Renewal preparation | down | [deep record](renewal-prep.md) |
 | Health-score monitoring | down | — |
 | Quarterly business-review preparation | down | — |
 | Customer onboarding | down | — |

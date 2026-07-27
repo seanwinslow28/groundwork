@@ -480,6 +480,19 @@ class TestLinks(unittest.TestCase):
             str(REPO))
         self.assertEqual(findings, [])
 
+    def test_links_inside_a_code_fence_are_still_checked(self):
+        # Deliberate and load-bearing: check_links is line-based and fence
+        # UNAWARE, so a link in a documentation example must resolve from the
+        # file it is written in. Slice 2.2a's canonical-table example in
+        # ontologies/README.md broke the gate on exactly this. Anyone tempted
+        # to make this check fence-aware has to delete this test first.
+        findings = validate.check_links(
+            str(REPO / "README.md"),
+            "```\n| A | up | [deep record](no-such-file.md) |\n```\n",
+            str(REPO))
+        self.assertTrue(any(f.level == "ERROR" and "broken" in f.message
+                            for f in findings))
+
 
 SKILL_OK = """---
 name: onboarding-orchestration
