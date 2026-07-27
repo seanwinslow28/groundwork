@@ -239,42 +239,35 @@ def _fence_match(line):
     return m
 
 
-def _container_fence(line):
-    """A fence nested in block containers (blockquote / list item): strip
-    leading markers, then match. Returns (match, chain); match is None when no
-    fence follows the markers. `chain` records the ORDERED containers the
-    fence sits in — ("quote", 0) or ("list", continuation_columns) — because
-    a line only stays inside the fence while it continues every one of them
-    in order (Codex round 5: quote depth alone missed list boundaries and
-    list-then-quote nesting). A `> ~~~` line is a real CommonMark fence that
-    Claude Code skips, so missing it would fail open (Codex round 3)."""
+def _new_markers(line):
+    """Strip the container markers a line itself carries. Returns (chain,
+    rest): each entry ("quote", 0) or ("list", continuation_columns — the
+    columns the marker occupied, which its continuation lines must match)."""
     chain = []
     while True:
         m = _CONTAINER.match(line)
         if not m:
-            break
+            return chain, line
         if m.group(1).startswith(">"):
             chain.append(("quote", 0))
         else:
-            # a list item continues at the columns its marker occupied
             chain.append(("list", m.end()))
         line = line[m.end():]
-    if not chain:
-        return None, chain
-    return _fence_match(line), chain
 
 
-def _continues(line, chain):
-    """Does this line continue every container in the open fence's chain?
-    Returns (bool, rest) with the chain's prefix consumed from `line`. A quote
-    continues via its '>' marker; a list item continues via its continuation
-    columns (tabs were already expanded). A line that fails a container ends
-    that container AND the fence — a code block cannot lazily continue."""
+def _consume(chain, line):
+    """Consume as much of `chain`'s continuation prefix as the line offers, in
+    order. Returns (count, rest). A quote continues via its '>' marker; a list
+    item continues via its continuation columns (tabs already expanded). The
+    ORDERED chain is what makes nesting come out right (Codex rounds 5-6):
+    quote depth alone missed list boundaries, list-then-quote continuation
+    indent, and a fence line that carries only its item's indentation."""
+    count = 0
     for kind, width in chain:
         if kind == "quote":
             m = _QUOTE_MARK.match(line)
             if not m:
-                return False, line
+                break
             line = line[m.end():]
         else:
             consumed = 0
@@ -282,9 +275,10 @@ def _continues(line, chain):
                     and line[consumed] == " ":
                 consumed += 1
             if consumed < width:
-                return False, line
+                break
             line = line[consumed:]
-    return True, line
+        count += 1
+    return count, line
 
 
 def _strip_spans(text):
@@ -353,20 +347,28 @@ def _strip_code(text):
 
     fence = None   # (char, length) of the currently open fence
     f_chain = []   # ordered containers the open fence sits in
+    ctx = []       # containers opened by EARLIER lines, still plausibly open.
+    # ctx is never popped eagerly: CommonMark's lazy continuation means a
+    # dedented text line does not reliably end a list item, and a fence line
+    # inside an item may carry only indentation (Codex round 6). Keeping a
+    # stale list context can only turn more lines into fences (over-strip,
+    # loud); popping one turns a real fence into text (silent fail-open).
     lines = text.split("\n")
     i = 0
     while i < len(lines):
         # tabs participate in CommonMark block structure at a tab stop of 4
         line = lines[i].expandtabs(4)
         if fence is None:
-            m = _fence_match(line)
-            chain = []
-            if m is None:
-                m, chain = _container_fence(line)
+            cnt, rest = _consume(ctx, line)
+            new, rest = _new_markers(rest)
+            chain_here = ctx[:cnt] + new
+            if new:
+                ctx = chain_here
+            m = _fence_match(rest)
             if m:
                 _flush()
                 fence = (m.group(1)[0], len(m.group(1)))
-                f_chain = chain
+                f_chain = chain_here
                 out.append("")
             elif not line.strip():
                 _flush()
@@ -387,8 +389,8 @@ def _strip_code(text):
         # REPROCESSED — it may itself open a new fence at a shallower level
         # ('> - ~~~' then '> ~~~' reopens at the quote level; '> ~~~' then
         # bare '~~~' reopens at the top level).
-        cont, rest = _continues(line, f_chain)
-        if not cont:
+        cnt, rest = _consume(f_chain, line)
+        if cnt < len(f_chain):
             fence = None
             continue
         # a closing fence: same character, at least as long, no info string —

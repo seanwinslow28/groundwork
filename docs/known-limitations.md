@@ -91,7 +91,9 @@ Honest limits of the current build. This file grows as the product does (brief �
   secret-scanning and link-checking do not cover them.
 - **Code-span detection is deliberately biased toward over-stripping.** `_strip_code`
   scans fences (backtick and tilde, any length ≥ 3, including fences nested under
-  blockquote and list-item markers) and inline spans, but it does not
+  blockquote and list-item markers — and a list context, once opened, is conservatively
+  kept alive, so a later indented fence-looking line after a list is treated as a fence
+  even where CommonMark would call the list closed) and inline spans, but it does not
   implement backslash escapes: `` \` `` reads as opening a code span. The bias is
   chosen, not accidental — the root-file drift check is an ERROR-level guarantee where
   *under*-stripping fails open (a fenced `@AGENTS.md` would satisfy the check while

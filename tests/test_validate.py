@@ -3643,6 +3643,19 @@ class TestStripCode(unittest.TestCase):
         self.assertEqual(
             self._imports("- ~~~\n  code\n\n  @AGENTS.md\n  ~~~\n"), [])
 
+    def test_fence_in_open_list_item_is_stripped(self):
+        # Codex round 6: the list item is opened by an EARLIER line; the
+        # fence line itself carries only continuation indentation, and is
+        # still a real CommonMark fence inside the item.
+        self.assertEqual(
+            self._imports("10. note\n\n    ~~~\n    @AGENTS.md\n    ~~~\n"),
+            [])
+
+    def test_import_in_list_continuation_text_is_seen(self):
+        # Persistent list context alone strips nothing — only a fence does.
+        self.assertEqual(
+            self._imports("- step\n\n    @AGENTS.md\n"), ["AGENTS.md"])
+
 
 class TestAggregateDedupe(unittest.TestCase):
     def test_agents_md_counted_once(self):
