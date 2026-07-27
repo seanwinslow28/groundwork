@@ -931,7 +931,20 @@ _EXEC_CELL_OK = re.compile(r"^[^<>|\\`]*$")
 # one anchored link form below (Codex review of slice 2.2a: the cell rule used
 # to be shared, which let '![img](x)' and '**bold**' into an Activity cell while
 # ontologies/README.md claimed cells were plain text).
-_EXEC_TEXT_OK = re.compile(r"^[^<>|\\`\[\]*_]*$")
+#
+# Ban the SYNTAX, not the characters it is spelled with. Banning '[', ']' and
+# '_' outright rejected legitimate activity names — "Coverage [EMEA]",
+# "SOC_2 compliance" — which is a cost the canonical form was never meant to
+# impose (Codex re-review of slice 2.2a).
+_EXEC_LINKISH = re.compile(r"\]\(")   # the signature of a link or an image
+# '*' cannot appear in plain prose without opening emphasis. '_' can: CommonMark
+# does not read INTRAWORD '_' as emphasis, so "SOC_2" is text while "_x_" is not.
+_EXEC_EMPHASIS = re.compile(r"\*|(?<![0-9A-Za-z])_|_(?![0-9A-Za-z])")
+
+
+def _is_plain_text(cell):
+    """True when a cell carries no link, image, or emphasis syntax."""
+    return not _EXEC_LINKISH.search(cell) and not _EXEC_EMPHASIS.search(cell)
 _EXEC_LINK = re.compile(r"^\[[^\[\]]+\]\(([^()\s]+)\)$")
 # EXACTLY the em dash. A hyphen, an en dash, or an empty cell are near misses,
 # not synonyms — tolerating them is the GFM-style permissiveness this grammar
@@ -1030,7 +1043,7 @@ def parse_exec_table(text, path="<unknown>"):
                 "between a leading and a trailing '|' (#5 canonical form)"))
             continue
         activity, direction, deep = cells
-        if not _EXEC_TEXT_OK.match(activity) or not _EXEC_TEXT_OK.match(direction):
+        if not _is_plain_text(activity) or not _is_plain_text(direction):
             findings.append(Finding(
                 "ERROR", path, j + 1,
                 "Activity and Direction cells are plain text — no link or image "

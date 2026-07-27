@@ -423,6 +423,19 @@ class TestCanonicalExecTable(unittest.TestCase):
                 EXEC_CANON.replace("| Discovery calls |", "| %s |" % cell))
             self.assertTrue(any(f.level == "ERROR" for f in findings), cell)
 
+    def test_plain_text_activity_names_are_not_over_restricted(self):
+        # Codex re-review: the plain-text rule bans link/image/emphasis SYNTAX,
+        # not the characters those syntaxes happen to use. A first pass banned
+        # '[', ']' and '_' outright and rejected legitimate activity names.
+        # CommonMark does not read INTRAWORD '_' as emphasis, so "SOC_2" is text.
+        for cell in ("Coverage [EMEA]", "SOC_2 compliance", "P&L review",
+                     "Q3/Q4 planning", "Renewal prep (EMEA)", "Café onboarding",
+                     "Customer's escalation", "Pricing: tier review"):
+            rows, findings = self._parse(
+                EXEC_CANON.replace("| Discovery calls |", "| %s |" % cell))
+            self.assertEqual(findings, [], cell)
+            self.assertEqual(rows[0][0], cell)
+
     def test_lowercased_header_is_rejected(self):
         # "must be exactly" has to mean exactly, case included.
         _rows, findings = self._parse(

@@ -51,7 +51,9 @@ has to resolve from the file it is written in.
 - Every row starts and ends with `|` and has exactly three cells, unindented.
 - No cell carries HTML, a code span, or an escaped pipe.
 - Activity and Direction are **plain text** — no link or image syntax, no emphasis
-  markers. Only the Deep record cell may carry markup.
+  markers. Only the Deep record cell may carry markup. This bans the *syntax*, not the
+  characters it is spelled with: `Coverage [EMEA]` and `SOC_2 compliance` are fine,
+  while a link, an image, or `**Coverage**` is not.
 - The Deep record cell is either exactly `—` (an em dash — not a hyphen, not an en
   dash, not blank) or exactly one link.
 - The file contains **one** such table and no other line carrying a `|`.

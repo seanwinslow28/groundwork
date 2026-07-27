@@ -83,7 +83,7 @@ what should be automated, and under what rules — and generates your operating 
 from that map into a separate private repository.
 
 **That generator does not exist yet.** Today this repo is the proven schema, the
-validator, and one worked function. Anything describing the interview as usable is
+validator, and two worked functions. Anything describing the interview as usable is
 wrong.
 
 ## Two repos
