@@ -11,8 +11,8 @@ points here too. Edit **this** file — the others are pointers.
 ## Status — what is real today
 
 The design is fully charted (19 resolved decisions; see `CONTEXT.md`). Phase 1 is
-complete: the schema exists as files, one function is worked end to end, and the
-validator gates every layer of it.
+complete: the schema exists as files, two functions are worked end to end — one on
+each governance track — and the validator gates every layer of it.
 
 **Built and working:**
 

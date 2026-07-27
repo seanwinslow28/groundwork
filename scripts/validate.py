@@ -922,19 +922,32 @@ GATE_FIELDS = ["gate_inputs", "gate_output", "gate_standard", "gate_source_of_tr
                "gate_exception_path", "gate_error_cost", "gate_owner", "gate_review_gate"]
 
 
-_EXEC_HEADER = ("activity", "direction", "deep record")
+_EXEC_HEADER = ("Activity", "Direction", "Deep record")
 _EXEC_DELIM_CELL = re.compile(r"^-{3,}$")
-# canonical cells are plain text: no inline markup, no escapes, no cell pipes
+# No cell may carry HTML, a code span, an escape, or a cell pipe.
 _EXEC_CELL_OK = re.compile(r"^[^<>|\\`]*$")
+# Activity and Direction go further: plain text, so no link or image syntax and
+# no emphasis markers. Only the Deep record cell may carry markup, and only the
+# one anchored link form below (Codex review of slice 2.2a: the cell rule used
+# to be shared, which let '![img](x)' and '**bold**' into an Activity cell while
+# ontologies/README.md claimed cells were plain text).
+_EXEC_TEXT_OK = re.compile(r"^[^<>|\\`\[\]*_]*$")
 _EXEC_LINK = re.compile(r"^\[[^\[\]]+\]\(([^()\s]+)\)$")
-_EXEC_NO_RECORD = {"—", "–", "-", ""}
+# EXACTLY the em dash. A hyphen, an en dash, or an empty cell are near misses,
+# not synonyms — tolerating them is the GFM-style permissiveness this grammar
+# exists to remove (Codex review of slice 2.2a).
+_EXEC_NO_RECORD = "—"
 
 
 def _canonical_row(line):
     """The three cells of one canonical table line, or None when the line is not
     canonical: it must start with '|', end with '|', hold exactly three cells
-    between them, and carry no escapes or inline markup. Leading whitespace is
-    NOT tolerated — an indented line is a code block to a markdown reader."""
+    between them, and carry no escapes, HTML, or code spans. Leading whitespace
+    is NOT tolerated — an indented line is a code block to a markdown reader.
+
+    Per-cell ROLE rules (plain text vs. the one legal link form) belong to the
+    caller, which knows whether it is looking at a header, a delimiter, or a
+    data row."""
     s = line.rstrip()
     if len(s) < 2 or not s.startswith("|") or not s.endswith("|"):
         return None
@@ -971,19 +984,26 @@ def parse_exec_table(text, path="<unknown>"):
     end = start
     while end + 1 < len(lines) and "|" in lines[end + 1]:
         end += 1
-    if pipe_lines[-1] != end:
+    outside = [i for i in pipe_lines if i > end]
+    if outside:
+        # Point at the FIRST line outside the block and name the block itself:
+        # reporting the last pipe line sent the author to a legitimate table row
+        # when the stray pipe was the line that opened the block (Codex review
+        # of slice 2.2a).
         findings.append(Finding(
-            "ERROR", path, pipe_lines[-1] + 1,
-            "an executive view holds exactly one activity table; this line carries a "
-            "'|' outside it (#5 canonical form)"))
+            "ERROR", path, outside[0] + 1,
+            "an executive view holds exactly one activity table; a table block was "
+            "read from line %d to line %d, and this line carries a '|' outside it "
+            "(#5 canonical form)" % (start + 1, end + 1)))
         return rows, findings
 
     header = _canonical_row(lines[start])
-    if header is None or tuple(c.lower() for c in header) != _EXEC_HEADER:
+    if header is None or tuple(header) != _EXEC_HEADER:
         findings.append(Finding(
             "ERROR", path, start + 1,
             "executive-view table header must be exactly "
-            "'| Activity | Direction | Deep record |' (#5 canonical form)"))
+            "'| Activity | Direction | Deep record |' — spelling and case included "
+            "(#5 canonical form)"))
         return rows, findings
 
     if end < start + 2:
@@ -1010,14 +1030,20 @@ def parse_exec_table(text, path="<unknown>"):
                 "between a leading and a trailing '|' (#5 canonical form)"))
             continue
         activity, direction, deep = cells
+        if not _EXEC_TEXT_OK.match(activity) or not _EXEC_TEXT_OK.match(direction):
+            findings.append(Finding(
+                "ERROR", path, j + 1,
+                "Activity and Direction cells are plain text — no link or image "
+                "syntax, no emphasis markers (#5 canonical form)"))
+            continue
         link = None
-        if deep not in _EXEC_NO_RECORD:
+        if deep != _EXEC_NO_RECORD:
             m = _EXEC_LINK.match(deep)
             if m is None:
                 findings.append(Finding(
                     "ERROR", path, j + 1,
-                    "Deep record cell must be '—' or exactly one link '[text](path)' "
-                    "(#5 canonical form)"))
+                    "Deep record cell must be exactly '—' (an em dash) or exactly one "
+                    "link '[text](path)' (#5 canonical form)"))
                 continue
             link = m.group(1)
         rows.append((activity, direction.lower(), link, j + 1))

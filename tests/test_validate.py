@@ -389,6 +389,71 @@ class TestCanonicalExecTable(unittest.TestCase):
         self.assertTrue(any(f.level == "ERROR" and "Deep record" in f.message
                             for f in findings))
 
+    # --- Codex review of slice 2.2a: the grammar was looser than its own
+    # documentation claimed. Each of these was ACCEPTED before the fix. ---
+
+    def test_en_dash_deep_record_is_rejected(self):
+        _rows, findings = self._parse(EXEC_CANON.replace("| up | — |", "| up | – |"))
+        self.assertTrue(any(f.level == "ERROR" and "Deep record" in f.message
+                            for f in findings))
+
+    def test_hyphen_deep_record_is_rejected(self):
+        _rows, findings = self._parse(EXEC_CANON.replace("| up | — |", "| up | - |"))
+        self.assertTrue(any(f.level == "ERROR" and "Deep record" in f.message
+                            for f in findings))
+
+    def test_empty_deep_record_is_rejected(self):
+        _rows, findings = self._parse(EXEC_CANON.replace("| up | — |", "| up |  |"))
+        self.assertTrue(any(f.level == "ERROR" and "Deep record" in f.message
+                            for f in findings))
+
+    def test_image_in_activity_cell_is_rejected(self):
+        _rows, findings = self._parse(
+            EXEC_CANON.replace("| Discovery calls |", "| ![img](../README.md) |"))
+        self.assertTrue(any(f.level == "ERROR" for f in findings))
+
+    def test_link_in_activity_cell_is_rejected(self):
+        _rows, findings = self._parse(
+            EXEC_CANON.replace("| Discovery calls |", "| [link](../README.md) |"))
+        self.assertTrue(any(f.level == "ERROR" for f in findings))
+
+    def test_emphasis_in_activity_cell_is_rejected(self):
+        for cell in ("**Discovery calls**", "_Discovery calls_"):
+            _rows, findings = self._parse(
+                EXEC_CANON.replace("| Discovery calls |", "| %s |" % cell))
+            self.assertTrue(any(f.level == "ERROR" for f in findings), cell)
+
+    def test_lowercased_header_is_rejected(self):
+        # "must be exactly" has to mean exactly, case included.
+        _rows, findings = self._parse(
+            EXEC_CANON.replace("| Activity | Direction | Deep record |",
+                               "| activity | DIRECTION | deep record |"))
+        self.assertTrue(any(f.level == "ERROR" and "header" in f.message
+                            for f in findings))
+
+    def test_short_delimiter_cell_is_rejected(self):
+        _rows, findings = self._parse(EXEC_CANON.replace("|---|---|---|",
+                                                         "|--|--|--|"))
+        self.assertTrue(any(f.level == "ERROR" and "delimiter" in f.message
+                            for f in findings))
+
+    def test_canonical_header_and_delimiter_with_no_rows_is_rejected(self):
+        _rows, findings = self._parse(
+            "# Sales\n\n| Activity | Direction | Deep record |\n|---|---|---|\n")
+        self.assertTrue(any(f.level == "ERROR" for f in findings))
+
+    def test_stray_pipe_before_the_table_names_the_block(self):
+        # The offending line must be findable: reporting the LAST pipe line
+        # sent the author to a legitimate table row instead of the stray.
+        text = ("stray | pipe on line 1\n\n"
+                "| Activity | Direction | Deep record |\n"
+                "|---|---|---|\n"
+                "| Forecast | up | — |\n")
+        _rows, findings = self._parse(text)
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].line, 3)      # first line outside the block
+        self.assertIn("line 1", findings[0].message)  # ...and the block it found
+
     def test_empty_activity_still_parses_as_a_row(self):
         # The empty-Activity ERROR belongs to check_ontology; the row must reach it.
         rows, findings = self._parse(

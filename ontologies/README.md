@@ -44,12 +44,16 @@ this example sits one level up, in `ontologies/` — the validator checks every 
 link in this repository, fenced examples and inline code included, so an example link
 has to resolve from the file it is written in.
 
-- The header row is exactly those three columns, in that order.
+- The header row is exactly those three columns, in that order, spelled and cased
+  exactly as above.
 - The delimiter row comes immediately after it: three cells of three-or-more dashes,
   no alignment colons.
 - Every row starts and ends with `|` and has exactly three cells, unindented.
-- Cells are plain text — no code spans, HTML, escaped pipes, or images.
-- The Deep record cell is `—` or exactly one link.
+- No cell carries HTML, a code span, or an escaped pipe.
+- Activity and Direction are **plain text** — no link or image syntax, no emphasis
+  markers. Only the Deep record cell may carry markup.
+- The Deep record cell is either exactly `—` (an em dash — not a hyphen, not an en
+  dash, not blank) or exactly one link.
 - The file contains **one** such table and no other line carrying a `|`.
 
 The cost of this is real and deliberate: benign formatting variance — reordering the
