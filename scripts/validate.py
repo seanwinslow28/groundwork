@@ -798,14 +798,16 @@ def check_root_files(root):
         text, rd = _read_utf8(claude, "CLAUDE.md")
         findings += rd
         if text is not None:
-            # Only the file's head — everything above the first fence-looking
-            # OR backtick-bearing line — can satisfy this ERROR-level
-            # guarantee (see _FENCEISH): with no backtick and no possible
-            # fence opener above the cut, no code construct can contain the
-            # import under any CommonMark reading.
+            # Only the file's head — everything above the first fence-looking,
+            # backtick-bearing, or comment-opening line — can satisfy this
+            # ERROR-level guarantee (see _FENCEISH): with no backtick, no
+            # possible fence opener, and no '<!--' above the cut, no construct
+            # Claude Code skips (code spans, fenced blocks, HTML comments —
+            # verified against the installed consumer) can contain the import
+            # under any CommonMark reading.
             head = []
             for ln in text.split("\n"):
-                if "`" in ln or _FENCEISH.match(ln.expandtabs(4)):
+                if "`" in ln or "<!--" in ln or _FENCEISH.match(ln.expandtabs(4)):
                     break
                 head.append(ln)
             targets = _IMPORT.findall(_strip_code("\n".join(head)))
@@ -825,8 +827,8 @@ def check_root_files(root):
                         "ERROR", "CLAUDE.md", None,
                         "CLAUDE.md does not import AGENTS.md — the root files have drifted "
                         "into separate sources of truth; its content should be "
-                        "'@AGENTS.md' (§6; only an import above the first code "
-                        "fence counts)"))
+                        "'@AGENTS.md' (§6; only an import above the first code fence, "
+                        "backtick, or HTML comment counts)"))
 
     cdir = os.path.join(root, ".cursor", "rules")
     if not os.path.isdir(cdir):

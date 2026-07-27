@@ -3861,6 +3861,16 @@ class TestDriftFenceBelt(unittest.TestCase):
             self.assertTrue(any(f.level == "ERROR"
                                 for f in validate.check_root_files(d)))
 
+    def test_commented_import_is_not_trusted(self):
+        # Codex round 17: Claude Code removes HTML comments before scanning
+        # for imports, so '<!-- @AGENTS.md -->' loads nothing — nothing at or
+        # after the first '<!--' is trusted.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "<!-- @AGENTS.md -->\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
     def test_backtick_before_import_is_not_trusted(self):
         # '# `' then '` @AGENTS.md `': the import sits in a code span, and
         # nothing after a backtick-bearing line is trusted.
