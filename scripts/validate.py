@@ -980,15 +980,24 @@ def _is_separator(cells):
 
 def _cell_link(cell):
     """The deep-record link a RENDERED cell actually carries: inline HTML
-    tags removed (attribute text is not a link), and a bracket behind an odd
-    backslash run is literal text, not link syntax (Codex round 29)."""
+    tags removed (attribute text is not a link), a bracket behind an odd
+    backslash run is literal text (Codex round 29), and image syntax is an
+    image, not a navigable listing — unless its '!' is itself escaped
+    (round 30)."""
     cleaned = _INLINE_TAG.sub("", cell)
     for m in _LINK.finditer(cleaned):
         bs = 0
         while m.start() - 1 - bs >= 0 and cleaned[m.start() - 1 - bs] == "\\":
             bs += 1
         if bs % 2 == 1:
-            continue
+            continue  # escaped bracket: literal text, not a link
+        if bs == 0 and m.start() > 0 and cleaned[m.start() - 1] == "!":
+            ebs = 0
+            while m.start() - 2 - ebs >= 0 and \
+                    cleaned[m.start() - 2 - ebs] == "\\":
+                ebs += 1
+            if ebs % 2 == 0:
+                continue  # an image, not a link
         return m.group(1)
     return None
 

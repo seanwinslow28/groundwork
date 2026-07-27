@@ -4266,6 +4266,24 @@ class TestExecTableHardening(unittest.TestCase):
                     any(f.level == "WARN" and "not listed" in f.message
                         for f in validate.check_ontology(d)), cell)
 
+    def test_image_syntax_does_not_satisfy_listing(self):
+        # Codex round 30: '![h](renewal.md)' renders an IMAGE, not a link to
+        # the record — a one-character typo must not silence the WARN.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/sales/_executive-view.md",
+                   "| Activity | Direction | Deep record |\n|---|---|---|\n"
+                   "| Renewal | down | ![h](renewal.md) |\n")
+            _write(d, "ontologies/sales/renewal.md", AUTOMATE_OK)
+            self.assertTrue(any(f.level == "WARN" and "not listed" in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_escaped_bang_link_still_counts(self):
+        # '\![d](r.md)' renders a literal '!' followed by a real link.
+        rows = validate.parse_exec_table(
+            "| Activity | Direction | Deep record |\n|---|---|---|\n"
+            "| R | down | \\![d](r.md) |\n")
+        self.assertEqual(rows[0][2], "r.md")
+
     def test_deep_record_header_must_be_an_exact_cell(self):
         # Codex round 27: 'Not a Deep record' must not designate the link
         # column — the listing WARN would be suppressed by an unrelated link.
