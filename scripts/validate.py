@@ -800,10 +800,16 @@ def check_root_files(root):
             # every reading; 4+ columns would be an indented code token).
             all_lines = text.split("\n")
             start = 0
-            if all_lines and all_lines[0].strip() == "---":
+            # Front matter exactly as the installed consumer recognizes it
+            # (Codex round 21): the opener is '---' at byte zero (trailing
+            # whitespace allowed), and ONLY a '---' line closes it — '...'
+            # does not. The consumer's lazy match can only close at or before
+            # this line-based closer, so a divergence here can only distrust
+            # MORE (loud), never trust a swallowed import.
+            if all_lines and re.match(r"---\s*$", all_lines[0]):
                 start = len(all_lines)  # unclosed front matter: trust nothing
                 for k in range(1, len(all_lines)):
-                    if all_lines[k].strip() in ("---", "..."):
+                    if re.match(r"---\s*$", all_lines[k]):
                         start = k + 1
                         break
             satisfied = False

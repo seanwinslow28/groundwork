@@ -109,9 +109,11 @@ Honest limits of the current build. This file grows as the product does (brief �
   code tokens (spans, fenced and indented blocks), every HTML token (comments
   included), link-reference definitions, image and link destinations — including
   MULTILINE destinations, where a `[x]:` line above re-tokens the import line — and
-  leading front matter. Trusting an import found anywhere richer therefore means
-  betting on Markdown token classification, where any divergence makes a
-  merely-documented import count as real. With nothing above it, the accepted line
+  leading front matter (recognized exactly as the consumer does: the opener is
+  `---` at byte zero, and only a `---` line — not `...` — closes it; an unclosed
+  block distrusts the whole file). Trusting an import found anywhere richer
+  therefore means betting on Markdown token classification, where any divergence
+  makes a merely-documented import count as real. With nothing above it, the accepted line
   is a paragraph (or a heading if underlined) and both are import-scanned under
   every reading. Anything else — an import in prose, mid-file, below a code
   example — draws a loud false ERROR telling the author to use the canonical

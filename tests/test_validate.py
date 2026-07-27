@@ -3835,10 +3835,12 @@ class TestStripCode(unittest.TestCase):
 
 
 class TestDriftFenceBelt(unittest.TestCase):
-    # The ERROR-level drift check trusts only an import ABOVE the first
-    # fence-marker-looking line: below one, scanner-vs-CommonMark divergence
-    # could make a documented import read as real, so it is ignored
-    # (over-strip — loud false ERROR at worst, never a silent pass).
+    # The ERROR-level drift check accepts exactly one form: the FIRST content
+    # line after optional leading front matter is the standalone '@AGENTS.md'
+    # at under 4 columns of indent. Anything richer bets on Markdown token
+    # classification (code, HTML, comments, multiline destinations — Codex
+    # rounds 15-21) and is rejected: loud false ERROR at worst, never a
+    # silent pass.
     def test_import_after_fenceish_line_does_not_satisfy_drift(self):
         with tempfile.TemporaryDirectory() as d:
             _write(d, "AGENTS.md", "# a\n")
@@ -3919,6 +3921,25 @@ class TestDriftFenceBelt(unittest.TestCase):
             _write(d, "CLAUDE.md", "---\ntitle: t\n---\n\n@AGENTS.md\n")
             self.assertEqual([f for f in validate.check_root_files(d)
                               if f.level == "ERROR"], [])
+
+    def test_dot_delimiter_does_not_close_frontmatter(self):
+        # Codex round 21: the consumer's front-matter regex recognizes only
+        # '---' as the closer, so '...' keeps the block open and the import
+        # is swallowed with it.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "---\ntitle: x\n...\n@AGENTS.md\n---\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
+    def test_indented_frontmatter_opener_is_not_frontmatter(self):
+        # The consumer requires the opener at byte zero; ' ---' is body text,
+        # so nothing here is the canonical first content line.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", " ---\n<script>\n---\n@AGENTS.md\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
 
     def test_prose_wrapped_import_is_not_trusted(self):
         # Deliberately over-strict (loud): only the standalone canonical
