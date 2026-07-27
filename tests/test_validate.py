@@ -4243,6 +4243,29 @@ class TestExecTableHardening(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0][1], "sideways")
 
+    def test_comment_only_activity_cell_is_empty(self):
+        # Codex round 29: '<!-- hidden -->' renders as an EMPTY Activity
+        # cell and must reach the existing empty-Activity ERROR.
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "# Sales\n\n| Activity | Direction |\n|---|---|\n"
+                          "| <!-- hidden --> | up |\n")
+            self.assertTrue(any(f.level == "ERROR" and "Activity" in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_non_links_do_not_satisfy_listing(self):
+        # Codex round 29: link-like text inside an HTML attribute, or
+        # backslash-escaped link syntax, renders as no link at all.
+        for cell in ('<a title="[h](renewal.md)">x</a>',
+                     '\\[h\\](renewal.md)'):
+            with tempfile.TemporaryDirectory() as d:
+                _write(d, "ontologies/sales/_executive-view.md",
+                       "| Activity | Direction | Deep record |\n"
+                       "|---|---|---|\n| Renewal | down | %s |\n" % cell)
+                _write(d, "ontologies/sales/renewal.md", AUTOMATE_OK)
+                self.assertTrue(
+                    any(f.level == "WARN" and "not listed" in f.message
+                        for f in validate.check_ontology(d)), cell)
+
     def test_deep_record_header_must_be_an_exact_cell(self):
         # Codex round 27: 'Not a Deep record' must not designate the link
         # column — the listing WARN would be suppressed by an unrelated link.

@@ -970,11 +970,27 @@ def _split_cells(line):
 
 
 _QUOTE_PREFIX = re.compile(r"^(?: {0,3}> ?)+")
+_INLINE_TAG = re.compile(r"<[^>]*>")
 
 
 def _is_separator(cells):
     joined = "".join(cells)
     return "-" in joined and set(joined) <= set("-: ")
+
+
+def _cell_link(cell):
+    """The deep-record link a RENDERED cell actually carries: inline HTML
+    tags removed (attribute text is not a link), and a bracket behind an odd
+    backslash run is literal text, not link syntax (Codex round 29)."""
+    cleaned = _INLINE_TAG.sub("", cell)
+    for m in _LINK.finditer(cleaned):
+        bs = 0
+        while m.start() - 1 - bs >= 0 and cleaned[m.start() - 1 - bs] == "\\":
+            bs += 1
+        if bs % 2 == 1:
+            continue
+        return m.group(1)
+    return None
 
 
 def _parse_exec_tables(text):
@@ -1009,7 +1025,8 @@ def _parse_exec_tables(text):
         end = idx + 1
         while end < len(stripped) and "|" in stripped[end]:
             end += 1
-        header = [c.lower() for c in _split_cells(stripped[idx])]
+        header = [_HTML_COMMENT.sub("", c).strip().lower()
+                  for c in _split_cells(stripped[idx])]
         if "direction" not in header:
             if any(_is_separator(_split_cells(stripped[k]))
                    for k in range(idx, end)):
@@ -1023,18 +1040,18 @@ def _parse_exec_tables(text):
             if "deep record" in header else None
         table_rows = 0
         for j in range(idx + 1, end):
-            cells = _split_cells(stripped[j])
+            # cells are evaluated as RENDERED: a comment-only Activity is an
+            # empty Activity, and a comment-wrapped link is no link at all
+            # (Codex rounds 28-29)
+            cells = [_HTML_COMMENT.sub("", c).strip()
+                     for c in _split_cells(stripped[j])]
             if _is_separator(cells):
                 continue
             activity = cells[act_col] if len(cells) > act_col else ""
             direction = cells[dir_col].lower() if len(cells) > dir_col else ""
             link = None
             if link_col is not None and len(cells) > link_col:
-                # a comment-wrapped link renders as nothing and must not
-                # satisfy the listing set (Codex round 28)
-                lm = _LINK.search(_HTML_COMMENT.sub("", cells[link_col]))
-                if lm:
-                    link = lm.group(1)
+                link = _cell_link(cells[link_col])
             rows.append((activity, direction, link, j + 1))
             table_rows += 1
         if not table_rows:
