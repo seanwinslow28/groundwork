@@ -3807,6 +3807,49 @@ class TestStripCode(unittest.TestCase):
         self.assertEqual(
             self._imports("<em> prose\n~~~\n@AGENTS.md\n~~~\n"), [])
 
+    def test_html_comment_block_spans_blanks(self):
+        # Codex round 15: types 2-5 (comment, processing instruction,
+        # declaration, CDATA) end on their own marker, spanning blank lines.
+        self.assertEqual(
+            self._imports("<!--\n~~~\n-->\n\n~~~\n@AGENTS.md\n~~~\n"), [])
+        self.assertEqual(
+            self._imports("<?php\n~~~\n?>\n\n~~~\n@AGENTS.md\n~~~\n"), [])
+
+    def test_type1_closes_on_its_opening_line(self):
+        self.assertEqual(
+            self._imports("<script></script>\n~~~\n@AGENTS.md\n~~~\n"), [])
+
+    def test_type7_attribute_may_contain_gt(self):
+        # CommonMark allows '>' inside a quoted attribute value.
+        self.assertEqual(
+            self._imports("<em title=\">\">\n~~~\n\n~~~\n@AGENTS.md\n~~~\n"),
+            [])
+
+    def test_html_block_ends_with_its_list_item(self):
+        # An HTML block ends when its containing list item ends (dedent).
+        self.assertEqual(
+            self._imports("- <div>\noutside\n~~~\n@AGENTS.md\n~~~\n"), [])
+
+
+class TestDriftFenceBelt(unittest.TestCase):
+    # The ERROR-level drift check trusts only an import ABOVE the first
+    # fence-marker-looking line: below one, scanner-vs-CommonMark divergence
+    # could make a documented import read as real, so it is ignored
+    # (over-strip — loud false ERROR at worst, never a silent pass).
+    def test_import_after_fenceish_line_does_not_satisfy_drift(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "```\nexample\n```\n@AGENTS.md\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
+    def test_import_before_fence_satisfies_drift(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "@AGENTS.md\n\n```\nexample\n```\n")
+            self.assertEqual([f for f in validate.check_root_files(d)
+                              if f.level == "ERROR"], [])
+
 
 class TestAggregateDedupe(unittest.TestCase):
     def test_agents_md_counted_once(self):

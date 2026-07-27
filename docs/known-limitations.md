@@ -103,6 +103,13 @@ Honest limits of the current build. This file grows as the product does (brief ย
   never sees a closing fence line) swallows everything to end of file, hiding every
   later import from both consumers: loud for the drift check (false ERROR), silent for
   the budget (the swallowed imports' bytes go uncounted).
+- **The ยง6 drift check trusts only an import above the first fence-marker-looking
+  line of `CLAUDE.md`.** Below one, any divergence between this scanner and a harness's
+  CommonMark reading could make a merely-documented import count as real, so it is
+  ignored regardless of what the scanner thinks. A legitimate import placed below a
+  code fence draws a loud false ERROR (the canonical `CLAUDE.md` is the one-line
+  import, so this does not bite the recommended layout). The budget aggregate still
+  follows the full scanner.
 - **The always-loaded aggregate models the union of harnesses, deduplicated by real
   path.** `AGENTS.md` reached both directly and through `CLAUDE.md`'s import counts once:
   no single harness loads it twice, and double-counting could push a legitimate repo past

@@ -225,6 +225,12 @@ _IMPORT = re.compile(r"(?:(?<=\s)|^)@([^\s`]+)", re.M)
 
 _FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 _TICKS = re.compile(r"`+")
+# Any line that could be a fence under SOME container reading (deliberately
+# loose). The §6 drift check trusts only an import ABOVE the first such line:
+# below it, any divergence between this scanner and a harness's CommonMark
+# reading could make a documented import count as real, so it is ignored —
+# over-strip, a loud false ERROR at worst, never a silent pass.
+_FENCEISH = re.compile(r"^[\s>*+\-\d.)]*(?:`{3,}|~{3,})")
 # Block-container markers a fence can nest under: blockquote, bullet, ordered.
 # A list marker may be followed by 1-4 spaces (all part of the item's
 # continuation width) or by end of line (an EMPTY item — content starts on the
@@ -239,19 +245,30 @@ _THEMATIC = re.compile(r" {0,3}(?:(?:\* *){3,}|(?:- *){3,}|(?:_ *){3,})[ \t]*$")
 # A setext underline (only meaningful while a paragraph is open) turns the
 # paragraph into a heading and closes it; it can never be lazy continuation.
 _SETEXT = re.compile(r" {0,3}(?:=+|-+)[ \t]*$")
-# HTML blocks (Codex rounds 13-14): a fence-looking line inside one is raw
-# HTML content, not a fence. Type 1 (<script>/<pre>/<style>/<textarea>) runs
-# THROUGH blank lines to a closing tag; type 6 (the CommonMark block-tag
-# list, open or close) and type 7 (any complete tag ALONE on the line, and
-# only outside a paragraph) run to the next blank line. Types 1 and 6
-# interrupt a paragraph; type 7 does not.
+# HTML blocks (Codex rounds 13-15): a fence-looking line inside one is raw
+# HTML content, not a fence. Types 1-5 run THROUGH blank lines and end on a
+# line containing their end marker (which may be the opening line itself);
+# type 6 (the CommonMark block-tag list, open or close) and type 7 (any
+# complete tag ALONE on the line, and only outside a paragraph) run to the
+# next blank line. Every type but 7 interrupts a paragraph, and every type
+# ends when its containing block (list item / quote) ends.
 _HTML1_START = re.compile(r" {0,3}<(?:script|pre|style|textarea)(?:[ \t>]|$)",
                           re.I)
 _HTML1_END = re.compile(r"</(?:script|pre|style|textarea)>", re.I)
+_HTML2_START = re.compile(r" {0,3}<!--")
+_HTML2_END = re.compile(r"-->")
+_HTML3_START = re.compile(r" {0,3}<\?")
+_HTML3_END = re.compile(r"\?>")
+_HTML4_START = re.compile(r" {0,3}<![A-Za-z]")
+_HTML4_END = re.compile(r">")
+_HTML5_START = re.compile(r" {0,3}<!\[CDATA\[")
+_HTML5_END = re.compile(r"\]\]>")
 _HTML6_START = re.compile(r" {0,3}</?([A-Za-z][A-Za-z0-9-]*)(?:[ \t>]|/>|$)")
 _HTML7_LINE = re.compile(
-    r" {0,3}(?:<[A-Za-z][A-Za-z0-9-]*(?:\s[^<>]*)?/?>|"
-    r"</[A-Za-z][A-Za-z0-9-]*\s*>)[ \t]*$")
+    r" {0,3}(?:<[A-Za-z][A-Za-z0-9-]*"
+    r"(?:\s+[A-Za-z_:][A-Za-z0-9_.:-]*"
+    r"(?:\s*=\s*(?:\"[^\"]*\"|'[^']*'|[^\s\"'=<>`]+))?)*"
+    r"\s*/?>|</[A-Za-z][A-Za-z0-9-]*\s*>)[ \t]*$")
 _HTML6_TAGS = frozenset("""address article aside base basefont blockquote
     body caption center col colgroup dd details dialog dir div dl dt fieldset
     figcaption figure footer form frame frameset h1 h2 h3 h4 h5 h6 head
@@ -406,7 +423,8 @@ def _strip_code(text):
     # list context turned top-level indented code into a false fence whose
     # 'closer' consumed a genuine fence opener — a silent fail-open).
     para_open = False  # the previous line was paragraph text (lazy-continuable)
-    html_open = None   # "1": in a type-1 HTML block; "b": blank-terminated one
+    html_open = None   # "blank": HTML block until a blank; regex: until its end
+    h_chain = []       # containers the open HTML block sits in
     lines = text.split("\n")
     i = 0
     while i < len(lines):
@@ -417,19 +435,25 @@ def _strip_code(text):
                 _flush()
                 out.append(line)
                 para_open = False
-                if html_open != "1":
-                    html_open = None  # types 6/7 end at a blank; type 1 spans it
+                if html_open == "blank":
+                    html_open = None  # types 6/7 end at a blank; 1-5 span it
                 i += 1
                 continue
-            if html_open:
+            if html_open is not None:
+                cnt, _r = _consume(h_chain, line)
+                if cnt < len(h_chain):
+                    # the containing block ended, and the HTML block with it —
+                    # reprocess this line outside it
+                    html_open = None
+                    continue
                 # raw HTML-block content — live text, never a fence opener
                 para.append(line)
-                if html_open == "1" and _HTML1_END.search(line):
+                if html_open != "blank" and html_open.search(line):
                     html_open = None
                 i += 1
                 continue
             cnt, rest = _consume(ctx, line)
-            html_kind = None
+            html_end = None
             if _THEMATIC.match(rest) or (para_open and _SETEXT.match(rest)):
                 new, code = [], False
                 block_start = True
@@ -439,16 +463,25 @@ def _strip_code(text):
                     bool(_THEMATIC.match(rest))
                 if not code and not block_start:
                     if _HTML1_START.match(rest):
-                        html_kind = "1"
+                        html_end = _HTML1_END
+                    elif _HTML2_START.match(rest):
+                        html_end = _HTML2_END
+                    elif _HTML5_START.match(rest):
+                        html_end = _HTML5_END
+                    elif _HTML4_START.match(rest):
+                        html_end = _HTML4_END
+                    elif _HTML3_START.match(rest):
+                        html_end = _HTML3_END
                     else:
                         h6 = _HTML6_START.match(rest)
                         if h6 and h6.group(1).lower() in _HTML6_TAGS:
-                            html_kind = "6"
+                            html_end = "blank"
                         elif not para_open and _HTML7_LINE.match(rest):
-                            html_kind = "7"
-                # types 1 and 6 interrupt a paragraph; type 7 cannot (it is
-                # only recognized outside one)
-                block_start = block_start or html_kind in ("1", "6")
+                            html_end = "blank7"
+                # every type but 7 interrupts a paragraph (7 is only
+                # recognized outside one)
+                block_start = block_start or \
+                    (html_end is not None and html_end != "blank7")
             # fence recognition comes BEFORE the lazy check: fenced code —
             # like a heading or thematic break — interrupts a paragraph, so
             # none of them is ever lazy text
@@ -468,11 +501,17 @@ def _strip_code(text):
                 f_chain = ctx
                 para_open = False
                 out.append("")
-            elif html_kind:
+            elif html_end is not None:
                 para.append(line)
-                # "1" spans blank lines to its closing tag; 6/7 end at a blank
-                html_open = "1" if html_kind == "1" else "b"
                 para_open = False
+                if html_end in ("blank", "blank7"):
+                    html_open = "blank"
+                    h_chain = ctx
+                elif html_end.search(rest):
+                    pass  # end condition met on the opening line itself
+                else:
+                    html_open = html_end
+                    h_chain = ctx
             else:
                 para.append(line)
                 # a paragraph is open only when this line can host lazy
@@ -756,7 +795,14 @@ def check_root_files(root):
         text, rd = _read_utf8(claude, "CLAUDE.md")
         findings += rd
         if text is not None:
-            targets = _IMPORT.findall(_strip_code(text))
+            # Only the file's head — everything above the first fence-looking
+            # line — can satisfy this ERROR-level guarantee (see _FENCEISH).
+            head = []
+            for ln in text.split("\n"):
+                if _FENCEISH.match(ln.expandtabs(4)):
+                    break
+                head.append(ln)
+            targets = _IMPORT.findall(_strip_code("\n".join(head)))
             if not any(os.path.normpath(t.replace("\\", "/")) == "AGENTS.md"
                        for t in targets):
                 abs_agents = [t for t in targets
@@ -773,7 +819,8 @@ def check_root_files(root):
                         "ERROR", "CLAUDE.md", None,
                         "CLAUDE.md does not import AGENTS.md — the root files have drifted "
                         "into separate sources of truth; its content should be "
-                        "'@AGENTS.md' (§6)"))
+                        "'@AGENTS.md' (§6; only an import above the first code "
+                        "fence counts)"))
 
     cdir = os.path.join(root, ".cursor", "rules")
     if not os.path.isdir(cdir):
