@@ -60,3 +60,32 @@ Honest limits of the current build. This file grows as the product does (brief Â
   base version, so archiving or rotating `governance/changelog.md` reads as a rewrite. #17
   left rotation cadence as a build-phase detail; it lands with a documented rotation
   convention, not before.
+
+## Context budget (#13)
+
+- **Only the repo-side instruction chain is measurable.** Codex's 32 KiB
+  `project_doc_max_bytes` cap covers the *combined* chain, which begins with the user's
+  own `~/.codex/AGENTS.md` (or `AGENTS.override.md`). That file is outside the repository
+  and invisible to the validator, so a chain that passes here can still be truncated on a
+  machine with a large global instruction file. The repo's own budget is what this gate
+  governs.
+- **Imports outside the repository are not counted.** `CLAUDE.md` may import
+  `@~/.claude/â€¦` or an absolute path; those load into context but cannot be measured from
+  the repo, so they are skipped rather than guessed at.
+- **Token counts are an estimate, not a tokenizer.** Bytes are measured; tokens are
+  reported as `bytes / 4`. Real tokenization differs per model and per content; the
+  thresholds are budget guidance, not an exact accounting.
+- **The always-loaded set is a model of four harnesses, not a measurement of one.** It
+  covers the root `AGENTS.md`, `CLAUDE.md` and its imports, unscoped `.claude/rules/`,
+  always-apply `.cursor/rules/`, and skill descriptions capped at Claude Code's 1,536-char
+  listing truncation. Harnesses differ in what else they preload (MCP tool names, system
+  prompts); those are outside the repo and outside this check.
+- **Skill bodies are deliberately excluded.** A `SKILL.md` body loads only when the skill
+  is invoked, so its size is not part of the always-loaded budget. Before this slice these
+  thresholds were applied per-file to every file in the repository, which produced false
+  positives on files that never enter an agent's context (`scripts/validate.py` among
+  them); the per-file application was retired, and with it any size ceiling on
+  non-instruction files.
+- **Dot-directories are not otherwise scanned.** `.claude/rules/` and `.cursor/rules/` are
+  read by name for these checks, but the generic walker still skips dot-directories, so
+  secret-scanning and link-checking do not cover them.

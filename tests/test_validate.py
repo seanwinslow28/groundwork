@@ -109,17 +109,15 @@ class TestSecrets(unittest.TestCase):
 
 class TestBudget(unittest.TestCase):
     def test_small_file_no_findings(self):
-        self.assertEqual(validate.check_context_budget("f.md", b"hello"), [])
+        self.assertEqual(validate.check_context_budget("f.md", 5), [])
 
     def test_warn_threshold(self):
-        payload = b"x" * (20_000 * 4)  # ~20k est. tokens
-        findings = validate.check_context_budget("f.md", payload)
+        findings = validate.check_context_budget("f.md", 20_000 * 4)
         self.assertTrue(any(f.level == "WARN" for f in findings))
         self.assertFalse(any(f.level == "ERROR" for f in findings))
 
     def test_error_threshold(self):
-        payload = b"x" * (50_000 * 4)  # ~50k est. tokens
-        findings = validate.check_context_budget("f.md", payload)
+        findings = validate.check_context_budget("f.md", 50_000 * 4)
         self.assertTrue(any(f.level == "ERROR" for f in findings))
 
     def test_est_tokens(self):
@@ -3188,6 +3186,319 @@ class TestBlastRadiusDiff(unittest.TestCase):
             finally:
                 validate.subprocess.run = real_run
             self.assertTrue(any(f.level == "ERROR" for f in findings))
+
+
+class TestAgentsChain(unittest.TestCase):
+    def test_no_agents_file_is_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "README.md", "# x\n")
+            self.assertEqual(validate.check_agents_chain(d), [])
+
+    def test_small_chain_is_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# Root\n")
+            _write(d, "pkg/AGENTS.md", "# Pkg\n")
+            self.assertEqual(validate.check_agents_chain(d), [])
+
+    def test_oversized_root_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "x" * (32 * 1024 + 1))
+            findings = validate.check_agents_chain(d)
+            self.assertTrue(any(f.level == "ERROR" and "project_doc_max_bytes" in f.message
+                                for f in findings))
+
+    def test_chain_accumulates_across_levels(self):
+        # Neither file is over the cap alone; concatenated they are.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "x" * (20 * 1024))
+            _write(d, "pkg/AGENTS.md", "y" * (20 * 1024))
+            findings = validate.check_agents_chain(d)
+            self.assertTrue(any(f.level == "ERROR" and "pkg/AGENTS.md" in f.path
+                                for f in findings))
+            self.assertFalse(any(f.path == "AGENTS.md" for f in findings))
+
+    def test_override_file_takes_precedence(self):
+        # Codex reads AGENTS.override.md instead of AGENTS.md at each level.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "x" * (32 * 1024 + 1))
+            _write(d, "AGENTS.override.md", "small\n")
+            self.assertEqual(validate.check_agents_chain(d), [])
+
+    def test_empty_files_are_skipped(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "")
+            _write(d, "pkg/AGENTS.md", "# Pkg\n")
+            self.assertEqual(validate.check_agents_chain(d), [])
+
+    def test_workbench_trees_are_skipped(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "tests/AGENTS.md", "x" * (32 * 1024 + 1))
+            self.assertEqual(validate.check_agents_chain(d), [])
+
+    def test_stat_able_but_unreadable_file_errors(self):
+        # A bare stat succeeds on an unreadable file; the chain must still
+        # fail closed — a file the check cannot open cannot be verified.
+        # Stubbed open() rather than chmod(0): root and Windows both ignore
+        # POSIX permission bits, which would make a chmod-based test vacuous.
+        with tempfile.TemporaryDirectory() as d:
+            p = _write(d, "AGENTS.md", "# a\n")
+            real_open = open
+
+            def broken_open(path, *a, **k):
+                if os.path.realpath(path) == os.path.realpath(p):
+                    raise PermissionError("unreadable")
+                return real_open(path, *a, **k)
+            validate.open = broken_open
+            try:
+                findings = validate.check_agents_chain(d)
+            finally:
+                del validate.open
+            self.assertTrue(any(f.level == "ERROR" and "cannot size" in f.message
+                                for f in findings))
+
+
+CURSOR_ALWAYS = "---\ndescription: d\nalwaysApply: true\n---\n\nSee AGENTS.md.\n"
+
+
+class TestAlwaysLoadedBudget(unittest.TestCase):
+    def test_small_repo_is_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# x\n")
+            _write(d, "CLAUDE.md", "@AGENTS.md\n")
+            self.assertEqual(validate.check_always_loaded_budget(d), [])
+
+    def test_oversized_agents_file_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "x" * (21_000 * 4))
+            findings = validate.check_always_loaded_budget(d)
+            self.assertTrue(any(f.level == "WARN" for f in findings))
+
+    def test_imports_are_followed_and_counted(self):
+        # Imports do not reduce context: the imported file must be measured.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "CLAUDE.md", "@big.md\n")
+            _write(d, "big.md", "x" * (21_000 * 4))
+            self.assertTrue(any(f.level == "WARN"
+                                for f in validate.check_always_loaded_budget(d)))
+
+    def test_import_inside_backticks_is_not_followed(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "CLAUDE.md", "Mention `@big.md` literally.\n")
+            _write(d, "big.md", "x" * (21_000 * 4))
+            self.assertEqual(validate.check_always_loaded_budget(d), [])
+
+    def test_import_cycle_terminates(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "CLAUDE.md", "@a.md\n")
+            _write(d, "a.md", "@CLAUDE.md\n")
+            self.assertEqual(validate.check_always_loaded_budget(d), [])
+
+    def test_always_apply_cursor_rule_counts(self):
+        # .cursor/ is a dot-directory: iter_files never sees it, so this proves
+        # the check reads it explicitly rather than scanning nothing.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, ".cursor/rules/big.mdc",
+                   "---\ndescription: d\nalwaysApply: true\n---\n" + "x" * (21_000 * 4))
+            self.assertTrue(any(f.level == "WARN"
+                                for f in validate.check_always_loaded_budget(d)))
+
+    def test_non_always_apply_cursor_rule_is_excluded(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, ".cursor/rules/big.mdc",
+                   "---\ndescription: d\nalwaysApply: false\n---\n" + "x" * (21_000 * 4))
+            self.assertEqual(validate.check_always_loaded_budget(d), [])
+
+    def test_path_scoped_claude_rule_is_excluded(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, ".claude/rules/scoped.md",
+                   "---\npaths:\n  - \"src/**\"\n---\n" + "x" * (21_000 * 4))
+            self.assertEqual(validate.check_always_loaded_budget(d), [])
+
+    def test_unscoped_claude_rule_counts(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, ".claude/rules/always.md", "x" * (21_000 * 4))
+            self.assertTrue(any(f.level == "WARN"
+                                for f in validate.check_always_loaded_budget(d)))
+
+    def test_skill_description_is_capped_not_summed_whole(self):
+        # A huge SKILL.md body is NOT always-loaded; only its description is,
+        # and only up to Claude Code's 1,536-char listing truncation.
+        with tempfile.TemporaryDirectory() as d:
+            _write_package(d, skill=SKILL_OK + "\n" + "x" * (60_000 * 4))
+            self.assertEqual(validate.check_always_loaded_budget(d), [])
+
+    def test_skill_description_contribution_is_actually_measured(self):
+        # Guards against the enumeration being deleted outright: the capped
+        # description must appear as an aggregate item with its exact bytes.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "skills/x/SKILL.md",
+                   "---\nname: x\ndescription: %s\n---\nbody\n" % ("d" * 2000))
+            items, findings = validate._always_loaded_bytes(d)
+            self.assertEqual(findings, [])
+            contrib = dict(items)[os.path.join("skills", "x", "SKILL.md") + " (description)"]
+            self.assertEqual(contrib, validate.SKILL_DESCRIPTION_CAP)
+
+    def test_multibyte_description_cap_is_characters_not_bytes(self):
+        # Claude Code truncates the listing at 1,536 CHARACTERS. 2,000 'é's
+        # survive truncation as 1,536 chars = 3,072 UTF-8 bytes; a bytes-side
+        # min() would report only 1,536 and undercount the surface.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "skills/x/SKILL.md",
+                   "---\nname: x\ndescription: %s\n---\nbody\n" % ("é" * 2000))
+            items, _findings = validate._always_loaded_bytes(d)
+            contrib = dict(items)[os.path.join("skills", "x", "SKILL.md") + " (description)"]
+            self.assertEqual(contrib, 2 * validate.SKILL_DESCRIPTION_CAP)
+
+    def test_import_at_four_hops_is_counted(self):
+        # "a maximum depth of four hops": a file four import edges from
+        # CLAUDE.md still loads at launch and must be measured.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "CLAUDE.md", "@a.md\n")
+            _write(d, "a.md", "@b.md\n")
+            _write(d, "b.md", "@c.md\n")
+            _write(d, "c.md", "@d.md\n")
+            _write(d, "d.md", "x" * (21_000 * 4))
+            self.assertTrue(any(f.level == "WARN"
+                                for f in validate.check_always_loaded_budget(d)))
+
+    def test_import_at_five_hops_is_not_followed(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "CLAUDE.md", "@a.md\n")
+            _write(d, "a.md", "@b.md\n")
+            _write(d, "b.md", "@c.md\n")
+            _write(d, "c.md", "@d.md\n")
+            _write(d, "d.md", "@e.md\n")
+            _write(d, "e.md", "x" * (21_000 * 4))
+            self.assertEqual(validate.check_always_loaded_budget(d), [])
+
+    def test_shared_import_is_expanded_at_its_shallowest_depth(self):
+        # Diamond: shared.md is first declared via a 4-hop chain (its child
+        # would land past the hop budget) and again at 2 hops. A depth-first
+        # seen-set would lock in the deep visit and never count big.md; BFS
+        # must expand shared.md at its shallowest depth.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "CLAUDE.md", "@a.md\n@x.md\n")
+            _write(d, "a.md", "@b.md\n")
+            _write(d, "b.md", "@c.md\n")
+            _write(d, "c.md", "@shared.md\n")
+            _write(d, "x.md", "@shared.md\n")
+            _write(d, "shared.md", "@big.md\n")
+            _write(d, "big.md", "x" * (21_000 * 4))
+            self.assertTrue(any(f.level == "WARN"
+                                for f in validate.check_always_loaded_budget(d)))
+
+    def test_unreadable_root_agents_md_is_a_finding_in_the_aggregate(self):
+        # The aggregate itself must fail closed on the root instruction file,
+        # not rely on check_agents_chain being run alongside it.
+        with tempfile.TemporaryDirectory() as d:
+            p = _write(d, "AGENTS.md", "# a\n")
+            real_open = open
+
+            def broken_open(path, *a, **k):
+                if os.path.realpath(path) == os.path.realpath(p):
+                    raise PermissionError("unreadable")
+                return real_open(path, *a, **k)
+            validate.open = broken_open
+            try:
+                findings = validate.check_always_loaded_budget(d)
+            finally:
+                del validate.open
+            self.assertTrue(any(f.level == "ERROR" for f in findings))
+
+    def test_malformed_claude_rule_is_a_finding_not_silence(self):
+        # Nothing else scans dot-directories, so a rule this check cannot
+        # parse must surface here rather than silently leave the aggregate.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, ".claude/rules/bad.md", "---\nnever closed\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_always_loaded_budget(d)))
+
+    def test_error_threshold(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "x" * (50_000 * 4))
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_always_loaded_budget(d)))
+
+
+class TestRootFiles(unittest.TestCase):
+    def test_no_agents_md_is_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "CLAUDE.md", "# anything\n")
+            self.assertEqual(validate.check_root_files(d), [])
+
+    def test_import_satisfies_the_check(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "@AGENTS.md\n")
+            _write(d, ".cursor/rules/g.mdc", CURSOR_ALWAYS)
+            self.assertEqual(validate.check_root_files(d), [])
+
+    def test_missing_claude_md_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            self.assertTrue(any(f.level == "ERROR" and "CLAUDE.md" in f.path
+                                for f in validate.check_root_files(d)))
+
+    def test_claude_md_without_import_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "# separate instructions\n")
+            self.assertTrue(any(f.level == "ERROR" and "drift" in f.message
+                                for f in validate.check_root_files(d)))
+
+    def test_import_in_backticks_does_not_satisfy(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "Write `@AGENTS.md` to import it.\n")
+            self.assertTrue(any(f.level == "ERROR" and "drift" in f.message
+                                for f in validate.check_root_files(d)))
+
+    def test_symlinked_claude_md_is_accepted(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, ".cursor/rules/g.mdc", CURSOR_ALWAYS)
+            os.symlink(os.path.join(d, "AGENTS.md"), os.path.join(d, "CLAUDE.md"))
+            self.assertEqual([f for f in validate.check_root_files(d)
+                              if f.level == "ERROR"], [])
+
+    def test_symlink_to_the_wrong_target_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "other.md", "# o\n")
+            os.symlink(os.path.join(d, "other.md"), os.path.join(d, "CLAUDE.md"))
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
+    def test_missing_cursor_rules_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "@AGENTS.md\n")
+            findings = validate.check_root_files(d)
+            self.assertEqual([f for f in findings if f.level == "ERROR"], [])
+            self.assertTrue(any(f.level == "WARN" and "cursor" in f.path for f in findings))
+
+    def test_cursor_rule_without_always_apply_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "@AGENTS.md\n")
+            _write(d, ".cursor/rules/g.mdc",
+                   "---\ndescription: d\nalwaysApply: false\n---\n\nSee AGENTS.md.\n")
+            self.assertTrue(any(f.level == "WARN" for f in validate.check_root_files(d)))
+
+    def test_cursor_rule_not_referencing_agents_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "@AGENTS.md\n")
+            _write(d, ".cursor/rules/g.mdc",
+                   "---\ndescription: d\nalwaysApply: true\n---\n\nUnrelated guidance.\n")
+            self.assertTrue(any(f.level == "WARN" for f in validate.check_root_files(d)))
+
+    def test_wired_into_validate(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "# drifted\n")
+            self.assertTrue(any(f.level == "ERROR" and "drift" in f.message
+                                for f in validate.validate(d)))
 
 
 if __name__ == "__main__":

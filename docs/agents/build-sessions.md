@@ -16,3 +16,4 @@
 ## Where the plan lives
 - Design: `docs/superpowers/specs/2026-07-22-groundwork-v1-build-sequence-design.md`
 - Plans: `docs/superpowers/plans/` (this file's siblings), one per phase-slice.
+- **Loading:** these rules are no longer auto-loaded — `CLAUDE.md` is now the one-line `@AGENTS.md` import (D2 Move 2). Build sessions load this file by being pointed at it in the session kickoff; `AGENTS.md` links it under "Working on groundwork itself".
