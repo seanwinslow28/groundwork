@@ -3780,7 +3780,10 @@ class TestStripCode(unittest.TestCase):
             [])
 
     def test_import_inside_html_block_is_live(self):
-        # Only code spans and fenced code are skipped — raw HTML is live text.
+        # Scanner (budget-side) model: raw HTML stays live text, which can
+        # only OVERcount the aggregate. The §6 drift check independently
+        # distrusts everything at or below the first HTML-looking line —
+        # Claude Code's import walker skips every HTML token (round 18).
         self.assertEqual(
             self._imports("<div>\n@AGENTS.md\n</div>\n"), ["AGENTS.md"])
 
@@ -3860,6 +3863,22 @@ class TestDriftFenceBelt(unittest.TestCase):
             _write(d, "CLAUDE.md", "`code\n@AGENTS.md\n    ~~~\nclose`\n")
             self.assertTrue(any(f.level == "ERROR"
                                 for f in validate.check_root_files(d)))
+
+    def test_import_inside_html_block_is_not_trusted(self):
+        # Codex round 18: Claude Code's import walker skips every HTML token,
+        # so an import wrapped in <script>/<pre>/any raw HTML loads nothing.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "<script>\n@AGENTS.md\n</script>\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
+    def test_import_before_html_is_trusted(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "@AGENTS.md\n\n<div>note</div>\n")
+            self.assertEqual([f for f in validate.check_root_files(d)
+                              if f.level == "ERROR"], [])
 
     def test_commented_import_is_not_trusted(self):
         # Codex round 17: Claude Code removes HTML comments before scanning

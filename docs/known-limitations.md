@@ -104,10 +104,11 @@ Honest limits of the current build. This file grows as the product does (brief �
   later import from both consumers: loud for the drift check (false ERROR), silent for
   the budget (the swallowed imports' bytes go uncounted).
 - **The §6 drift check trusts only an import above the first fence-marker-looking,
-  backtick-bearing, or `<!--`-bearing line of `CLAUDE.md`.** In that head region no
-  code span can exist (spans need backticks), no fenced block can exist (its opener
-  would end the region), and no HTML comment can exist (Claude Code removes comments
-  before scanning for imports), so an import found there is live under any CommonMark
+  backtick-bearing, `<!--`-bearing, or HTML-looking line of `CLAUDE.md`.** In that
+  head region no code span can exist (spans need backticks), no fenced block can
+  exist (its opener would end the region), and no HTML token can exist (Claude Code's
+  import walker skips every HTML token, comments included — verified against the
+  installed consumer), so an import found there is live under any CommonMark
   reading; below the
   cut an import is ignored regardless of what the scanner concludes, because scanner
   divergence there could make a merely-documented import count as real. A legitimate

@@ -234,6 +234,11 @@ _TICKS = re.compile(r"`+")
 # CommonMark reading. Below the cut an import is ignored regardless of what
 # the scanner concludes — a loud false ERROR at worst.
 _FENCEISH = re.compile(r"^[\s>*+\-\d.)]*(?:`{3,}|~{3,})")
+# Any line that could start an HTML block under SOME container reading.
+# Claude Code's import walker skips EVERY Markdown html token, not just
+# comments (Codex round 18, verified against the installed consumer), so
+# nothing at or below such a line is trusted by the drift check either.
+_HTMLISH = re.compile(r"^[\s>*+\-\d.)]*<")
 # Block-container markers a fence can nest under: blockquote, bullet, ordered.
 # A list marker may be followed by 1-4 spaces (all part of the item's
 # continuation width) or by end of line (an EMPTY item — content starts on the
@@ -807,7 +812,9 @@ def check_root_files(root):
             # under any CommonMark reading.
             head = []
             for ln in text.split("\n"):
-                if "`" in ln or "<!--" in ln or _FENCEISH.match(ln.expandtabs(4)):
+                if "`" in ln or "<!--" in ln \
+                        or _FENCEISH.match(ln.expandtabs(4)) \
+                        or _HTMLISH.match(ln.expandtabs(4)):
                     break
                 head.append(ln)
             targets = _IMPORT.findall(_strip_code("\n".join(head)))
@@ -828,7 +835,7 @@ def check_root_files(root):
                         "CLAUDE.md does not import AGENTS.md — the root files have drifted "
                         "into separate sources of truth; its content should be "
                         "'@AGENTS.md' (§6; only an import above the first code fence, "
-                        "backtick, or HTML comment counts)"))
+                        "backtick, or HTML/comment line counts)"))
 
     cdir = os.path.join(root, ".cursor", "rules")
     if not os.path.isdir(cdir):
