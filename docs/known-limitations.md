@@ -103,19 +103,21 @@ Honest limits of the current build. This file grows as the product does (brief �
   never sees a closing fence line) swallows everything to end of file, hiding every
   later import from both consumers: loud for the drift check (false ERROR), silent for
   the budget (the swallowed imports' bytes go uncounted).
-- **The §6 drift check accepts only the standalone canonical `@AGENTS.md` line.**
-  Claude Code's import walker skips code tokens (spans, fenced and indented blocks),
-  every HTML token (comments included), link-reference definitions, image tokens, and
-  leading YAML front matter — so trusting an import found anywhere richer means
+- **The §6 drift check accepts exactly one form: the first content line of
+  `CLAUDE.md` (after optional leading YAML front matter) is the standalone
+  `@AGENTS.md` at under 4 columns of indent.** Claude Code's import walker skips
+  code tokens (spans, fenced and indented blocks), every HTML token (comments
+  included), link-reference definitions, image and link destinations — including
+  MULTILINE destinations, where a `[x]:` line above re-tokens the import line — and
+  leading front matter. Trusting an import found anywhere richer therefore means
   betting on Markdown token classification, where any divergence makes a
-  merely-documented import count as real. The accepted line must sit outside leading
-  front matter, at under 4 columns of indent, and above the first backtick-bearing,
-  `<!--`-bearing, fence-marker-looking, or HTML-looking line — in that region the
-  line is a paragraph under every CommonMark reading. Anything else (an import in
-  prose, below a code example, inside a quote) draws a loud false ERROR telling the
-  author to use the canonical one-line `CLAUDE.md`. The budget aggregate still
-  follows the full scanner, where a misread shifts measurement (bytes counted,
-  imports followed, per-file read findings) rather than the §6 guarantee.
+  merely-documented import count as real. With nothing above it, the accepted line
+  is a paragraph (or a heading if underlined) and both are import-scanned under
+  every reading. Anything else — an import in prose, mid-file, below a code
+  example — draws a loud false ERROR telling the author to use the canonical
+  one-line `CLAUDE.md`. The budget aggregate still follows the full scanner, where
+  a misread shifts measurement (bytes counted, imports followed, per-file read
+  findings) rather than the §6 guarantee.
 - **The always-loaded aggregate models the union of harnesses, deduplicated by real
   path.** `AGENTS.md` reached both directly and through `CLAUDE.md`'s import counts once:
   no single harness loads it twice, and double-counting could push a legitimate repo past

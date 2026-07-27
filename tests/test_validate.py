@@ -3864,6 +3864,29 @@ class TestDriftFenceBelt(unittest.TestCase):
             self.assertTrue(any(f.level == "ERROR"
                                 for f in validate.check_root_files(d)))
 
+    def test_multiline_destination_is_not_trusted(self):
+        # Codex round 20: '[x]:\n@AGENTS.md' makes the import a link-
+        # definition destination (never scanned); link/image forms likewise.
+        # Only the FIRST content line being the canonical import counts.
+        for body in ("[x]:\n@AGENTS.md\n",
+                     "[x](\n@AGENTS.md\n)\n",
+                     "![x](\n@AGENTS.md\n)\n"):
+            with tempfile.TemporaryDirectory() as d:
+                _write(d, "AGENTS.md", "# a\n")
+                _write(d, "CLAUDE.md", body)
+                self.assertTrue(any(f.level == "ERROR"
+                                    for f in validate.check_root_files(d)),
+                                body)
+
+    def test_import_not_on_first_content_line_is_not_trusted(self):
+        # Deliberately strict (loud): any line above the import could
+        # re-token it, so the canonical line must be the first content line.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "Intro prose.\n\n@AGENTS.md\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
     def test_indented_import_is_not_trusted(self):
         # Codex round 19: a 4-column-indented import is an indented CODE
         # token, and Claude Code's walker skips all code tokens.

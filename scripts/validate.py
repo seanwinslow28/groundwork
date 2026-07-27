@@ -225,20 +225,6 @@ _IMPORT = re.compile(r"(?:(?<=\s)|^)@([^\s`]+)", re.M)
 
 _FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 _TICKS = re.compile(r"`+")
-# Any line that could be a fence under SOME container reading (deliberately
-# loose). The §6 drift check trusts only an import ABOVE the first such line
-# AND above the first backtick-bearing line (see check_root_files): in that
-# region no code span can exist (spans need backticks — and a cut alone can
-# BREAK a multiline span open, Codex round 16) and no fenced block can exist
-# (its opener would match here), so an import found there is live under ANY
-# CommonMark reading. Below the cut an import is ignored regardless of what
-# the scanner concludes — a loud false ERROR at worst.
-_FENCEISH = re.compile(r"^[\s>*+\-\d.)]*(?:`{3,}|~{3,})")
-# Any line that could start an HTML block under SOME container reading.
-# Claude Code's import walker skips EVERY Markdown html token, not just
-# comments (Codex round 18, verified against the installed consumer), so
-# nothing at or below such a line is trusted by the drift check either.
-_HTMLISH = re.compile(r"^[\s>*+\-\d.)]*<")
 # Block-container markers a fence can nest under: blockquote, bullet, ordered.
 # A list marker may be followed by 1-4 spaces (all part of the item's
 # continuation width) or by end of line (an EMPTY item — content starts on the
@@ -803,16 +789,15 @@ def check_root_files(root):
         text, rd = _read_utf8(claude, "CLAUDE.md")
         findings += rd
         if text is not None:
-            # This ERROR-level guarantee is satisfied ONLY by the standalone
-            # canonical line '@AGENTS.md' (round 19: Claude Code's import
-            # walker skips code, html, link-definition, image, and
-            # front-matter tokens — trusting anything richer means betting on
-            # token classification, which keeps losing). The line must sit:
-            # outside leading YAML front matter (stripped before lexing), at
-            # under 4 columns of indent (4+ is an indented code token), and
-            # above the first backtick-bearing, comment-opening, fence-looking,
-            # or HTML-looking line (see _FENCEISH/_HTMLISH) — in that region
-            # the line is a paragraph under every CommonMark reading.
+            # This ERROR-level guarantee is satisfied ONLY when the FIRST
+            # non-blank line after optional YAML front matter is the
+            # standalone canonical '@AGENTS.md' at under 4 columns of indent
+            # (Codex rounds 15-20: any construct ABOVE the line can change
+            # its token — code, HTML, comments, multiline link/image/
+            # definition destinations — and betting on token classification
+            # keeps losing. With nothing above it, the line is a paragraph,
+            # or a heading if underlined, and both are import-scanned under
+            # every reading; 4+ columns would be an indented code token).
             all_lines = text.split("\n")
             start = 0
             if all_lines and all_lines[0].strip() == "---":
@@ -822,18 +807,15 @@ def check_root_files(root):
                         start = k + 1
                         break
             satisfied = False
-            head = []
             for ln in all_lines[start:]:
                 x = ln.expandtabs(4)
-                if "`" in x or "<!--" in x or _FENCEISH.match(x) \
-                        or _HTMLISH.match(x):
-                    break
-                head.append(x)
-                if x.strip() == "@AGENTS.md" and not x.startswith("    "):
-                    satisfied = True
-                    break
+                if not x.strip():
+                    continue
+                satisfied = x.strip() == "@AGENTS.md" and \
+                    not x.startswith("    ")
+                break
             if not satisfied:
-                targets = _IMPORT.findall(_strip_code("\n".join(head)))
+                targets = _IMPORT.findall(_strip_code(text))
                 abs_agents = [t for t in targets
                               if (os.path.isabs(t) or t.startswith("~"))
                               and os.path.basename(t) == "AGENTS.md"]
@@ -848,8 +830,8 @@ def check_root_files(root):
                         "ERROR", "CLAUDE.md", None,
                         "CLAUDE.md does not import AGENTS.md — the root files have drifted "
                         "into separate sources of truth; its content should be "
-                        "'@AGENTS.md' (§6; only a standalone '@AGENTS.md' line above "
-                        "any code, HTML, or comment content counts)"))
+                        "'@AGENTS.md' (§6; the first content line must be the "
+                        "standalone '@AGENTS.md' import)"))
 
     cdir = os.path.join(root, ".cursor", "rules")
     if not os.path.isdir(cdir):
