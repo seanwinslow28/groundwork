@@ -3699,6 +3699,26 @@ class TestStripCode(unittest.TestCase):
         self.assertEqual(
             self._imports("-      ```\n\n  ```\n  @AGENTS.md\n  ```\n"), [])
 
+    def test_stale_list_context_ends_at_dedent(self):
+        # Codex round 10: after 'outside' ends the list, '    ~~~' is TOP-
+        # LEVEL indented code (live text), and '  ~~~' is a genuine fence —
+        # stale list context must not turn the code line into a false fence
+        # that steals the genuine opener.
+        self.assertEqual(
+            self._imports("- item\n\noutside\n\n    ~~~\n\n  ~~~\n"
+                          "@AGENTS.md\n  ~~~\n"), [])
+
+    def test_lazy_continuation_keeps_the_item_open(self):
+        # A paragraph line may lazily continue the item, so the indented
+        # fence after it is still inside the item.
+        self.assertEqual(
+            self._imports("- note\nlazy line\n  ~~~\n  @AGENTS.md\n  ~~~\n"),
+            [])
+
+    def test_import_after_a_dedent_closed_list_is_seen(self):
+        self.assertEqual(
+            self._imports("- item\n\noutside @AGENTS.md\n"), ["AGENTS.md"])
+
 
 class TestAggregateDedupe(unittest.TestCase):
     def test_agents_md_counted_once(self):

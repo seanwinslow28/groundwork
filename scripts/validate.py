@@ -370,34 +370,46 @@ def _strip_code(text):
 
     fence = None   # (char, length) of the currently open fence
     f_chain = []   # ordered containers the open fence sits in
-    ctx = []       # containers opened by EARLIER lines, still plausibly open.
-    # ctx is never popped eagerly: CommonMark's lazy continuation means a
-    # dedented text line does not reliably end a list item, and a fence line
-    # inside an item may carry only indentation (Codex round 6). Keeping a
-    # stale list context can only turn more lines into fences (over-strip,
-    # loud); popping one turns a real fence into text (silent fail-open).
+    ctx = []       # containers opened by EARLIER lines, still open.
+    # ctx tracks CommonMark block structure across lines (Codex round 6): a
+    # fence line inside an item may carry only indentation. Blank lines and
+    # lazy paragraph continuation keep ctx alive; a dedented line after
+    # anything else ends the unconsumed containers (round 10: keeping a stale
+    # list context turned top-level indented code into a false fence whose
+    # 'closer' consumed a genuine fence opener — a silent fail-open).
+    para_open = False  # the previous line was paragraph text (lazy-continuable)
     lines = text.split("\n")
     i = 0
     while i < len(lines):
         # tabs participate in CommonMark block structure at a tab stop of 4
         line = lines[i].expandtabs(4)
         if fence is None:
+            if not line.strip():
+                _flush()
+                out.append(line)
+                para_open = False
+                i += 1
+                continue
             cnt, rest = _consume(ctx, line)
             new, rest, code = _new_markers(rest)
-            chain_here = ctx[:cnt] + new
-            if new:
-                ctx = chain_here
+            if cnt < len(ctx) and not new and para_open:
+                # lazy continuation: a paragraph line may continue the open
+                # containers without their prefix — plain text, ctx kept
+                para.append(line)
+                i += 1
+                continue
+            if cnt < len(ctx) or new:
+                ctx = ctx[:cnt] + new
             m = None if code else _fence_match(rest)
             if m:
                 _flush()
                 fence = (m.group(1)[0], len(m.group(1)))
-                f_chain = chain_here
+                f_chain = ctx
+                para_open = False
                 out.append("")
-            elif not line.strip():
-                _flush()
-                out.append(line)
             else:
                 para.append(line)
+                para_open = True
             i += 1
             continue
         # A blank line is fence content unless a blockquote in the chain ends
