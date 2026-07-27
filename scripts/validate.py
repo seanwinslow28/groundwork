@@ -317,22 +317,38 @@ def _always_loaded_bytes(root):
         n = _file_size(f)
         if n:
             items.append((os.path.relpath(f, root), n))
+        elif n is None:
+            findings.append(Finding(
+                "ERROR", os.path.relpath(f, root), None,
+                "cannot read this instruction file — the always-loaded budget "
+                "cannot be verified (#13)"))
 
     root_real = os.path.realpath(root)
     seen = set()
 
-    def add_import(abspath, depth):
+    # Depth 0 is CLAUDE.md itself; each import edge is one hop, and Claude Code
+    # resolves imports "with a maximum depth of four hops" — so a file four
+    # edges away still loads and must be counted. Breadth-first on purpose:
+    # BFS guarantees the FIRST visit to a file is at its shallowest depth, so
+    # a shared import declared late in a deep chain still gets its children
+    # expanded when it is also reachable within the hop budget (depth-first
+    # with a seen-set would lock in the deep first visit and undercount).
+    queue = [(os.path.join(root, "CLAUDE.md"), 0)]
+    qi = 0
+    while qi < len(queue):
+        abspath, depth = queue[qi]
+        qi += 1
         if depth > CLAUDE_IMPORT_MAX_DEPTH or not os.path.isfile(abspath):
-            return
+            continue
         real = os.path.realpath(abspath)
         if real in seen:
-            return
+            continue
         seen.add(real)
         rel = os.path.relpath(abspath, root)
         text, rd = _read_utf8(abspath, rel)
         findings.extend(rd)
         if text is None:
-            return
+            continue
         items.append((rel, len(text.encode("utf-8"))))
         base = os.path.dirname(abspath)
         for target in _IMPORT.findall(_strip_code(text)):
@@ -340,12 +356,7 @@ def _always_loaded_bytes(root):
                 continue  # outside the repo: real context, but not measurable here
             nxt = os.path.normpath(os.path.join(base, target))
             if os.path.realpath(nxt).startswith(root_real + os.sep):
-                add_import(nxt, depth + 1)
-
-    # Depth 0 is CLAUDE.md itself; each import edge is one hop, and Claude Code
-    # resolves imports "with a maximum depth of four hops" — so a file four
-    # edges away still loads and must be counted.
-    add_import(os.path.join(root, "CLAUDE.md"), 0)
+                queue.append((nxt, depth + 1))
 
     for rel_dir, ext, mode in ((os.path.join(".claude", "rules"), ".md", "claude"),
                                (os.path.join(".cursor", "rules"), ".mdc", "cursor")):

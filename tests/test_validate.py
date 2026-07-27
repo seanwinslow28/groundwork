@@ -3236,17 +3236,23 @@ class TestAgentsChain(unittest.TestCase):
             self.assertEqual(validate.check_agents_chain(d), [])
 
     def test_stat_able_but_unreadable_file_errors(self):
-        # os.path.getsize() succeeds on a mode-000 file; the chain must still
+        # A bare stat succeeds on an unreadable file; the chain must still
         # fail closed — a file the check cannot open cannot be verified.
-        if hasattr(os, "geteuid") and os.geteuid() == 0:
-            self.skipTest("root ignores file permission bits")
+        # Stubbed open() rather than chmod(0): root and Windows both ignore
+        # POSIX permission bits, which would make a chmod-based test vacuous.
         with tempfile.TemporaryDirectory() as d:
             p = _write(d, "AGENTS.md", "# a\n")
-            os.chmod(p, 0)
+            real_open = open
+
+            def broken_open(path, *a, **k):
+                if os.path.realpath(path) == os.path.realpath(p):
+                    raise PermissionError("unreadable")
+                return real_open(path, *a, **k)
+            validate.open = broken_open
             try:
                 findings = validate.check_agents_chain(d)
             finally:
-                os.chmod(p, 0o644)
+                del validate.open
             self.assertTrue(any(f.level == "ERROR" and "cannot size" in f.message
                                 for f in findings))
 
@@ -3364,6 +3370,40 @@ class TestAlwaysLoadedBudget(unittest.TestCase):
             _write(d, "d.md", "@e.md\n")
             _write(d, "e.md", "x" * (21_000 * 4))
             self.assertEqual(validate.check_always_loaded_budget(d), [])
+
+    def test_shared_import_is_expanded_at_its_shallowest_depth(self):
+        # Diamond: shared.md is first declared via a 4-hop chain (its child
+        # would land past the hop budget) and again at 2 hops. A depth-first
+        # seen-set would lock in the deep visit and never count big.md; BFS
+        # must expand shared.md at its shallowest depth.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "CLAUDE.md", "@a.md\n@x.md\n")
+            _write(d, "a.md", "@b.md\n")
+            _write(d, "b.md", "@c.md\n")
+            _write(d, "c.md", "@shared.md\n")
+            _write(d, "x.md", "@shared.md\n")
+            _write(d, "shared.md", "@big.md\n")
+            _write(d, "big.md", "x" * (21_000 * 4))
+            self.assertTrue(any(f.level == "WARN"
+                                for f in validate.check_always_loaded_budget(d)))
+
+    def test_unreadable_root_agents_md_is_a_finding_in_the_aggregate(self):
+        # The aggregate itself must fail closed on the root instruction file,
+        # not rely on check_agents_chain being run alongside it.
+        with tempfile.TemporaryDirectory() as d:
+            p = _write(d, "AGENTS.md", "# a\n")
+            real_open = open
+
+            def broken_open(path, *a, **k):
+                if os.path.realpath(path) == os.path.realpath(p):
+                    raise PermissionError("unreadable")
+                return real_open(path, *a, **k)
+            validate.open = broken_open
+            try:
+                findings = validate.check_always_loaded_budget(d)
+            finally:
+                del validate.open
+            self.assertTrue(any(f.level == "ERROR" for f in findings))
 
     def test_malformed_claude_rule_is_a_finding_not_silence(self):
         # Nothing else scans dot-directories, so a rule this check cannot
