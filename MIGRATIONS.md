@@ -49,3 +49,23 @@ not code.
 ## Current schema version: 1
 
 Schema **v1** is the first released schema. There are no migrations yet.
+
+### Why the executive-view grammar tightened without a bump
+
+The executive-view table moved to a restricted canonical grammar (one legal shape;
+anything else ERRORs) while still on v1. Content that a permissive reader once accepted
+— reordered columns, `| :--- |` alignment, two-column tables, rows without boundary
+pipes — now fails the gate. Read strictly, that is a breaking change to a content shape,
+and the pull promise above says a same-version pull is always safe.
+
+It was landed at v1 anyway, deliberately, and this is the record of why: **no
+`groundwork.pin` existed yet.** The pin file ships with the first generated company
+repo; until then there is no pinned content in the world for a migration boundary to
+protect, and the `since:` demotion mechanism that would soften such a change is itself
+documented-but-unwired for exactly the same reason. Bumping to v2 here would have spent
+the first migration on a change with zero affected repos and armed the skew gate against
+nothing.
+
+The promise binds from the first real pin onward. A tightening of this kind, landed
+after any company repo carries a `groundwork.pin`, is a v2 change and gets a migration
+note — no matter how small the syntax involved.

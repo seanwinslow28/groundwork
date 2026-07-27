@@ -253,7 +253,8 @@ class TestExecTable(unittest.TestCase):
     )
 
     def test_parses_rows(self):
-        rows = validate.parse_exec_table(self.TABLE)
+        rows, findings = validate.parse_exec_table(self.TABLE)
+        self.assertEqual(findings, [])
         self.assertEqual(len(rows), 2)
         act, direction, link, _ = rows[0]
         self.assertEqual(act, "Onboarding orchestration")
@@ -261,12 +262,222 @@ class TestExecTable(unittest.TestCase):
         self.assertEqual(link, "onboarding-orchestration.md")
 
     def test_row_without_link(self):
-        _, direction, link, _ = validate.parse_exec_table(self.TABLE)[1]
+        _, direction, link, _ = validate.parse_exec_table(self.TABLE)[0][1]
         self.assertEqual(direction, "up")
         self.assertIsNone(link)
 
     def test_no_table_returns_empty(self):
-        self.assertEqual(validate.parse_exec_table("# just prose\n"), [])
+        self.assertEqual(validate.parse_exec_table("# just prose\n"), ([], []))
+
+
+EXEC_CANON = (
+    "# Sales — executive view\n\n"
+    "Frame paragraph.\n\n"
+    "| Activity | Direction | Deep record |\n"
+    "|---|---|---|\n"
+    "| Discovery calls | up | — |\n"
+    "| Forecast roll-up | down | [deep record](forecast.md) |\n"
+)
+
+
+class TestCanonicalExecTable(unittest.TestCase):
+    def _parse(self, text):
+        return validate.parse_exec_table(text, "x.md")
+
+    def test_canonical_table_parses(self):
+        rows, findings = self._parse(EXEC_CANON)
+        self.assertEqual(findings, [])
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0][:3], ("Discovery calls", "up", None))
+        self.assertEqual(rows[1][2], "forecast.md")
+
+    def test_spaced_delimiter_is_accepted(self):
+        rows, findings = self._parse(EXEC_CANON.replace("|---|---|---|",
+                                                        "| --- | --- | --- |"))
+        self.assertEqual(findings, [])
+        self.assertEqual(len(rows), 2)
+
+    # --- the round-32 six, now unreachable rather than handled ---
+
+    def test_alignment_colons_are_rejected(self):
+        _rows, findings = self._parse(EXEC_CANON.replace("|---|---|---|",
+                                                         "|:---|---:|---|"))
+        self.assertTrue(any(f.level == "ERROR" and "delimiter" in f.message
+                            for f in findings))
+
+    def test_wrong_delimiter_arity_is_rejected(self):
+        _rows, findings = self._parse(EXEC_CANON.replace("|---|---|---|", "|---|---|"))
+        self.assertTrue(any(f.level == "ERROR" for f in findings))
+
+    def test_missing_delimiter_is_rejected(self):
+        _rows, findings = self._parse(EXEC_CANON.replace("|---|---|---|\n", ""))
+        self.assertTrue(any(f.level == "ERROR" and "delimiter" in f.message
+                            for f in findings))
+
+    def test_boundary_double_pipe_is_rejected(self):
+        _rows, findings = self._parse(
+            EXEC_CANON.replace("| Discovery calls | up | — |",
+                               "|| Discovery calls | up | — |"))
+        self.assertTrue(any(f.level == "ERROR" for f in findings))
+
+    def test_duplicate_direction_column_is_rejected(self):
+        _rows, findings = self._parse(
+            EXEC_CANON.replace("| Activity | Direction | Deep record |",
+                               "| Activity | Direction | Direction |"))
+        self.assertTrue(any(f.level == "ERROR" and "header" in f.message
+                            for f in findings))
+
+    def test_deleted_activity_column_is_rejected(self):
+        _rows, findings = self._parse(
+            EXEC_CANON.replace("| Activity | Direction | Deep record |",
+                               "| Direction | Deep record |"))
+        self.assertTrue(any(f.level == "ERROR" and "header" in f.message
+                            for f in findings))
+
+    def test_indented_table_is_rejected(self):
+        _rows, findings = self._parse(
+            EXEC_CANON.replace("| Discovery calls | up | — |",
+                               "    | Discovery calls | up | — |"))
+        self.assertTrue(any(f.level == "ERROR" for f in findings))
+
+    # --- the earlier classes, likewise ---
+
+    def test_second_table_anywhere_is_rejected(self):
+        _rows, findings = self._parse(EXEC_CANON + "\n| Other | table |\n")
+        self.assertTrue(any(f.level == "ERROR" and "exactly one" in f.message
+                            for f in findings))
+
+    def test_fenced_example_table_is_rejected(self):
+        # No fence awareness: any '|' outside the one table is an error, so a
+        # fenced example cannot shadow or decoy anything.
+        _rows, findings = self._parse(
+            EXEC_CANON + "\n```\n| Activity | Direction |\n```\n")
+        self.assertTrue(any(f.level == "ERROR" for f in findings))
+
+    def test_blockquoted_row_is_rejected(self):
+        _rows, findings = self._parse(EXEC_CANON + "\n> | a | b | c |\n")
+        self.assertTrue(any(f.level == "ERROR" for f in findings))
+
+    def test_no_leading_pipe_row_is_rejected(self):
+        _rows, findings = self._parse(
+            EXEC_CANON.replace("| Discovery calls | up | — |",
+                               "Discovery calls | up | — |"))
+        self.assertTrue(any(f.level == "ERROR" for f in findings))
+
+    def test_html_comment_in_a_cell_is_rejected(self):
+        _rows, findings = self._parse(
+            EXEC_CANON.replace("| Discovery calls | up | — |",
+                               "| <!--x--> | up | — |"))
+        self.assertTrue(any(f.level == "ERROR" for f in findings))
+
+    def test_escaped_pipe_in_a_cell_is_rejected(self):
+        _rows, findings = self._parse(
+            EXEC_CANON.replace("| Discovery calls | up | — |",
+                               "| Quote \\| order | up | — |"))
+        self.assertTrue(any(f.level == "ERROR" for f in findings))
+
+    def test_code_span_in_a_cell_is_rejected(self):
+        _rows, findings = self._parse(
+            EXEC_CANON.replace("| Discovery calls | up | — |",
+                               "| `Discovery` | up | — |"))
+        self.assertTrue(any(f.level == "ERROR" for f in findings))
+
+    def test_image_in_deep_record_cell_is_rejected(self):
+        _rows, findings = self._parse(
+            EXEC_CANON.replace("[deep record](forecast.md)",
+                               "![img](forecast.md)"))
+        self.assertTrue(any(f.level == "ERROR" and "Deep record" in f.message
+                            for f in findings))
+
+    # --- Codex review of slice 2.2a: the grammar was looser than its own
+    # documentation claimed. Each of these was ACCEPTED before the fix. ---
+
+    def test_en_dash_deep_record_is_rejected(self):
+        _rows, findings = self._parse(EXEC_CANON.replace("| up | — |", "| up | – |"))
+        self.assertTrue(any(f.level == "ERROR" and "Deep record" in f.message
+                            for f in findings))
+
+    def test_hyphen_deep_record_is_rejected(self):
+        _rows, findings = self._parse(EXEC_CANON.replace("| up | — |", "| up | - |"))
+        self.assertTrue(any(f.level == "ERROR" and "Deep record" in f.message
+                            for f in findings))
+
+    def test_empty_deep_record_is_rejected(self):
+        _rows, findings = self._parse(EXEC_CANON.replace("| up | — |", "| up |  |"))
+        self.assertTrue(any(f.level == "ERROR" and "Deep record" in f.message
+                            for f in findings))
+
+    def test_image_in_activity_cell_is_rejected(self):
+        _rows, findings = self._parse(
+            EXEC_CANON.replace("| Discovery calls |", "| ![img](../README.md) |"))
+        self.assertTrue(any(f.level == "ERROR" for f in findings))
+
+    def test_link_in_activity_cell_is_rejected(self):
+        _rows, findings = self._parse(
+            EXEC_CANON.replace("| Discovery calls |", "| [link](../README.md) |"))
+        self.assertTrue(any(f.level == "ERROR" for f in findings))
+
+    def test_emphasis_in_activity_cell_is_rejected(self):
+        for cell in ("**Discovery calls**", "_Discovery calls_"):
+            _rows, findings = self._parse(
+                EXEC_CANON.replace("| Discovery calls |", "| %s |" % cell))
+            self.assertTrue(any(f.level == "ERROR" for f in findings), cell)
+
+    def test_plain_text_activity_names_are_not_over_restricted(self):
+        # Codex re-review: the plain-text rule bans link/image/emphasis SYNTAX,
+        # not the characters those syntaxes happen to use. A first pass banned
+        # '[', ']' and '_' outright and rejected legitimate activity names.
+        # CommonMark does not read INTRAWORD '_' as emphasis, so "SOC_2" is text.
+        for cell in ("Coverage [EMEA]", "SOC_2 compliance", "P&L review",
+                     "Q3/Q4 planning", "Renewal prep (EMEA)", "Café onboarding",
+                     "Customer's escalation", "Pricing: tier review"):
+            rows, findings = self._parse(
+                EXEC_CANON.replace("| Discovery calls |", "| %s |" % cell))
+            self.assertEqual(findings, [], cell)
+            self.assertEqual(rows[0][0], cell)
+
+    def test_lowercased_header_is_rejected(self):
+        # "must be exactly" has to mean exactly, case included.
+        _rows, findings = self._parse(
+            EXEC_CANON.replace("| Activity | Direction | Deep record |",
+                               "| activity | DIRECTION | deep record |"))
+        self.assertTrue(any(f.level == "ERROR" and "header" in f.message
+                            for f in findings))
+
+    def test_short_delimiter_cell_is_rejected(self):
+        _rows, findings = self._parse(EXEC_CANON.replace("|---|---|---|",
+                                                         "|--|--|--|"))
+        self.assertTrue(any(f.level == "ERROR" and "delimiter" in f.message
+                            for f in findings))
+
+    def test_canonical_header_and_delimiter_with_no_rows_is_rejected(self):
+        _rows, findings = self._parse(
+            "# Sales\n\n| Activity | Direction | Deep record |\n|---|---|---|\n")
+        self.assertTrue(any(f.level == "ERROR" for f in findings))
+
+    def test_stray_pipe_before_the_table_names_the_block(self):
+        # The offending line must be findable: reporting the LAST pipe line
+        # sent the author to a legitimate table row instead of the stray.
+        text = ("stray | pipe on line 1\n\n"
+                "| Activity | Direction | Deep record |\n"
+                "|---|---|---|\n"
+                "| Forecast | up | — |\n")
+        _rows, findings = self._parse(text)
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].line, 3)      # first line outside the block
+        self.assertIn("line 1", findings[0].message)  # ...and the block it found
+
+    def test_empty_activity_still_parses_as_a_row(self):
+        # The empty-Activity ERROR belongs to check_ontology; the row must reach it.
+        rows, findings = self._parse(
+            EXEC_CANON.replace("| Discovery calls | up | — |", "|  | up | — |"))
+        self.assertEqual(findings, [])
+        self.assertEqual(rows[0][0], "")
+
+    def test_no_table_at_all_is_not_a_parse_error(self):
+        # Absence is check_ontology's call (an untouched worksheet stays silent).
+        rows, findings = self._parse("# Sales\n\nProse only.\n")
+        self.assertEqual((rows, findings), ([], []))
 
 
 EXEC_OK = (
@@ -346,6 +557,19 @@ class TestLinks(unittest.TestCase):
             "see [x](https://example.com) and [y](#anchor)",
             str(REPO))
         self.assertEqual(findings, [])
+
+    def test_links_inside_a_code_fence_are_still_checked(self):
+        # Deliberate and load-bearing: check_links is line-based and fence
+        # UNAWARE, so a link in a documentation example must resolve from the
+        # file it is written in. Slice 2.2a's canonical-table example in
+        # ontologies/README.md broke the gate on exactly this. Anyone tempted
+        # to make this check fence-aware has to delete this test first.
+        findings = validate.check_links(
+            str(REPO / "README.md"),
+            "```\n| A | up | [deep record](no-such-file.md) |\n```\n",
+            str(REPO))
+        self.assertTrue(any(f.level == "ERROR" and "broken" in f.message
+                            for f in findings))
 
 
 SKILL_OK = """---
@@ -4052,14 +4276,26 @@ class TestAggregateDedupe(unittest.TestCase):
 
 
 class TestExecTableHardening(unittest.TestCase):
+    """The adversarial corpus of Codex rounds 24-32, CONVERTED.
+
+    Every input below is kept verbatim from the round that found it. Under the
+    canonical grammar (#11 applied to the exec table) none of them is *handled*
+    any more — each is *refused*, which is the stronger property: there is
+    nothing left to disambiguate when only one table shape is legal. The
+    assertions therefore check for an ERROR and for zero silently-accepted rows,
+    rather than for a particular parse of a non-canonical shape."""
+
     def _exec(self, d, body, fn="sales"):
         _write(d, "ontologies/%s/_executive-view.md" % fn, body)
 
-    def test_misspelled_header_errors_instead_of_passing_silently(self):
+    def _errs(self, d):
+        return [f for f in validate.check_ontology(d) if f.level == "ERROR"]
+
+    def test_misspelled_header_is_rejected(self):
+        # Codex round 24's ancestor: a header typo must never pass silently.
         with tempfile.TemporaryDirectory() as d:
             self._exec(d, "# Sales\n\n| Activity | Diretcion |\n|---|---|\n| Forecast | up |\n")
-            self.assertTrue(any(f.level == "ERROR" and "activity table" in f.message
-                                for f in validate.check_ontology(d)))
+            self.assertTrue(any("header" in f.message for f in self._errs(d)))
 
     def test_missing_table_errors(self):
         with tempfile.TemporaryDirectory() as d:
@@ -4067,11 +4303,10 @@ class TestExecTableHardening(unittest.TestCase):
             self.assertTrue(any(f.level == "ERROR" and "activity table" in f.message
                                 for f in validate.check_ontology(d)))
 
-    def test_header_present_but_no_rows_errors(self):
+    def test_header_present_but_no_rows_is_rejected(self):
         with tempfile.TemporaryDirectory() as d:
             self._exec(d, "# Sales\n\n| Activity | Direction |\n|---|---|\n")
-            self.assertTrue(any(f.level == "ERROR" and "activity table" in f.message
-                                for f in validate.check_ontology(d)))
+            self.assertTrue(any("header" in f.message for f in self._errs(d)))
 
     def test_empty_file_is_silent(self):
         # An untouched worksheet stays silent (#5): only a file with content
@@ -4080,179 +4315,179 @@ class TestExecTableHardening(unittest.TestCase):
             self._exec(d, "")
             self.assertEqual(validate.check_ontology(d), [])
 
-    def test_empty_activity_cell_errors(self):
+    def test_two_column_empty_activity_table_is_rejected(self):
         with tempfile.TemporaryDirectory() as d:
             self._exec(d, "# Sales\n\n| Activity | Direction |\n|---|---|\n|  | up |\n")
-            self.assertTrue(any(f.level == "ERROR" and "Activity" in f.message
-                                for f in validate.check_ontology(d)))
+            self.assertTrue(any("header" in f.message for f in self._errs(d)))
 
-    def test_escaped_pipe_does_not_split_a_cell(self):
-        rows = validate.parse_exec_table(
+    def test_canonical_empty_activity_cell_still_errors(self):
+        # The empty-Activity check is not lost with the two-column shape: in
+        # canonical form the row parses and reaches check_ontology (#5).
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "# Sales\n\n| Activity | Direction | Deep record |\n"
+                          "|---|---|---|\n|  | up | — |\n")
+            self.assertTrue(any("Activity" in f.message for f in self._errs(d)))
+
+    def test_escaped_pipe_is_rejected(self):
+        # Was: an escaped pipe must not split a cell. Now: escapes are not
+        # canonical at all, so the cell cannot be smuggled either way.
+        rows, findings = validate.parse_exec_table(
             "| Activity | Direction |\n|---|---|\n| Quote \\| order handoff | down |\n")
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0][0], "Quote | order handoff")
-        self.assertEqual(rows[0][1], "down")
+        self.assertEqual(rows, [])
+        self.assertTrue(any(f.level == "ERROR" for f in findings))
 
     def test_good_table_still_clean(self):
         with tempfile.TemporaryDirectory() as d:
             self._exec(d, EXEC_OK)
-            self.assertEqual([f for f in validate.check_ontology(d)
-                              if f.level == "ERROR"], [])
+            self.assertEqual(self._errs(d), [])
 
-    def test_header_needs_a_direction_cell_not_a_substring(self):
-        # Codex round 24: 'Misdirection' must not select the table — the
-        # header needs a cell that IS 'Direction'.
+    def test_misdirection_header_is_rejected(self):
+        # Codex round 24: 'Misdirection' must not select the table. Under the
+        # canonical grammar no header but the exact one selects anything.
         with tempfile.TemporaryDirectory() as d:
             self._exec(d, "# Sales\n\n| Misdirection |\n|---|\n| Forecast | up |\n")
-            self.assertTrue(any(f.level == "ERROR" and "activity table" in f.message
-                                for f in validate.check_ontology(d)))
+            self.assertTrue(any("header" in f.message for f in self._errs(d)))
 
-    def test_decoy_table_does_not_shadow_the_real_one(self):
-        # A header merely MENTIONING direction must not swallow the real
-        # table below it, whose Directions would then go unchecked.
-        rows = validate.parse_exec_table(
+    def test_decoy_table_is_rejected(self):
+        # A header merely MENTIONING direction used to risk swallowing the
+        # real table below it. A second table is now simply illegal.
+        rows, findings = validate.parse_exec_table(
             "| Notes about direction here |\n|---|\n| prose |\n\n"
             "| Activity | Direction |\n|---|---|\n| Forecast | up |\n")
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0][0], "Forecast")
-        self.assertEqual(rows[0][1], "up")
+        self.assertEqual(rows, [])
+        self.assertTrue(any(f.level == "ERROR" and "exactly one" in f.message
+                            for f in findings))
 
-    def test_columns_found_by_header_position(self):
-        rows = validate.parse_exec_table(
+    def test_reordered_columns_are_rejected(self):
+        # Was: columns are found by header position. Now: only one order is
+        # legal, so there is no position to resolve.
+        rows, findings = validate.parse_exec_table(
             "| Direction | Activity |\n|---|---|\n| up | Forecast |\n")
-        self.assertEqual(rows[0][0], "Forecast")
-        self.assertEqual(rows[0][1], "up")
+        self.assertEqual(rows, [])
+        self.assertTrue(any(f.level == "ERROR" and "header" in f.message
+                            for f in findings))
 
-    def test_every_direction_table_is_validated(self):
+    def test_second_direction_table_is_rejected(self):
         # Codex round 25: an earlier table with a real Direction cell must
-        # not shadow a later one — every Direction-headed table's rows parse,
-        # so the later table's invalid value still reaches the check.
-        rows = validate.parse_exec_table(
+        # not shadow a later one. Neither can exist now.
+        rows, findings = validate.parse_exec_table(
             "| Report | Direction |\n|---|---|\n| Decoy row | up |\n\n"
             "| Activity | Direction | Deep record |\n|---|---|---|\n"
             "| Forecast | sideways | — |\n")
-        self.assertEqual(len(rows), 2)
-        self.assertEqual(rows[1][0], "Forecast")
-        self.assertEqual(rows[1][1], "sideways")
+        self.assertEqual(rows, [])
+        self.assertTrue(any(f.level == "ERROR" and "exactly one" in f.message
+                            for f in findings))
 
-    def test_double_backslash_before_pipe_is_a_delimiter(self):
-        # Codex round 26: two backslashes escape each other, so the pipe IS
-        # a delimiter — parity, not a single-character lookbehind.
-        rows = validate.parse_exec_table(
+    def test_double_backslash_before_pipe_is_rejected(self):
+        # Codex round 26: backslash PARITY decided whether the pipe delimited.
+        # Canonical cells carry no backslashes, so parity is moot.
+        rows, findings = validate.parse_exec_table(
             "| Activity | Direction |\n|---|---|\n| A \\\\| sideways |\n")
-        self.assertEqual(rows[0][1], "sideways")
+        self.assertEqual(rows, [])
+        self.assertTrue(any(f.level == "ERROR" for f in findings))
 
-    def test_zero_row_direction_table_errors_even_beside_a_valid_one(self):
+    def test_zero_row_table_beside_a_valid_one_is_rejected(self):
         # Codex round 26: a headered-but-empty table must still ERROR when
         # another table in the file parses fine.
         with tempfile.TemporaryDirectory() as d:
             self._exec(d, "# Sales\n\n| Activity | Direction |\n|---|---|\n\n"
                           "| Activity | Direction |\n|---|---|\n| F | up |\n")
-            self.assertTrue(any(f.level == "ERROR" and "zero activity rows"
-                                in f.message
-                                for f in validate.check_ontology(d)))
+            self.assertTrue(any("exactly one" in f.message for f in self._errs(d)))
 
-    def test_all_empty_row_is_not_a_separator(self):
-        # '|  |  |' is a row with an empty Activity cell, not a separator.
+    def test_all_empty_row_table_is_rejected(self):
+        # '|  |  |' was a row with an empty Activity cell, not a separator.
         with tempfile.TemporaryDirectory() as d:
             self._exec(d, "# Sales\n\n| Activity | Direction |\n|---|---|\n"
                           "|  |  |\n| F | up |\n")
-            self.assertTrue(any(f.level == "ERROR" and "Activity" in f.message
-                                for f in validate.check_ontology(d)))
+            self.assertTrue(any("header" in f.message for f in self._errs(d)))
 
-    def test_fenced_example_table_is_not_live(self):
-        # A valid table inside a code fence is documentation; it must not
-        # suppress the unparsable-table ERROR for the live view.
+    def test_fenced_example_table_is_rejected(self):
+        # A valid table inside a code fence used to need fence awareness to
+        # avoid shadowing the live view. Any '|' outside the one table now
+        # ERRORs, so there is no fence question left to get wrong.
         with tempfile.TemporaryDirectory() as d:
             self._exec(d, "# Sales\n\n```\n| Activity | Direction |\n"
                           "|---|---|\n| F | up |\n```\n\n"
                           "| Activity | Diretcion |\n|---|---|\n| G | up |\n")
-            self.assertTrue(any(f.level == "ERROR" and "activity table"
-                                in f.message
-                                for f in validate.check_ontology(d)))
+            self.assertTrue(any("exactly one" in f.message for f in self._errs(d)))
 
-    def test_masked_misspelled_table_errors(self):
+    def test_masked_misspelled_table_is_rejected(self):
         # Codex round 27: a valid table must not mask a second, misspelled
-        # activity table — every table in an executive view must parse.
+        # activity table.
         with tempfile.TemporaryDirectory() as d:
             self._exec(d, "# Sales\n\n| Activity | Direction |\n|---|---|\n"
                           "| Good | up |\n\n"
                           "| Activity | Diretcion |\n|---|---|\n"
                           "| Hidden | sideways |\n")
-            self.assertTrue(any(f.level == "ERROR" and "activity table"
-                                in f.message
-                                for f in validate.check_ontology(d)))
+            self.assertTrue(any("exactly one" in f.message for f in self._errs(d)))
 
-    def test_list_nested_fenced_table_is_not_live(self):
-        # Codex round 27: a '- ```' fenced example is handled by the full
-        # container-aware stripper; its closing line must not read as a
-        # top-level opener that swallows the real table below.
+    def test_list_nested_fenced_table_is_rejected(self):
+        # Codex round 27: a '- ```' fenced example needed the container-aware
+        # stripper so its closing line did not swallow the real table below.
         with tempfile.TemporaryDirectory() as d:
             self._exec(d, "- ```\n  | Activity | Direction |\n  |---|---|\n"
                           "  | Example | up |\n  ```\n\n"
                           "| Activity | Diretcion |\n|---|---|\n"
                           "| Real | sideways |\n")
-            self.assertTrue(any(f.level == "ERROR" and "activity table"
-                                in f.message
-                                for f in validate.check_ontology(d)))
+            self.assertTrue(any("exactly one" in f.message for f in self._errs(d)))
 
-    def test_comment_wrapped_table_is_not_live(self):
+    def test_comment_wrapped_table_is_rejected(self):
         # Codex round 28: a table inside an HTML comment is documentation,
         # not a live activity table.
         with tempfile.TemporaryDirectory() as d:
             self._exec(d, "# Sales\n\n<!--\n| Activity | Direction |\n"
                           "|---|---|\n| X | up |\n-->\n")
-            self.assertTrue(any(f.level == "ERROR" and "activity table"
-                                in f.message
-                                for f in validate.check_ontology(d)))
+            self.assertTrue(any("header" in f.message for f in self._errs(d)))
 
-    def test_stray_backticks_do_not_merge_rows(self):
-        # Codex round 28: spans strip per LINE in table mode — a stray
-        # backtick on one row must not pair with a later row and erase the
-        # invalid Direction between them.
-        rows = validate.parse_exec_table(
+    def test_stray_backticks_are_rejected(self):
+        # Codex round 28: a stray backtick on one row must not pair with a
+        # later row and erase the invalid Direction between them. A backtick
+        # is not a canonical cell character, so no pairing can occur.
+        rows, findings = validate.parse_exec_table(
             "| Activity | Direction |\n|---|---|\n"
             "| Hidden ` | up |\n| Bad | sideways |\n| tail ` | down |\n")
-        self.assertTrue(any(r[1] == "sideways" for r in rows))
+        self.assertEqual(rows, [])
+        self.assertTrue(any(f.level == "ERROR" for f in findings))
 
-    def test_comment_wrapped_link_does_not_satisfy_listing(self):
+    def test_comment_wrapped_link_is_rejected(self):
         # A link inside an HTML comment renders as nothing — it must not
-        # populate the listing set.
+        # populate the listing set. The row is now refused outright, so the
+        # record is still reported unlisted.
         with tempfile.TemporaryDirectory() as d:
             _write(d, "ontologies/sales/_executive-view.md",
                    "| Activity | Direction | Deep record |\n|---|---|---|\n"
                    "| Renewal | down | <!-- [h](renewal.md) --> |\n")
             _write(d, "ontologies/sales/renewal.md", AUTOMATE_OK)
+            findings = validate.check_ontology(d)
+            self.assertTrue(any(f.level == "ERROR" and "canonical" in f.message
+                                for f in findings))
             self.assertTrue(any(f.level == "WARN" and "not listed" in f.message
-                                for f in validate.check_ontology(d)))
+                                for f in findings))
 
-    def test_no_leading_pipe_table_is_seen(self):
-        # GFM rows need not start with '|' — a misspelled pipeless-margin
-        # table must not hide behind a valid one.
+    def test_no_leading_pipe_table_is_rejected(self):
+        # GFM rows need not start with '|'; canonical rows must.
         with tempfile.TemporaryDirectory() as d:
             self._exec(d, "# Sales\n\n| Activity | Direction |\n|---|---|\n"
                           "| Good | up |\n\n"
                           "Activity | Diretcion\n---|---\nHidden | sideways\n")
-            self.assertTrue(any(f.level == "ERROR" and "activity table"
-                                in f.message
-                                for f in validate.check_ontology(d)))
+            self.assertTrue(any("exactly one" in f.message for f in self._errs(d)))
 
-    def test_blockquoted_table_is_validated(self):
-        rows = validate.parse_exec_table(
+    def test_blockquoted_table_is_rejected(self):
+        rows, findings = validate.parse_exec_table(
             "> | Activity | Direction |\n> |---|---|\n> | F | sideways |\n")
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0][1], "sideways")
+        self.assertEqual(rows, [])
+        self.assertTrue(any(f.level == "ERROR" and "header" in f.message
+                            for f in findings))
 
-    def test_comment_only_activity_cell_is_empty(self):
-        # Codex round 29: '<!-- hidden -->' renders as an EMPTY Activity
-        # cell and must reach the existing empty-Activity ERROR.
+    def test_comment_only_activity_cell_is_rejected(self):
+        # Codex round 29: '<!-- hidden -->' rendered as an EMPTY Activity
+        # cell. HTML is not a canonical cell character, so the row is refused.
         with tempfile.TemporaryDirectory() as d:
             self._exec(d, "# Sales\n\n| Activity | Direction |\n|---|---|\n"
                           "| <!-- hidden --> | up |\n")
-            self.assertTrue(any(f.level == "ERROR" and "Activity" in f.message
-                                for f in validate.check_ontology(d)))
+            self.assertTrue(any("header" in f.message for f in self._errs(d)))
 
-    def test_non_links_do_not_satisfy_listing(self):
+    def test_non_link_deep_record_cells_are_rejected(self):
         # Codex round 29: link-like text inside an HTML attribute, or
         # backslash-escaped link syntax, renders as no link at all.
         for cell in ('<a title="[h](renewal.md)">x</a>',
@@ -4262,22 +4497,21 @@ class TestExecTableHardening(unittest.TestCase):
                        "| Activity | Direction | Deep record |\n"
                        "|---|---|---|\n| Renewal | down | %s |\n" % cell)
                 _write(d, "ontologies/sales/renewal.md", AUTOMATE_OK)
+                findings = validate.check_ontology(d)
+                self.assertTrue(any(f.level == "ERROR" and "canonical" in f.message
+                                    for f in findings), cell)
                 self.assertTrue(
                     any(f.level == "WARN" and "not listed" in f.message
-                        for f in validate.check_ontology(d)), cell)
+                        for f in findings), cell)
 
-    def test_missing_delimiter_row_errors(self):
-        # Codex round 31: without a delimiter row GFM renders NO table at
-        # all — the gate must say so, not silently 'validate' prose. The
-        # rows are still checked (loud on both axes).
+    def test_missing_delimiter_row_is_rejected(self):
+        # Codex round 31: without a delimiter row GFM renders NO table at all.
         with tempfile.TemporaryDirectory() as d:
             self._exec(d, "# Sales\n\n| Activity | Direction |\n"
                           "| Good | up |\n")
-            self.assertTrue(any(f.level == "ERROR" and "activity table"
-                                in f.message
-                                for f in validate.check_ontology(d)))
+            self.assertTrue(any("header" in f.message for f in self._errs(d)))
 
-    def test_image_syntax_does_not_satisfy_listing(self):
+    def test_image_syntax_is_rejected(self):
         # Codex round 30: '![h](renewal.md)' renders an IMAGE, not a link to
         # the record — a one-character typo must not silence the WARN.
         with tempfile.TemporaryDirectory() as d:
@@ -4285,17 +4519,22 @@ class TestExecTableHardening(unittest.TestCase):
                    "| Activity | Direction | Deep record |\n|---|---|---|\n"
                    "| Renewal | down | ![h](renewal.md) |\n")
             _write(d, "ontologies/sales/renewal.md", AUTOMATE_OK)
+            findings = validate.check_ontology(d)
+            self.assertTrue(any(f.level == "ERROR" and "Deep record" in f.message
+                                for f in findings))
             self.assertTrue(any(f.level == "WARN" and "not listed" in f.message
-                                for f in validate.check_ontology(d)))
+                                for f in findings))
 
-    def test_escaped_bang_link_still_counts(self):
-        # '\![d](r.md)' renders a literal '!' followed by a real link.
-        rows = validate.parse_exec_table(
+    def test_escaped_bang_link_is_rejected(self):
+        # '\![d](r.md)' rendered a literal '!' followed by a real link — a
+        # distinction the canonical cell never has to draw.
+        rows, findings = validate.parse_exec_table(
             "| Activity | Direction | Deep record |\n|---|---|---|\n"
             "| R | down | \\![d](r.md) |\n")
-        self.assertEqual(rows[0][2], "r.md")
+        self.assertEqual(rows, [])
+        self.assertTrue(any(f.level == "ERROR" for f in findings))
 
-    def test_deep_record_header_must_be_an_exact_cell(self):
+    def test_near_miss_deep_record_header_is_rejected(self):
         # Codex round 27: 'Not a Deep record' must not designate the link
         # column — the listing WARN would be suppressed by an unrelated link.
         with tempfile.TemporaryDirectory() as d:
@@ -4303,10 +4542,13 @@ class TestExecTableHardening(unittest.TestCase):
                    "| Activity | Direction | Not a Deep record |\n"
                    "|---|---|---|\n| Renewal | down | [a](renewal.md) |\n")
             _write(d, "ontologies/sales/renewal.md", AUTOMATE_OK)
+            findings = validate.check_ontology(d)
+            self.assertTrue(any(f.level == "ERROR" and "header" in f.message
+                                for f in findings))
             self.assertTrue(any(f.level == "WARN" and "not listed" in f.message
-                                for f in validate.check_ontology(d)))
+                                for f in findings))
 
-    def test_link_only_from_a_deep_record_column(self):
+    def test_attachment_column_header_is_rejected(self):
         # Codex round 26: without a 'Deep record' header cell, a link in an
         # unrelated column must not satisfy the listing check.
         with tempfile.TemporaryDirectory() as d:
@@ -4314,8 +4556,11 @@ class TestExecTableHardening(unittest.TestCase):
                    "| Activity | Direction | Attachment |\n|---|---|---|\n"
                    "| Renewal | down | [a](renewal.md) |\n")
             _write(d, "ontologies/sales/renewal.md", AUTOMATE_OK)
+            findings = validate.check_ontology(d)
+            self.assertTrue(any(f.level == "ERROR" and "header" in f.message
+                                for f in findings))
             self.assertTrue(any(f.level == "WARN" and "not listed" in f.message
-                                for f in validate.check_ontology(d)))
+                                for f in findings))
 
 
 class TestAggregateListingFailures(unittest.TestCase):
