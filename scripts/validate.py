@@ -171,8 +171,12 @@ def est_tokens(num_bytes):
     return num_bytes // 4
 
 
-def check_context_budget(path, data_bytes):
-    toks = est_tokens(len(data_bytes))
+def check_context_budget(path, num_bytes):
+    """#13 thresholds over a measured byte count. Bytes are what a stdlib
+    validator can compute deterministically; tokens are reported (len/4). This
+    is applied to the ALWAYS-LOADED aggregate, not to arbitrary files — a Python
+    script or a research note never enters an agent's context."""
+    toks = est_tokens(num_bytes)
     if toks >= ERROR_TOKENS:
         return [Finding("ERROR", path, None,
                         "context budget: ~%d est. tokens (>= %d ERROR)" % (toks, ERROR_TOKENS))]
@@ -201,6 +205,194 @@ def check_links(abspath, text, root):
             if not os.path.exists(resolved):
                 findings.append(Finding("ERROR", os.path.relpath(abspath, root), lineno,
                                         "broken relative link: %s" % target))
+    return findings
+
+
+# Codex: "stops adding files once the combined size reaches the limit defined by
+# project_doc_max_bytes (32 KiB by default)" — and truncates SILENTLY (no warning;
+# openai/codex#7138 closed not-planned). Verified live 2026-07-27.
+AGENTS_CHAIN_MAX_BYTES = 32 * 1024
+# Claude Code: imports resolve "with a maximum depth of four hops".
+CLAUDE_IMPORT_MAX_DEPTH = 4
+# Claude Code truncates a skill's listed description at this many characters.
+SKILL_DESCRIPTION_CAP = 1536
+# Codex checks AGENTS.override.md before AGENTS.md at every level.
+_AGENTS_NAMES = ("AGENTS.override.md", "AGENTS.md")
+
+_IMPORT = re.compile(r"(?:(?<=\s)|^)@([^\s`]+)", re.M)
+
+
+def _strip_code(text):
+    """Drop fenced blocks and inline code spans. Claude Code's import parser
+    "skips Markdown code spans and fenced code blocks", so `@README` inside
+    backticks is literal text and must NOT be followed."""
+    text = re.sub(r"```.*?(?:```|\Z)", "", text, flags=re.S)
+    return re.sub(r"`[^`\n]*`", "", text)
+
+
+def _agents_file(dirpath):
+    """The instruction file Codex would read at this level, honoring the
+    override precedence. None when the level contributes nothing."""
+    for name in _AGENTS_NAMES:
+        p = os.path.join(dirpath, name)
+        if os.path.isfile(p):
+            return p
+    return None
+
+
+def _file_size(path):
+    try:
+        return os.path.getsize(path)
+    except OSError:
+        return None
+
+
+def check_agents_chain(root, ignore=()):
+    """#13 hard ERROR. Codex "concatenates files from the root down, joining them
+    with blank lines" and stops once the total reaches project_doc_max_bytes
+    (32 KiB). Past the cap the tail is silently dropped — that is DATA LOSS, not
+    bloat, and no harness warns about it, so the validator is the missing warning.
+
+    Only the repo-side chain is measurable; a user's own ~/.codex/AGENTS.md counts
+    against the same 32 KiB and is invisible here (docs/known-limitations.md)."""
+    findings = []
+    for dirpath, dirnames, _filenames in os.walk(root):
+        rel_dir = os.path.relpath(dirpath, root)
+        dirnames[:] = [d for d in dirnames
+                       if d not in SKIP_DIRS and not d.startswith(".")
+                       and os.path.normpath(os.path.join(rel_dir, d)) not in SKIP_RELPATHS
+                       and not _ignored(d, ignore)]
+        leaf = _agents_file(dirpath)
+        if leaf is None:
+            continue
+        parts = [] if rel_dir == "." else rel_dir.split(os.sep)
+        sizes = []
+        unreadable = None
+        for i in range(len(parts) + 1):
+            f = _agents_file(os.path.join(root, *parts[:i]))
+            if f is None:
+                continue
+            n = _file_size(f)
+            if n is None:
+                unreadable = f
+                break
+            if n:  # "Codex skips empty files"
+                sizes.append(n)
+        if unreadable is not None:
+            findings.append(Finding("ERROR", os.path.relpath(unreadable, root), None,
+                                    "cannot size this instruction file — the AGENTS.md chain "
+                                    "budget cannot be verified (#13)"))
+            continue
+        total = sum(sizes) + 2 * max(len(sizes) - 1, 0)  # joined with blank lines
+        if total > AGENTS_CHAIN_MAX_BYTES:
+            findings.append(Finding(
+                "ERROR", os.path.relpath(leaf, root), None,
+                "AGENTS.md chain reaching this directory is %d bytes, over Codex's "
+                "%d-byte project_doc_max_bytes — everything past the cap is silently "
+                "truncated (#13)" % (total, AGENTS_CHAIN_MAX_BYTES)))
+    return findings
+
+
+def _always_loaded_bytes(root):
+    """#13's always-loaded surface as (label, bytes) pairs: the root AGENTS.md,
+    the root CLAUDE.md and everything it imports, unscoped .claude/rules/*.md,
+    always-apply .cursor/rules/*.mdc, and each skill's description capped at
+    Claude Code's listing truncation.
+
+    Both rules directories are opened BY PATH on purpose: iter_files skips every
+    dot-directory, so a walker-based version would measure nothing and pass."""
+    items = []
+
+    f = _agents_file(root)
+    if f is not None:
+        n = _file_size(f)
+        if n:
+            items.append((os.path.relpath(f, root), n))
+
+    root_real = os.path.realpath(root)
+    seen = set()
+
+    def add_import(abspath, depth):
+        if depth > CLAUDE_IMPORT_MAX_DEPTH or not os.path.isfile(abspath):
+            return
+        real = os.path.realpath(abspath)
+        if real in seen:
+            return
+        seen.add(real)
+        rel = os.path.relpath(abspath, root)
+        text, _rd = _read_utf8(abspath, rel)
+        if text is None:
+            return
+        items.append((rel, len(text.encode("utf-8"))))
+        base = os.path.dirname(abspath)
+        for target in _IMPORT.findall(_strip_code(text)):
+            if target.startswith("~") or os.path.isabs(target):
+                continue  # outside the repo: real context, but not measurable here
+            nxt = os.path.normpath(os.path.join(base, target))
+            if os.path.realpath(nxt).startswith(root_real + os.sep):
+                add_import(nxt, depth + 1)
+
+    add_import(os.path.join(root, "CLAUDE.md"), 1)
+
+    for rel_dir, ext, mode in ((os.path.join(".claude", "rules"), ".md", "claude"),
+                               (os.path.join(".cursor", "rules"), ".mdc", "cursor")):
+        d = os.path.join(root, rel_dir)
+        if not os.path.isdir(d):
+            continue
+        for dirpath, _dn, filenames in os.walk(d):
+            for fn in sorted(filenames):
+                if not fn.endswith(ext):
+                    continue
+                abspath = os.path.join(dirpath, fn)
+                rel = os.path.relpath(abspath, root)
+                data, _fm = _load_frontmatter(abspath, rel)
+                if data is None:
+                    continue
+                if mode == "claude":
+                    # path-scoped rules load on file match, not at launch
+                    if not _blank(data.get("paths")):
+                        continue
+                else:
+                    aa = data.get("alwaysApply")
+                    if not (isinstance(aa, str) and aa.strip().lower() == "true"):
+                        continue
+                n = _file_size(abspath)
+                if n:
+                    items.append((rel, n))
+
+    sdir = os.path.join(root, "skills")
+    if os.path.isdir(sdir) and not os.path.islink(sdir):
+        try:
+            names = sorted(os.listdir(sdir))
+        except OSError:
+            names = []
+        for name in names:
+            sp = os.path.join(sdir, name, "SKILL.md")
+            if not os.path.isfile(sp):
+                continue
+            rel = os.path.relpath(sp, root)
+            data, _fm = _load_frontmatter(sp, rel)
+            if data is None:
+                continue
+            desc = data.get("description")
+            if isinstance(desc, str) and desc.strip():
+                items.append((rel + " (description)",
+                              min(len(desc.encode("utf-8")), SKILL_DESCRIPTION_CAP)))
+    return items
+
+
+def check_always_loaded_budget(root):
+    """#13's aggregate: what every session pays for before anyone types anything.
+    WARN ~20K est. tokens, ERROR ~50K. Skill BODIES are excluded on purpose —
+    they load only when a skill is invoked."""
+    items = _always_loaded_bytes(root)
+    findings = check_context_budget("(always-loaded surface)",
+                                    sum(n for _lbl, n in items))
+    if findings and items:
+        top = ", ".join("%s %dB" % (lbl, n)
+                        for lbl, n in sorted(items, key=lambda it: -it[1])[:3])
+        f = findings[0]
+        findings[0] = Finding(f.level, f.path, f.line, f.message + " — largest: " + top)
     return findings
 
 
@@ -1540,7 +1732,6 @@ def validate(root):
                 data_bytes = fh.read()
         except OSError:
             continue
-        findings += check_context_budget(rel, data_bytes)
         try:
             text = data_bytes.decode("utf-8")
         except UnicodeDecodeError:
@@ -1558,6 +1749,8 @@ def validate(root):
     findings += check_symlinked_dirs(root)
     findings += check_proposals(root, ignore)
     findings += check_changelog(root, ignore)
+    findings += check_agents_chain(root, ignore)
+    findings += check_always_loaded_budget(root)
     return findings
 
 
