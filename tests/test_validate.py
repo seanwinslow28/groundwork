@@ -4196,6 +4196,53 @@ class TestExecTableHardening(unittest.TestCase):
                                 in f.message
                                 for f in validate.check_ontology(d)))
 
+    def test_comment_wrapped_table_is_not_live(self):
+        # Codex round 28: a table inside an HTML comment is documentation,
+        # not a live activity table.
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "# Sales\n\n<!--\n| Activity | Direction |\n"
+                          "|---|---|\n| X | up |\n-->\n")
+            self.assertTrue(any(f.level == "ERROR" and "activity table"
+                                in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_stray_backticks_do_not_merge_rows(self):
+        # Codex round 28: spans strip per LINE in table mode — a stray
+        # backtick on one row must not pair with a later row and erase the
+        # invalid Direction between them.
+        rows = validate.parse_exec_table(
+            "| Activity | Direction |\n|---|---|\n"
+            "| Hidden ` | up |\n| Bad | sideways |\n| tail ` | down |\n")
+        self.assertTrue(any(r[1] == "sideways" for r in rows))
+
+    def test_comment_wrapped_link_does_not_satisfy_listing(self):
+        # A link inside an HTML comment renders as nothing — it must not
+        # populate the listing set.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/sales/_executive-view.md",
+                   "| Activity | Direction | Deep record |\n|---|---|---|\n"
+                   "| Renewal | down | <!-- [h](renewal.md) --> |\n")
+            _write(d, "ontologies/sales/renewal.md", AUTOMATE_OK)
+            self.assertTrue(any(f.level == "WARN" and "not listed" in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_no_leading_pipe_table_is_seen(self):
+        # GFM rows need not start with '|' — a misspelled pipeless-margin
+        # table must not hide behind a valid one.
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "# Sales\n\n| Activity | Direction |\n|---|---|\n"
+                          "| Good | up |\n\n"
+                          "Activity | Diretcion\n---|---\nHidden | sideways\n")
+            self.assertTrue(any(f.level == "ERROR" and "activity table"
+                                in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_blockquoted_table_is_validated(self):
+        rows = validate.parse_exec_table(
+            "> | Activity | Direction |\n> |---|---|\n> | F | sideways |\n")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0][1], "sideways")
+
     def test_deep_record_header_must_be_an_exact_cell(self):
         # Codex round 27: 'Not a Deep record' must not designate the link
         # column — the listing WARN would be suppressed by an unrelated link.

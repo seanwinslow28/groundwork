@@ -393,7 +393,7 @@ def _strip_spans(text):
     return "".join(out)
 
 
-def _strip_code(text):
+def _strip_code(text, table_mode=False):
     """Blank out fenced code blocks and inline code spans, the way a CommonMark
     reader does — Claude Code's import parser "skips Markdown code spans and
     fenced code blocks".
@@ -416,13 +416,22 @@ def _strip_code(text):
     Fences nested in block containers (`> ~~~`, `- ```` ``` ````) are fences
     too. A fence opened inside a blockquote closes when the quote's `>` lines
     stop (a code block cannot lazily continue), and the ending line is
-    reprocessed — it may itself open a new top-level fence."""
+    reprocessed — it may itself open a new top-level fence.
+
+    table_mode (Codex round 28), for the exec-table parser: HTML-block
+    content is blanked (a comment-wrapped table is documentation, not live)
+    and spans strip per LINE (GFM parses tables row-first, so a stray
+    backtick on one row must not pair across rows and erase the row between
+    them). Line count is exactly preserved in this mode."""
     out = []
     para = []  # non-fence lines accumulated until a paragraph boundary
 
     def _flush():
         if para:
-            out.append(_strip_spans("\n".join(para)))
+            if table_mode:
+                out.append("\n".join(_strip_spans(x) for x in para))
+            else:
+                out.append(_strip_spans("\n".join(para)))
             del para[:]
 
     fence = None   # (char, length) of the currently open fence
@@ -459,7 +468,12 @@ def _strip_code(text):
                     html_open = None
                     continue
                 # raw HTML-block content — live text, never a fence opener
-                para.append(line)
+                # (blanked in table_mode: it renders as no table)
+                if table_mode:
+                    _flush()
+                    out.append("")
+                else:
+                    para.append(line)
                 if html_open != "blank" and html_open.search(line):
                     html_open = None
                 i += 1
@@ -514,7 +528,11 @@ def _strip_code(text):
                 para_open = False
                 out.append("")
             elif html_end is not None:
-                para.append(line)
+                if table_mode:
+                    _flush()
+                    out.append("")
+                else:
+                    para.append(line)
                 para_open = False
                 if html_end in ("blank", "blank7"):
                     html_open = "blank"
@@ -951,6 +969,9 @@ def _split_cells(line):
     return cells
 
 
+_QUOTE_PREFIX = re.compile(r"^(?: {0,3}> ?)+")
+
+
 def _is_separator(cells):
     joined = "".join(cells)
     return "-" in joined and set(joined) <= set("-: ")
@@ -975,20 +996,22 @@ def _parse_exec_tables(text):
     n_tables = 0
     n_empty = 0
     n_unrecognized = 0
-    lines = _strip_code(text).split("\n")
+    # GFM rows need not start with '|' and tables may sit in blockquotes
+    # (Codex round 28), so a "tabular" line is one whose quote-stripped text
+    # contains a pipe; blocks are contiguous runs of them.
+    stripped = [_QUOTE_PREFIX.sub("", ln)
+                for ln in _strip_code(text, table_mode=True).split("\n")]
     idx = 0
-    while idx < len(lines):
-        line = lines[idx]
-        if not line.lstrip().startswith("|"):
+    while idx < len(stripped):
+        if "|" not in stripped[idx]:
             idx += 1
             continue
-        # the contiguous pipe block starting here
         end = idx + 1
-        while end < len(lines) and lines[end].lstrip().startswith("|"):
+        while end < len(stripped) and "|" in stripped[end]:
             end += 1
-        header = [c.lower() for c in _split_cells(line)]
+        header = [c.lower() for c in _split_cells(stripped[idx])]
         if "direction" not in header:
-            if any(_is_separator(_split_cells(lines[k]))
+            if any(_is_separator(_split_cells(stripped[k]))
                    for k in range(idx, end)):
                 n_unrecognized += 1
             idx = end
@@ -1000,14 +1023,16 @@ def _parse_exec_tables(text):
             if "deep record" in header else None
         table_rows = 0
         for j in range(idx + 1, end):
-            cells = _split_cells(lines[j])
+            cells = _split_cells(stripped[j])
             if _is_separator(cells):
                 continue
             activity = cells[act_col] if len(cells) > act_col else ""
             direction = cells[dir_col].lower() if len(cells) > dir_col else ""
             link = None
             if link_col is not None and len(cells) > link_col:
-                lm = _LINK.search(cells[link_col])
+                # a comment-wrapped link renders as nothing and must not
+                # satisfy the listing set (Codex round 28)
+                lm = _LINK.search(_HTML_COMMENT.sub("", cells[link_col]))
                 if lm:
                     link = lm.group(1)
             rows.append((activity, direction, link, j + 1))
