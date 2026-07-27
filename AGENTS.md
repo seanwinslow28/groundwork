@@ -17,8 +17,8 @@ validator gates every layer of it.
 **Built and working:**
 
 - `scripts/validate.py` — the gate. Python 3 standard library only, no dependencies.
-- `ontologies/` — the two-tier ontology schema and one worked function
-  (People/HR, with `onboarding-orchestration` as a full deep record).
+- `ontologies/` — the two-tier ontology schema, all 8 function executive views, and
+  one worked deep record (People/HR `onboarding-orchestration`).
 - `skills/` — the work-package convention and one worked package
   (`SKILL.md` + `owner-card.md`).
 - `governance/` — the constitution rule schema with one compiled rule, the
@@ -39,7 +39,7 @@ validator gates every layer of it.
 | Path | What it holds |
 |---|---|
 | `CONTEXT.md` | The glossary. Every resolved decision's vocabulary. Read this first. |
-| `ontologies/` | One directory per function. Executive view + deep records. |
+| `ontologies/` | One directory per function. All 8 executive views; `people-hr/` also carries a worked deep record. |
 | `skills/` | Work packages: `skills/<name>/SKILL.md` + `owner-card.md`. |
 | `governance/` | `constitution/` (typed rules), `hooks/` (the action-class gate), `changelog.md`. |
 | `memory/` | Org-memory records, one per file, with an index. |
