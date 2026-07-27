@@ -3097,6 +3097,39 @@ class TestBlastRadiusDiff(unittest.TestCase):
                 validate.main(["validate.py", d, "--diff", "no-such-ref"])
             self.assertEqual(buf.getvalue().count("base ref not found"), 1)
 
+    # --- Codex round-2 regressions ---
+
+    def test_inner_pin_cannot_downgrade_an_outer_rule(self):
+        # Codex r2: a pin planted at governance/constitution/ reshapes the
+        # inner path of a nested rule into skills/x/SKILL.md (track-1 shaped).
+        # The change must still be licensed under the OUTER root, where it is
+        # a rule — enforcement runs under every containing governed root.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "governance/constitution/skills/x/SKILL.md", SKILL_T1)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "nested rule")
+            _write(d, "governance/constitution/groundwork.pin", PIN_OK)
+            _write(d, "governance/constitution/skills/x/SKILL.md",
+                   SKILL_T1.replace("Collect the week's open threads and summarize them.",
+                                    "A quietly different body."))
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "no pending proposal" in f.message
+                                for f in findings))
+
+    def test_case_renamed_governed_root_still_governs(self):
+        # Codex r2: renaming pinned company/ to Company/ (and dropping the pin)
+        # must not walk the tree out of its governed root — containment
+        # casefolds, and the base pin still governs.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d, pin_at="company")
+            os.rename(os.path.join(d, "company"), os.path.join(d, "Company"))
+            os.remove(os.path.join(d, "Company", "groundwork.pin"))
+            _write(d, "Company/governance/constitution/access.md", RULE_OK + "\nAppended.\n")
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "no pending proposal" in f.message
+                                for f in findings))
+
     def test_git_launch_failure_is_a_finding_not_a_crash(self):
         with tempfile.TemporaryDirectory() as d:
             self._repo(d)

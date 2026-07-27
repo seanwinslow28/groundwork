@@ -1881,19 +1881,27 @@ def blast_radius_diff_findings(root, base):
 
     ordered_roots = sorted(gov_roots, key=len, reverse=True)
 
-    def governed_class_under_root(rel):
-        # Deepest containing root whose classification is non-None (Codex r1):
-        # a pin planted INSIDE a package would make the innermost root's
-        # relative path unclassifiable, and picking that root would silently
-        # un-govern the file — the outer root that actually governs it must
-        # still see it.
+    def governed_classes(rel):
+        # EVERY containing root's classification (Codex r1+r2): picking one
+        # root — even the deepest with a non-None class — lets a planted inner
+        # pin reshape the inner path and downgrade an outer rule to a skill.
+        # A change must be licensed under each root that governs it; a
+        # pathological double-root only ever ADDS review, never removes it.
+        # Containment casefolds (Codex r2): on a case-folding filesystem
+        # Company/ IS company/, so exact-case matching would let a case-rename
+        # walk the whole tree out of its governed root; on a case-sensitive
+        # filesystem the variant is a different path and governing it merely
+        # escalates — the safe direction.
+        out = []
+        rl = rel.casefold()
         for g in ordered_roots:
-            if g == "" or rel == g or rel.startswith(g + "/"):
+            gl = g.casefold()
+            if g == "" or rl == gl or rl.startswith(gl + "/"):
                 inner = rel if g == "" else rel[len(g) + 1:]
                 cls = _governed_class(inner)
                 if cls is not None:
-                    return g, cls
-        return None, None
+                    out.append((g, cls))
+        return out
 
     # --- Pass 1: the changelog per governed root (append-only + appended span).
     appended_targets = {}
@@ -1945,8 +1953,8 @@ def blast_radius_diff_findings(root, base):
     for rel in sorted(candidates):
         if _diff_in_workbench_skips(rel):
             continue
-        g, cls = governed_class_under_root(rel)
-        if g is None:
+        pairs = governed_classes(rel)
+        if not pairs:
             continue
 
         abspath = os.path.join(root, *rel.split("/"))
@@ -1993,31 +2001,32 @@ def blast_radius_diff_findings(root, base):
             findings += rd
             continue
 
-        radius, detail = classify_governed_change(kind, cls, old, new)
-        if radius is None:
-            continue
+        for g, cls in pairs:
+            radius, detail = classify_governed_change(kind, cls, old, new)
+            if radius is None:
+                continue
 
-        if g not in proposals_cache:
-            proposals_cache[g] = _pending_proposal_radii(root, g)
-        radii = proposals_cache[g].get(os.path.realpath(abspath), set())
-        prefix = (g + "/") if g else ""
+            if g not in proposals_cache:
+                proposals_cache[g] = _pending_proposal_radii(root, g)
+            radii = proposals_cache[g].get(os.path.realpath(abspath), set())
+            prefix = (g + "/") if g else ""
 
-        if radius == "escalating":
-            if not radii:
-                findings.append(Finding("ERROR", rel, None,
-                                        "escalating change (%s) with no pending proposal — an escalating "
-                                        "change reaches the main line only through a reviewable proposal "
-                                        "in %sproposals/ (#18)" % (detail, prefix)))
-            elif "escalating" not in radii:
-                findings.append(Finding("ERROR", rel, None,
-                                        "declared-vs-actual blast-radius mismatch: the pending proposal "
-                                        "declares 'track1-body' but this change actually touches %s — "
-                                        "that is escalating (#18)" % detail))
-        elif not radii and os.path.realpath(abspath) not in appended_targets.get(g, set()):
-            findings.append(Finding("WARN", rel, None,
-                                    "track-1 body-only change with no new governance changelog entry — "
-                                    "an agent auto-apply must append its line (#17); a maintainer's own "
-                                    "edit needs none"))
+            if radius == "escalating":
+                if not radii:
+                    findings.append(Finding("ERROR", rel, None,
+                                            "escalating change (%s) with no pending proposal — an escalating "
+                                            "change reaches the main line only through a reviewable proposal "
+                                            "in %sproposals/ (#18)" % (detail, prefix)))
+                elif "escalating" not in radii:
+                    findings.append(Finding("ERROR", rel, None,
+                                            "declared-vs-actual blast-radius mismatch: the pending proposal "
+                                            "declares 'track1-body' but this change actually touches %s — "
+                                            "that is escalating (#18)" % detail))
+            elif not radii and os.path.realpath(abspath) not in appended_targets.get(g, set()):
+                findings.append(Finding("WARN", rel, None,
+                                        "track-1 body-only change with no new governance changelog entry — "
+                                        "an agent auto-apply must append its line (#17); a maintainer's own "
+                                        "edit needs none"))
     return findings
 
 
@@ -2034,12 +2043,15 @@ def main(argv):
     root = args[0] if args else "."
     findings = validate(root)
     if diff_base is not None:
-        findings += memory_diff_findings(root, diff_base)
+        mem = memory_diff_findings(root, diff_base)
+        findings += mem
         # Both diff modes resolve the git context independently, so a fatal
         # context ERROR (bad ref, not a repo) arrives identically from each —
-        # print it once, not twice.
-        seen = set(findings)
-        findings += [f for f in blast_radius_diff_findings(root, diff_base) if f not in seen]
+        # print it once. Dedupe against the memory pass ONLY (Codex r2): a
+        # stateless finding that legitimately recurs in the blast pass must
+        # not be swallowed.
+        mem_set = set(mem)
+        findings += [f for f in blast_radius_diff_findings(root, diff_base) if f not in mem_set]
     errors = [f for f in findings if f.level == "ERROR"]
     warns = [f for f in findings if f.level == "WARN"]
     for f in findings:
