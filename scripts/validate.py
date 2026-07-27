@@ -230,6 +230,12 @@ _TICKS = re.compile(r"`+")
 # continuation width) or by end of line (an EMPTY item — content starts on the
 # next line at marker width + 1). Codex round 7.
 _CONTAINER = re.compile(r"^ {0,3}(> ?|(?:[-*+]|\d{1,9}[.)])(?: {1,4}|(?=$)))")
+# Non-paragraph leaf starts: an ATX heading or a thematic break cannot host
+# lazy continuation and interrupts a paragraph (Codex round 12). A thematic
+# break also outranks list-marker interpretation ('- - -' is a break, not
+# nested items — CommonMark precedence).
+_ATX_HEADING = re.compile(r" {0,3}#{1,6}(?:[ \t]|$)")
+_THEMATIC = re.compile(r" {0,3}(?:(?:\* *){3,}|(?:- *){3,}|(?:_ *){3,})[ \t]*$")
 _QUOTE_MARK = re.compile(r"^ {0,3}> ?")
 
 
@@ -391,11 +397,19 @@ def _strip_code(text):
                 i += 1
                 continue
             cnt, rest = _consume(ctx, line)
-            new, rest, code = _new_markers(rest)
-            # fence recognition comes BEFORE the lazy check: fenced code
-            # interrupts a paragraph, so a fence line is never lazy text
+            if _THEMATIC.match(rest):
+                new, code = [], False
+                block_start = True
+            else:
+                new, rest, code = _new_markers(rest)
+                block_start = bool(_ATX_HEADING.match(rest)) or \
+                    bool(_THEMATIC.match(rest))
+            # fence recognition comes BEFORE the lazy check: fenced code —
+            # like a heading or thematic break — interrupts a paragraph, so
+            # none of them is ever lazy text
             m = None if code else _fence_match(rest)
-            if m is None and cnt < len(ctx) and not new and para_open:
+            if m is None and not block_start and cnt < len(ctx) \
+                    and not new and para_open:
                 # lazy continuation: a paragraph line may continue the open
                 # containers without their prefix — plain text, ctx kept
                 para.append(line)
@@ -412,10 +426,12 @@ def _strip_code(text):
             else:
                 para.append(line)
                 # a paragraph is open only when this line can host lazy
-                # continuation: not indented-code content (the 5+-space
-                # marker case or, outside a paragraph, a 4+-column rest),
-                # and not a blank-content marker-only line
-                para_open = (not code) and bool(rest.strip()) and \
+                # continuation: not a heading or thematic break, not
+                # indented-code content (the 5+-space marker case or, outside
+                # a paragraph, a 4+-column rest), and not a blank-content
+                # marker-only line
+                para_open = (not code) and (not block_start) and \
+                    bool(rest.strip()) and \
                     (para_open or not rest.startswith("    "))
             i += 1
             continue

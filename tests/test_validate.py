@@ -3736,6 +3736,31 @@ class TestStripCode(unittest.TestCase):
             self._imports("-     seed\noutside\n\n    ~~~\n\n  ~~~\n"
                           "@AGENTS.md\n  ~~~\n"), [])
 
+    def test_heading_in_item_opens_no_paragraph(self):
+        # Codex round 12: '- # heading' is an ATX heading, not a paragraph —
+        # 'outside' cannot lazily continue the item.
+        self.assertEqual(
+            self._imports("- # heading\noutside\n\n    ~~~\n\n  ~~~\n"
+                          "@AGENTS.md\n  ~~~\n"), [])
+
+    def test_thematic_break_in_item_opens_no_paragraph(self):
+        self.assertEqual(
+            self._imports("- ***\noutside\n\n    ~~~\n\n  ~~~\n"
+                          "@AGENTS.md\n  ~~~\n"), [])
+
+    def test_heading_interrupts_a_list_paragraph(self):
+        # A heading line is never lazy continuation either.
+        self.assertEqual(
+            self._imports("- note\n# heading\n\n    ~~~\n\n  ~~~\n"
+                          "@AGENTS.md\n  ~~~\n"), [])
+
+    def test_dash_run_is_a_thematic_break_not_nested_lists(self):
+        # CommonMark precedence: '- - -' is a thematic break, not list
+        # markers — it must not open a list context.
+        self.assertEqual(
+            self._imports("- - -\noutside\n\n    ~~~\n\n  ~~~\n"
+                          "@AGENTS.md\n  ~~~\n"), [])
+
 
 class TestAggregateDedupe(unittest.TestCase):
     def test_agents_md_counted_once(self):
