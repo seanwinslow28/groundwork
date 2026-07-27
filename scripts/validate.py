@@ -820,9 +820,9 @@ def check_root_files(root):
             # Front matter is stripped with the CONSUMER'S OWN regex (Codex
             # rounds 21-22): /^---\s*\n([\s\S]*?)---\s*\n?/ — the closer may
             # sit MID-LINE ('key: ---'), so no line-based reading can mirror
-            # it. JS's \s also matches U+FEFF (Python's does not), hence the
-            # explicit alternation, so the boundary lands exactly where the
-            # consumer's does. No match (unclosed) strips nothing, and the
+            # it. The regex uses the explicit ECMAScript whitespace class
+            # (_ES_WS_CHARS — neither a subset nor a superset of Python's
+            # \s), so the boundary lands exactly where the consumer's does. No match (unclosed) strips nothing, and the
             # literal '---' fails the first-content-line test below.
             fm = _FRONT_MATTER.match(text)
             body = text[fm.end():] if fm else text
@@ -898,15 +898,34 @@ GATE_FIELDS = ["gate_inputs", "gate_output", "gate_standard", "gate_source_of_tr
                "gate_exception_path", "gate_error_cost", "gate_owner", "gate_review_gate"]
 
 
+def _split_cells(line):
+    return [c.strip().replace("\\|", "|")
+            for c in _CELL_SPLIT.split(line.strip().strip("|"))]
+
+
 def parse_exec_table(text):
-    """Parse the first markdown table whose header row contains 'Direction'.
+    """Parse the first markdown table whose header row has a cell that IS
+    'Direction' — a substring match let a decoy header ('Misdirection', prose
+    mentioning direction) select the wrong table and leave the real one
+    unchecked (Codex round 24). Columns follow the header's positions.
     Returns [(activity, direction_lower, deep_link_or_None, line_no)]."""
     rows = []
     lines = text.split("\n")
     header_idx = None
+    act_col, dir_col, link_col = 0, 1, 2
     for idx, line in enumerate(lines):
-        if line.lstrip().startswith("|") and "direction" in line.lower():
+        if not line.lstrip().startswith("|"):
+            continue
+        header = [c.lower() for c in _split_cells(line)]
+        if "direction" in header:
             header_idx = idx
+            dir_col = header.index("direction")
+            if "activity" in header:
+                act_col = header.index("activity")
+            for j2, c in enumerate(header):
+                if "deep record" in c:
+                    link_col = j2
+                    break
             break
     if header_idx is None:
         return rows
@@ -914,15 +933,14 @@ def parse_exec_table(text):
         line = lines[j]
         if not line.lstrip().startswith("|"):
             break
-        cells = [c.strip().replace("\\|", "|")
-                 for c in _CELL_SPLIT.split(line.strip().strip("|"))]
+        cells = _split_cells(line)
         if not cells or set("".join(cells)) <= set("-: "):
             continue  # the |---|---| separator row
-        activity = cells[0] if len(cells) > 0 else ""
-        direction = cells[1].lower() if len(cells) > 1 else ""
+        activity = cells[act_col] if len(cells) > act_col else ""
+        direction = cells[dir_col].lower() if len(cells) > dir_col else ""
         link = None
-        if len(cells) > 2:
-            m = _LINK.search(cells[2])
+        if len(cells) > link_col:
+            m = _LINK.search(cells[link_col])
             if m:
                 link = m.group(1)
         rows.append((activity, direction, link, j + 1))

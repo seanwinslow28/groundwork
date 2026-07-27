@@ -3954,7 +3954,7 @@ class TestDriftFenceBelt(unittest.TestCase):
                                 for f in validate.check_root_files(d)))
 
     def test_python_only_whitespace_is_not_a_frontmatter_delimiter(self):
-        # Codex round 23: Python's \s is a superset of ECMAScript's (U+0085,
+        # Codex round 23: Python's \s has characters ECMAScript's lacks (U+0085,
         # U+001C-001F). '---\x85' is NOT a front-matter opener to the
         # consumer, so nothing may be stripped here — and the import below
         # sits inside a fence.
@@ -4098,6 +4098,30 @@ class TestExecTableHardening(unittest.TestCase):
             self._exec(d, EXEC_OK)
             self.assertEqual([f for f in validate.check_ontology(d)
                               if f.level == "ERROR"], [])
+
+    def test_header_needs_a_direction_cell_not_a_substring(self):
+        # Codex round 24: 'Misdirection' must not select the table — the
+        # header needs a cell that IS 'Direction'.
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "# Sales\n\n| Misdirection |\n|---|\n| Forecast | up |\n")
+            self.assertTrue(any(f.level == "ERROR" and "activity table" in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_decoy_table_does_not_shadow_the_real_one(self):
+        # A header merely MENTIONING direction must not swallow the real
+        # table below it, whose Directions would then go unchecked.
+        rows = validate.parse_exec_table(
+            "| Notes about direction here |\n|---|\n| prose |\n\n"
+            "| Activity | Direction |\n|---|---|\n| Forecast | up |\n")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0][0], "Forecast")
+        self.assertEqual(rows[0][1], "up")
+
+    def test_columns_found_by_header_position(self):
+        rows = validate.parse_exec_table(
+            "| Direction | Activity |\n|---|---|\n| up | Forecast |\n")
+        self.assertEqual(rows[0][0], "Forecast")
+        self.assertEqual(rows[0][1], "up")
 
 
 class TestOntologyFileSafety(unittest.TestCase):

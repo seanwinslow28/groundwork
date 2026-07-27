@@ -110,8 +110,8 @@ Honest limits of the current build. This file grows as the product does (brief �
   included), link-reference definitions, image and link destinations — including
   MULTILINE destinations, where a `[x]:` line above re-tokens the import line — and
   leading front matter (stripped with the consumer's own regex, whose lazy closer
-  may sit mid-line, using ECMAScript whitespace semantics — not Python's broader
-  `\s`; an unclosed block strips nothing, leaving the literal `---` as the failing
+  may sit mid-line, using ECMAScript whitespace semantics — a set that
+  neither contains nor is contained by Python's `\s`; an unclosed block strips nothing, leaving the literal `---` as the failing
   first content line). Trusting an import found anywhere richer therefore means
   betting on Markdown token classification, where any divergence makes a
   merely-documented import count as real. With nothing above it, the accepted line
