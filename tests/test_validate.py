@@ -4135,6 +4135,85 @@ class TestExecTableHardening(unittest.TestCase):
         self.assertEqual(rows[1][0], "Forecast")
         self.assertEqual(rows[1][1], "sideways")
 
+    def test_double_backslash_before_pipe_is_a_delimiter(self):
+        # Codex round 26: two backslashes escape each other, so the pipe IS
+        # a delimiter — parity, not a single-character lookbehind.
+        rows = validate.parse_exec_table(
+            "| Activity | Direction |\n|---|---|\n| A \\\\| sideways |\n")
+        self.assertEqual(rows[0][1], "sideways")
+
+    def test_zero_row_direction_table_errors_even_beside_a_valid_one(self):
+        # Codex round 26: a headered-but-empty table must still ERROR when
+        # another table in the file parses fine.
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "# Sales\n\n| Activity | Direction |\n|---|---|\n\n"
+                          "| Activity | Direction |\n|---|---|\n| F | up |\n")
+            self.assertTrue(any(f.level == "ERROR" and "zero activity rows"
+                                in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_all_empty_row_is_not_a_separator(self):
+        # '|  |  |' is a row with an empty Activity cell, not a separator.
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "# Sales\n\n| Activity | Direction |\n|---|---|\n"
+                          "|  |  |\n| F | up |\n")
+            self.assertTrue(any(f.level == "ERROR" and "Activity" in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_fenced_example_table_is_not_live(self):
+        # A valid table inside a code fence is documentation; it must not
+        # suppress the unparsable-table ERROR for the live view.
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "# Sales\n\n```\n| Activity | Direction |\n"
+                          "|---|---|\n| F | up |\n```\n\n"
+                          "| Activity | Diretcion |\n|---|---|\n| G | up |\n")
+            self.assertTrue(any(f.level == "ERROR" and "activity table"
+                                in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_link_only_from_a_deep_record_column(self):
+        # Codex round 26: without a 'Deep record' header cell, a link in an
+        # unrelated column must not satisfy the listing check.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/sales/_executive-view.md",
+                   "| Activity | Direction | Attachment |\n|---|---|---|\n"
+                   "| Renewal | down | [a](renewal.md) |\n")
+            _write(d, "ontologies/sales/renewal.md", AUTOMATE_OK)
+            self.assertTrue(any(f.level == "WARN" and "not listed" in f.message
+                                for f in validate.check_ontology(d)))
+
+
+class TestAggregateListingFailures(unittest.TestCase):
+    # Codex round 26: a contributor directory this check cannot LIST must
+    # surface as a finding, not vanish from the aggregate (fail closed, #13).
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0,
+                     "chmod(0) does not restrict root")
+    def test_unlistable_rules_dir_fails_closed(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, ".claude/rules/r.md", "---\nx: y\n---\nbody\n")
+            locked = os.path.join(d, ".claude", "rules")
+            os.chmod(locked, 0)
+            try:
+                _items, findings = validate._always_loaded_bytes(d)
+            finally:
+                os.chmod(locked, 0o755)
+            self.assertTrue(any(f.level == "ERROR" and "budget" in f.message
+                                for f in findings))
+
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0,
+                     "chmod(0) does not restrict root")
+    def test_unlistable_skills_dir_fails_closed(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "skills/s/SKILL.md", "---\ndescription: x\n---\n")
+            locked = os.path.join(d, "skills")
+            os.chmod(locked, 0)
+            try:
+                _items, findings = validate._always_loaded_bytes(d)
+            finally:
+                os.chmod(locked, 0o755)
+            self.assertTrue(any(f.level == "ERROR" and "budget" in f.message
+                                for f in findings))
+
 
 class TestOntologyFileSafety(unittest.TestCase):
     def test_directory_named_md_does_not_crash(self):

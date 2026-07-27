@@ -187,7 +187,6 @@ def check_context_budget(path, num_bytes):
 
 
 _LINK = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
-_CELL_SPLIT = re.compile(r"(?<!\\)\|")
 
 
 def check_links(abspath, text, root):
@@ -718,7 +717,16 @@ def _always_loaded_bytes(root):
         d = os.path.join(root, rel_dir)
         if not os.path.isdir(d):
             continue
-        for dirpath, _dn, filenames in os.walk(d):
+
+        def _walk_err(exc, _rel=rel_dir):
+            # an unlistable rules directory must not silently vanish from
+            # the aggregate (fail closed, #13 — Codex round 26)
+            findings.append(Finding(
+                "ERROR", _rel, None,
+                "cannot list this rules directory — the always-loaded "
+                "budget cannot be verified (#13)"))
+
+        for dirpath, _dn, filenames in os.walk(d, onerror=_walk_err):
             for fn in sorted(filenames):
                 if not fn.endswith(ext):
                     continue
@@ -746,6 +754,10 @@ def _always_loaded_bytes(root):
             names = sorted(os.listdir(sdir))
         except OSError:
             names = []
+            findings.append(Finding(
+                "ERROR", "skills", None,
+                "cannot list the skills directory — the always-loaded "
+                "budget cannot be verified (#13)"))
         for name in names:
             sp = os.path.join(sdir, name, "SKILL.md")
             if not os.path.isfile(sp):
@@ -899,23 +911,62 @@ GATE_FIELDS = ["gate_inputs", "gate_output", "gate_standard", "gate_source_of_tr
 
 
 def _split_cells(line):
-    return [c.strip().replace("\\|", "|")
-            for c in _CELL_SPLIT.split(line.strip().strip("|"))]
+    """Split a table row on unescaped pipes. Backslash PARITY decides: an odd
+    run before a pipe escapes it (one backslash is consumed), an even run is
+    escaped backslashes and the pipe delimits (Codex round 26 — a
+    single-character lookbehind treated '\\\\|' as escaped)."""
+    s = line.strip().strip("|")
+    cells, buf, bs = [], [], 0
+    for ch in s:
+        if ch == "\\":
+            bs += 1
+            continue
+        if bs:
+            if ch == "|" and bs % 2 == 1:
+                buf.append("\\" * (bs - 1) + "|")
+                bs = 0
+                continue
+            buf.append("\\" * bs)
+            bs = 0
+        if ch == "|":
+            cells.append("".join(buf).strip())
+            buf = []
+        else:
+            buf.append(ch)
+    if bs:
+        buf.append("\\" * bs)
+    cells.append("".join(buf).strip())
+    return cells
 
 
-def parse_exec_table(text):
-    """Parse EVERY markdown table whose header row has a cell that IS
-    'Direction'. A substring match let a decoy header select the wrong table
-    (Codex round 24), and first-match selection let an earlier legitimate
-    table shadow a later one, leaving its Directions unchecked (round 25) —
-    parsing all of them means nothing can shadow anything. Columns follow
-    each header's positions.
-    Returns [(activity, direction_lower, deep_link_or_None, line_no)]."""
+def _parse_exec_tables(text):
+    """Parse EVERY live markdown table whose header row has a cell that IS
+    'Direction'. Returns (rows, n_tables, n_empty_tables). A substring match
+    let a decoy header select the wrong table (Codex round 24); first-match
+    selection let an earlier table shadow a later one (round 25); and round
+    26: tables inside code fences are examples, not live; an all-empty row is
+    a row (its empty Activity must reach the check), not a separator; a
+    headered table with zero rows is reported even beside a valid one; and a
+    deep-record link is read only from an explicit 'Deep record' column."""
     rows = []
+    n_tables = 0
+    n_empty = 0
     lines = text.split("\n")
+    fence = None
     idx = 0
     while idx < len(lines):
         line = lines[idx]
+        m = _fence_match(line)
+        if fence is not None:
+            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= fence[1] \
+                    and not m.group(2).strip():
+                fence = None
+            idx += 1
+            continue
+        if m:
+            fence = (m.group(1)[0], len(m.group(1)))
+            idx += 1
+            continue
         if not line.lstrip().startswith("|"):
             idx += 1
             continue
@@ -923,33 +974,45 @@ def parse_exec_table(text):
         if "direction" not in header:
             idx += 1
             continue
+        n_tables += 1
         dir_col = header.index("direction")
         act_col = header.index("activity") if "activity" in header else 0
-        link_col = 2
+        link_col = None
         for j2, c in enumerate(header):
             if "deep record" in c:
                 link_col = j2
                 break
+        table_rows = 0
         j = idx + 1
         while j < len(lines):
             line = lines[j]
             if not line.lstrip().startswith("|"):
                 break
             cells = _split_cells(line)
-            if cells and set("".join(cells)) <= set("-: "):
+            joined = "".join(cells)
+            if "-" in joined and set(joined) <= set("-: "):
                 j += 1
                 continue  # the |---|---| separator row
             activity = cells[act_col] if len(cells) > act_col else ""
             direction = cells[dir_col].lower() if len(cells) > dir_col else ""
             link = None
-            if len(cells) > link_col:
-                m = _LINK.search(cells[link_col])
-                if m:
-                    link = m.group(1)
+            if link_col is not None and len(cells) > link_col:
+                lm = _LINK.search(cells[link_col])
+                if lm:
+                    link = lm.group(1)
             rows.append((activity, direction, link, j + 1))
+            table_rows += 1
             j += 1
+        if not table_rows:
+            n_empty += 1
         idx = j
-    return rows
+    return rows, n_tables, n_empty
+
+
+def parse_exec_table(text):
+    """Compatibility wrapper: the row list only (see _parse_exec_tables).
+    Returns [(activity, direction_lower, deep_link_or_None, line_no)]."""
+    return _parse_exec_tables(text)[0]
 
 
 def check_deep_record(abspath, root):
@@ -1036,15 +1099,22 @@ def check_ontology(root, ignore=()):
             rel_exec = os.path.relpath(exec_path, root)
             exec_text, exec_findings = _read_utf8(exec_path, rel_exec)
             findings += exec_findings
-            rows = parse_exec_table(exec_text) if exec_text is not None else []
-            if exec_text is not None and exec_text.strip() and not rows:
-                # A misspelled or missing 'Direction' header parses to zero rows,
-                # which would leave every Direction in this file UNCHECKED while
-                # the gate stayed green. Fail closed instead (#5).
-                findings.append(Finding("ERROR", rel_exec, None,
-                                        "executive view has no parsable activity table — a header "
-                                        "row containing 'Direction' and at least one activity row "
-                                        "are required (#5 exec tier)"))
+            if exec_text is None:
+                rows = []
+            else:
+                rows, _n_tables, n_empty = _parse_exec_tables(exec_text)
+                if exec_text.strip() and not rows:
+                    # A misspelled or missing 'Direction' header parses to zero
+                    # rows, which would leave every Direction in this file
+                    # UNCHECKED while the gate stayed green. Fail closed (#5).
+                    findings.append(Finding("ERROR", rel_exec, None,
+                                            "executive view has no parsable activity table — a header "
+                                            "row containing 'Direction' and at least one activity row "
+                                            "are required (#5 exec tier)"))
+                elif n_empty:
+                    findings.append(Finding("ERROR", rel_exec, None,
+                                            "executive view has a Direction-headed table with zero "
+                                            "activity rows (#5 exec tier)"))
             for activity, direction, link, ln in rows:
                 if not activity:
                     findings.append(Finding("ERROR", rel_exec, ln,
