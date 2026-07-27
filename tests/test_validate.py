@@ -3953,6 +3953,26 @@ class TestDriftFenceBelt(unittest.TestCase):
             self.assertTrue(any(f.level == "ERROR"
                                 for f in validate.check_root_files(d)))
 
+    def test_python_only_whitespace_is_not_a_frontmatter_delimiter(self):
+        # Codex round 23: Python's \s is a superset of ECMAScript's (U+0085,
+        # U+001C-001F). '---\x85' is NOT a front-matter opener to the
+        # consumer, so nothing may be stripped here — and the import below
+        # sits inside a fence.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "---\x85\n```\n---\n@AGENTS.md\n```\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
+    def test_python_only_whitespace_on_the_import_line(self):
+        # '@AGENTS.md\x1c': the consumer keeps U+001C in the import target
+        # and resolves 'AGENTS.md\x1c', not AGENTS.md.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "@AGENTS.md\x1c\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
     def test_indented_frontmatter_opener_is_not_frontmatter(self):
         # The consumer requires the opener at byte zero; ' ---' is body text,
         # so nothing here is the canonical first content line.

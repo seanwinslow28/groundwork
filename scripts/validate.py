@@ -222,10 +222,24 @@ _AGENTS_NAMES = ("AGENTS.override.md", "AGENTS.md")
 
 _IMPORT = re.compile(r"(?:(?<=\s)|^)@([^\s`]+)", re.M)
 # The installed consumer's leading-front-matter regex, mirrored verbatim:
-# /^---\s*\n([\s\S]*?)---\s*\n?/ (the closer may sit mid-line). JS's \s also
-# matches U+FEFF, which Python's does not — hence the alternation.
+# /^---\s*\n([\s\S]*?)---\s*\n?/ (the closer may sit mid-line). Its \s is
+# ECMAScript's, which is NEITHER a subset nor a superset of Python's (JS has
+# U+FEFF; Python additionally has U+0085 and U+001C-001F) — so the class is
+# spelled out and used on BOTH sides of every comparison (Codex round 23).
+_ES_WS_CHARS = ("\t\n\x0b\f\r \u00a0\u1680"
+                "\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007"
+                "\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000"
+                "\ufeff")
+_ES_WS_CLASS = "[" + re.escape(_ES_WS_CHARS) + "]"
 _FRONT_MATTER = re.compile(
-    r"---(?:\s|\ufeff)*\n[\s\S]*?---(?:\s|\ufeff)*\n?")
+    "---{0}*\\n[\\s\\S]*?---{0}*\\n?".format(_ES_WS_CLASS))
+
+
+def _es_strip(s):
+    """Strip ECMAScript whitespace only — Python's str.strip() removes more
+    (U+001C-001F, U+0085), which the consumer would keep inside an import
+    target."""
+    return s.strip(_ES_WS_CHARS)
 
 
 _FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
@@ -815,9 +829,9 @@ def check_root_files(root):
             satisfied = False
             for ln in body.split("\n"):
                 x = ln.expandtabs(4)
-                if not x.strip():
+                if not _es_strip(x):
                     continue
-                satisfied = x.strip() == "@AGENTS.md" and \
+                satisfied = _es_strip(x) == "@AGENTS.md" and \
                     not x.startswith("    ")
                 break
             if not satisfied:
