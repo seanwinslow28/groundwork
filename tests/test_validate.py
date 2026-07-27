@@ -3235,6 +3235,21 @@ class TestAgentsChain(unittest.TestCase):
             _write(d, "tests/AGENTS.md", "x" * (32 * 1024 + 1))
             self.assertEqual(validate.check_agents_chain(d), [])
 
+    def test_stat_able_but_unreadable_file_errors(self):
+        # os.path.getsize() succeeds on a mode-000 file; the chain must still
+        # fail closed — a file the check cannot open cannot be verified.
+        if hasattr(os, "geteuid") and os.geteuid() == 0:
+            self.skipTest("root ignores file permission bits")
+        with tempfile.TemporaryDirectory() as d:
+            p = _write(d, "AGENTS.md", "# a\n")
+            os.chmod(p, 0)
+            try:
+                findings = validate.check_agents_chain(d)
+            finally:
+                os.chmod(p, 0o644)
+            self.assertTrue(any(f.level == "ERROR" and "cannot size" in f.message
+                                for f in findings))
+
 
 CURSOR_ALWAYS = "---\ndescription: d\nalwaysApply: true\n---\n\nSee AGENTS.md.\n"
 
@@ -3305,6 +3320,58 @@ class TestAlwaysLoadedBudget(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             _write_package(d, skill=SKILL_OK + "\n" + "x" * (60_000 * 4))
             self.assertEqual(validate.check_always_loaded_budget(d), [])
+
+    def test_skill_description_contribution_is_actually_measured(self):
+        # Guards against the enumeration being deleted outright: the capped
+        # description must appear as an aggregate item with its exact bytes.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "skills/x/SKILL.md",
+                   "---\nname: x\ndescription: %s\n---\nbody\n" % ("d" * 2000))
+            items, findings = validate._always_loaded_bytes(d)
+            self.assertEqual(findings, [])
+            contrib = dict(items)[os.path.join("skills", "x", "SKILL.md") + " (description)"]
+            self.assertEqual(contrib, validate.SKILL_DESCRIPTION_CAP)
+
+    def test_multibyte_description_cap_is_characters_not_bytes(self):
+        # Claude Code truncates the listing at 1,536 CHARACTERS. 2,000 'é's
+        # survive truncation as 1,536 chars = 3,072 UTF-8 bytes; a bytes-side
+        # min() would report only 1,536 and undercount the surface.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "skills/x/SKILL.md",
+                   "---\nname: x\ndescription: %s\n---\nbody\n" % ("é" * 2000))
+            items, _findings = validate._always_loaded_bytes(d)
+            contrib = dict(items)[os.path.join("skills", "x", "SKILL.md") + " (description)"]
+            self.assertEqual(contrib, 2 * validate.SKILL_DESCRIPTION_CAP)
+
+    def test_import_at_four_hops_is_counted(self):
+        # "a maximum depth of four hops": a file four import edges from
+        # CLAUDE.md still loads at launch and must be measured.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "CLAUDE.md", "@a.md\n")
+            _write(d, "a.md", "@b.md\n")
+            _write(d, "b.md", "@c.md\n")
+            _write(d, "c.md", "@d.md\n")
+            _write(d, "d.md", "x" * (21_000 * 4))
+            self.assertTrue(any(f.level == "WARN"
+                                for f in validate.check_always_loaded_budget(d)))
+
+    def test_import_at_five_hops_is_not_followed(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "CLAUDE.md", "@a.md\n")
+            _write(d, "a.md", "@b.md\n")
+            _write(d, "b.md", "@c.md\n")
+            _write(d, "c.md", "@d.md\n")
+            _write(d, "d.md", "@e.md\n")
+            _write(d, "e.md", "x" * (21_000 * 4))
+            self.assertEqual(validate.check_always_loaded_budget(d), [])
+
+    def test_malformed_claude_rule_is_a_finding_not_silence(self):
+        # Nothing else scans dot-directories, so a rule this check cannot
+        # parse must surface here rather than silently leave the aggregate.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, ".claude/rules/bad.md", "---\nnever closed\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_always_loaded_budget(d)))
 
     def test_error_threshold(self):
         with tempfile.TemporaryDirectory() as d:

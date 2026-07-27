@@ -241,8 +241,12 @@ def _agents_file(dirpath):
 
 
 def _file_size(path):
+    """Size via an opened descriptor, not a bare stat: a stat-able but
+    unreadable file (e.g. mode 000) must read as unmeasurable, not as its
+    size — the chain check fails closed on None."""
     try:
-        return os.path.getsize(path)
+        with open(path, "rb") as fh:
+            return os.fstat(fh.fileno()).st_size
     except OSError:
         return None
 
@@ -300,8 +304,13 @@ def _always_loaded_bytes(root):
     Claude Code's listing truncation.
 
     Both rules directories are opened BY PATH on purpose: iter_files skips every
-    dot-directory, so a walker-based version would measure nothing and pass."""
+    dot-directory, so a walker-based version would measure nothing and pass.
+
+    Returns (items, findings): a file this check cannot read or parse surfaces
+    as a finding rather than being silently dropped from the aggregate —
+    nothing else scans dot-directories, so silence here would be fail-open."""
     items = []
+    findings = []
 
     f = _agents_file(root)
     if f is not None:
@@ -320,7 +329,8 @@ def _always_loaded_bytes(root):
             return
         seen.add(real)
         rel = os.path.relpath(abspath, root)
-        text, _rd = _read_utf8(abspath, rel)
+        text, rd = _read_utf8(abspath, rel)
+        findings.extend(rd)
         if text is None:
             return
         items.append((rel, len(text.encode("utf-8"))))
@@ -332,7 +342,10 @@ def _always_loaded_bytes(root):
             if os.path.realpath(nxt).startswith(root_real + os.sep):
                 add_import(nxt, depth + 1)
 
-    add_import(os.path.join(root, "CLAUDE.md"), 1)
+    # Depth 0 is CLAUDE.md itself; each import edge is one hop, and Claude Code
+    # resolves imports "with a maximum depth of four hops" — so a file four
+    # edges away still loads and must be counted.
+    add_import(os.path.join(root, "CLAUDE.md"), 0)
 
     for rel_dir, ext, mode in ((os.path.join(".claude", "rules"), ".md", "claude"),
                                (os.path.join(".cursor", "rules"), ".mdc", "cursor")):
@@ -345,7 +358,8 @@ def _always_loaded_bytes(root):
                     continue
                 abspath = os.path.join(dirpath, fn)
                 rel = os.path.relpath(abspath, root)
-                data, _fm = _load_frontmatter(abspath, rel)
+                data, fm = _load_frontmatter(abspath, rel)
+                findings.extend(fm)
                 if data is None:
                     continue
                 if mode == "claude":
@@ -371,29 +385,34 @@ def _always_loaded_bytes(root):
             if not os.path.isfile(sp):
                 continue
             rel = os.path.relpath(sp, root)
-            data, _fm = _load_frontmatter(sp, rel)
+            data, fm = _load_frontmatter(sp, rel)
+            findings.extend(fm)
             if data is None:
                 continue
             desc = data.get("description")
             if isinstance(desc, str) and desc.strip():
+                # The cap is 1,536 CHARACTERS (Claude Code's listing
+                # truncation); truncate characters first, then measure the
+                # bytes those characters occupy — a bytes-side min() would
+                # undercount multibyte descriptions.
                 items.append((rel + " (description)",
-                              min(len(desc.encode("utf-8")), SKILL_DESCRIPTION_CAP)))
-    return items
+                              len(desc[:SKILL_DESCRIPTION_CAP].encode("utf-8"))))
+    return items, findings
 
 
 def check_always_loaded_budget(root):
     """#13's aggregate: what every session pays for before anyone types anything.
     WARN ~20K est. tokens, ERROR ~50K. Skill BODIES are excluded on purpose —
     they load only when a skill is invoked."""
-    items = _always_loaded_bytes(root)
-    findings = check_context_budget("(always-loaded surface)",
-                                    sum(n for _lbl, n in items))
-    if findings and items:
+    items, findings = _always_loaded_bytes(root)
+    budget = check_context_budget("(always-loaded surface)",
+                                  sum(n for _lbl, n in items))
+    if budget and items:
         top = ", ".join("%s %dB" % (lbl, n)
                         for lbl, n in sorted(items, key=lambda it: -it[1])[:3])
-        f = findings[0]
-        findings[0] = Finding(f.level, f.path, f.line, f.message + " — largest: " + top)
-    return findings
+        f = budget[0]
+        budget[0] = Finding(f.level, f.path, f.line, f.message + " — largest: " + top)
+    return findings + budget
 
 
 def check_root_files(root):
