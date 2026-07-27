@@ -221,6 +221,11 @@ SKILL_DESCRIPTION_CAP = 1536
 _AGENTS_NAMES = ("AGENTS.override.md", "AGENTS.md")
 
 _IMPORT = re.compile(r"(?:(?<=\s)|^)@([^\s`]+)", re.M)
+# The installed consumer's leading-front-matter regex, mirrored verbatim:
+# /^---\s*\n([\s\S]*?)---\s*\n?/ (the closer may sit mid-line). JS's \s also
+# matches U+FEFF, which Python's does not — hence the alternation.
+_FRONT_MATTER = re.compile(
+    r"---(?:\s|\ufeff)*\n[\s\S]*?---(?:\s|\ufeff)*\n?")
 
 
 _FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
@@ -798,22 +803,17 @@ def check_root_files(root):
             # keeps losing. With nothing above it, the line is a paragraph,
             # or a heading if underlined, and both are import-scanned under
             # every reading; 4+ columns would be an indented code token).
-            all_lines = text.split("\n")
-            start = 0
-            # Front matter exactly as the installed consumer recognizes it
-            # (Codex round 21): the opener is '---' at byte zero (trailing
-            # whitespace allowed), and ONLY a '---' line closes it — '...'
-            # does not. The consumer's lazy match can only close at or before
-            # this line-based closer, so a divergence here can only distrust
-            # MORE (loud), never trust a swallowed import.
-            if all_lines and re.match(r"---\s*$", all_lines[0]):
-                start = len(all_lines)  # unclosed front matter: trust nothing
-                for k in range(1, len(all_lines)):
-                    if re.match(r"---\s*$", all_lines[k]):
-                        start = k + 1
-                        break
+            # Front matter is stripped with the CONSUMER'S OWN regex (Codex
+            # rounds 21-22): /^---\s*\n([\s\S]*?)---\s*\n?/ — the closer may
+            # sit MID-LINE ('key: ---'), so no line-based reading can mirror
+            # it. JS's \s also matches U+FEFF (Python's does not), hence the
+            # explicit alternation, so the boundary lands exactly where the
+            # consumer's does. No match (unclosed) strips nothing, and the
+            # literal '---' fails the first-content-line test below.
+            fm = _FRONT_MATTER.match(text)
+            body = text[fm.end():] if fm else text
             satisfied = False
-            for ln in all_lines[start:]:
+            for ln in body.split("\n"):
                 x = ln.expandtabs(4)
                 if not x.strip():
                     continue

@@ -3932,6 +3932,27 @@ class TestDriftFenceBelt(unittest.TestCase):
             self.assertTrue(any(f.level == "ERROR"
                                 for f in validate.check_root_files(d)))
 
+    def test_inline_frontmatter_closer_matches_the_consumer(self):
+        # Codex round 22: the consumer's lazy front-matter regex can close
+        # MID-LINE ('key: ---'), so the body starts earlier than a line-based
+        # reading — and here begins with an HTML block that swallows the
+        # import.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md",
+                   "---\nkey: ---\n<script>\n---\n@AGENTS.md\n</script>\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
+    def test_unclosed_frontmatter_is_not_trusted(self):
+        # No closer anywhere: the consumer strips nothing, and the literal
+        # '---' becomes the first content line (not the canonical import).
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "---\ntitle: x\n@AGENTS.md\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
     def test_indented_frontmatter_opener_is_not_frontmatter(self):
         # The consumer requires the opener at byte zero; ' ---' is body text,
         # so nothing here is the canonical first content line.
