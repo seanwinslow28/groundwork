@@ -244,17 +244,20 @@ def _fence_match(line):
 
 def _new_markers(line):
     """Strip the container markers a line itself carries. Returns (chain,
-    rest): each entry ("quote", 0) or ("list", continuation_columns). A list
-    marker followed by 1-4 spaces continues at the columns the whole marker
-    occupied. Followed by 5+ spaces (the item starts with indented CODE) or by
-    end of line (an empty item), continuation resets to the bare marker's
-    width + 1 — CommonMark's rule, and getting it wrong made a genuine fence
-    at that indent read as live text (Codex rounds 7-8)."""
+    rest, code): each chain entry ("quote", 0) or ("list",
+    continuation_columns). A list marker followed by 1-4 spaces continues at
+    the columns the whole marker occupied. Followed by 5+ spaces (the item
+    starts with indented CODE) or by end of line (an empty item), continuation
+    resets to the bare marker's width + 1 — CommonMark's rule, and getting it
+    wrong made a genuine fence at that indent read as live text (Codex rounds
+    7-8). `code` is True when the rest is indented-code content: it is live
+    text, never a fence opener — fence-matching it would let the NEXT genuine
+    fence read as its closer and expose what that fence contains (round 9)."""
     chain = []
     while True:
         m = _CONTAINER.match(line)
         if not m:
-            return chain, line
+            return chain, line, False
         g = m.group(1)
         end = m.end()
         rest = line[end:]
@@ -265,12 +268,12 @@ def _new_markers(line):
         marker_end = end - (len(g) - len(g.rstrip(" ")))
         if rest.startswith(" "):
             # 5+ spaces after the marker: the rest is indented-code content,
-            # not further markers
+            # not further markers and not a fence
             chain.append(("list", marker_end + 1))
-            return chain, rest
+            return chain, rest, True
         if end == len(line):
             chain.append(("list", marker_end + 1))
-            return chain, rest
+            return chain, rest, False
         chain.append(("list", end))
         line = rest
 
@@ -380,11 +383,11 @@ def _strip_code(text):
         line = lines[i].expandtabs(4)
         if fence is None:
             cnt, rest = _consume(ctx, line)
-            new, rest = _new_markers(rest)
+            new, rest, code = _new_markers(rest)
             chain_here = ctx[:cnt] + new
             if new:
                 ctx = chain_here
-            m = _fence_match(rest)
+            m = None if code else _fence_match(rest)
             if m:
                 _flush()
                 fence = (m.group(1)[0], len(m.group(1)))

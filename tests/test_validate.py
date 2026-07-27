@@ -3689,6 +3689,16 @@ class TestStripCode(unittest.TestCase):
         self.assertEqual(
             self._imports("10.    \n    ~~~\n    @AGENTS.md\n    ~~~\n"), [])
 
+    def test_fence_looking_indented_code_is_not_an_opener(self):
+        # Codex round 9: '10.     ~~~' — the 5+-space content is indented
+        # CODE, not a fence opener; treating it as one consumed the later
+        # GENUINE fence as its closer and exposed the import.
+        self.assertEqual(
+            self._imports("10.     ~~~\n\n    ~~~\n    @AGENTS.md\n    ~~~\n"),
+            [])
+        self.assertEqual(
+            self._imports("-      ```\n\n  ```\n  @AGENTS.md\n  ```\n"), [])
+
 
 class TestAggregateDedupe(unittest.TestCase):
     def test_agents_md_counted_once(self):
