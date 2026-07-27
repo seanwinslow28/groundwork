@@ -4123,6 +4123,18 @@ class TestExecTableHardening(unittest.TestCase):
         self.assertEqual(rows[0][0], "Forecast")
         self.assertEqual(rows[0][1], "up")
 
+    def test_every_direction_table_is_validated(self):
+        # Codex round 25: an earlier table with a real Direction cell must
+        # not shadow a later one — every Direction-headed table's rows parse,
+        # so the later table's invalid value still reaches the check.
+        rows = validate.parse_exec_table(
+            "| Report | Direction |\n|---|---|\n| Decoy row | up |\n\n"
+            "| Activity | Direction | Deep record |\n|---|---|---|\n"
+            "| Forecast | sideways | — |\n")
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[1][0], "Forecast")
+        self.assertEqual(rows[1][1], "sideways")
+
 
 class TestOntologyFileSafety(unittest.TestCase):
     def test_directory_named_md_does_not_crash(self):

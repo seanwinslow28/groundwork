@@ -904,46 +904,51 @@ def _split_cells(line):
 
 
 def parse_exec_table(text):
-    """Parse the first markdown table whose header row has a cell that IS
-    'Direction' — a substring match let a decoy header ('Misdirection', prose
-    mentioning direction) select the wrong table and leave the real one
-    unchecked (Codex round 24). Columns follow the header's positions.
+    """Parse EVERY markdown table whose header row has a cell that IS
+    'Direction'. A substring match let a decoy header select the wrong table
+    (Codex round 24), and first-match selection let an earlier legitimate
+    table shadow a later one, leaving its Directions unchecked (round 25) —
+    parsing all of them means nothing can shadow anything. Columns follow
+    each header's positions.
     Returns [(activity, direction_lower, deep_link_or_None, line_no)]."""
     rows = []
     lines = text.split("\n")
-    header_idx = None
-    act_col, dir_col, link_col = 0, 1, 2
-    for idx, line in enumerate(lines):
+    idx = 0
+    while idx < len(lines):
+        line = lines[idx]
         if not line.lstrip().startswith("|"):
+            idx += 1
             continue
         header = [c.lower() for c in _split_cells(line)]
-        if "direction" in header:
-            header_idx = idx
-            dir_col = header.index("direction")
-            if "activity" in header:
-                act_col = header.index("activity")
-            for j2, c in enumerate(header):
-                if "deep record" in c:
-                    link_col = j2
-                    break
-            break
-    if header_idx is None:
-        return rows
-    for j in range(header_idx + 1, len(lines)):
-        line = lines[j]
-        if not line.lstrip().startswith("|"):
-            break
-        cells = _split_cells(line)
-        if not cells or set("".join(cells)) <= set("-: "):
-            continue  # the |---|---| separator row
-        activity = cells[act_col] if len(cells) > act_col else ""
-        direction = cells[dir_col].lower() if len(cells) > dir_col else ""
-        link = None
-        if len(cells) > link_col:
-            m = _LINK.search(cells[link_col])
-            if m:
-                link = m.group(1)
-        rows.append((activity, direction, link, j + 1))
+        if "direction" not in header:
+            idx += 1
+            continue
+        dir_col = header.index("direction")
+        act_col = header.index("activity") if "activity" in header else 0
+        link_col = 2
+        for j2, c in enumerate(header):
+            if "deep record" in c:
+                link_col = j2
+                break
+        j = idx + 1
+        while j < len(lines):
+            line = lines[j]
+            if not line.lstrip().startswith("|"):
+                break
+            cells = _split_cells(line)
+            if cells and set("".join(cells)) <= set("-: "):
+                j += 1
+                continue  # the |---|---| separator row
+            activity = cells[act_col] if len(cells) > act_col else ""
+            direction = cells[dir_col].lower() if len(cells) > dir_col else ""
+            link = None
+            if len(cells) > link_col:
+                m = _LINK.search(cells[link_col])
+                if m:
+                    link = m.group(1)
+            rows.append((activity, direction, link, j + 1))
+            j += 1
+        idx = j
     return rows
 
 
