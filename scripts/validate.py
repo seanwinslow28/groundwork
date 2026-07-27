@@ -239,9 +239,25 @@ _THEMATIC = re.compile(r" {0,3}(?:(?:\* *){3,}|(?:- *){3,}|(?:_ *){3,})[ \t]*$")
 # A setext underline (only meaningful while a paragraph is open) turns the
 # paragraph into a heading and closes it; it can never be lazy continuation.
 _SETEXT = re.compile(r" {0,3}(?:=+|-+)[ \t]*$")
-# An HTML block start: its raw content runs to the next blank line, and a
-# fence-looking line inside it is HTML content, not a fence (Codex round 13).
-_HTML_START = re.compile(r" {0,3}<(?:[A-Za-z]|/|!|\?)")
+# HTML blocks (Codex rounds 13-14): a fence-looking line inside one is raw
+# HTML content, not a fence. Type 1 (<script>/<pre>/<style>/<textarea>) runs
+# THROUGH blank lines to a closing tag; type 6 (the CommonMark block-tag
+# list, open or close) and type 7 (any complete tag ALONE on the line, and
+# only outside a paragraph) run to the next blank line. Types 1 and 6
+# interrupt a paragraph; type 7 does not.
+_HTML1_START = re.compile(r" {0,3}<(?:script|pre|style|textarea)(?:[ \t>]|$)",
+                          re.I)
+_HTML1_END = re.compile(r"</(?:script|pre|style|textarea)>", re.I)
+_HTML6_START = re.compile(r" {0,3}</?([A-Za-z][A-Za-z0-9-]*)(?:[ \t>]|/>|$)")
+_HTML7_LINE = re.compile(
+    r" {0,3}(?:<[A-Za-z][A-Za-z0-9-]*(?:\s[^<>]*)?/?>|"
+    r"</[A-Za-z][A-Za-z0-9-]*\s*>)[ \t]*$")
+_HTML6_TAGS = frozenset("""address article aside base basefont blockquote
+    body caption center col colgroup dd details dialog dir div dl dt fieldset
+    figcaption figure footer form frame frameset h1 h2 h3 h4 h5 h6 head
+    header hr html iframe legend li link main menu menuitem nav noframes ol
+    optgroup option p param search section summary table tbody td tfoot th
+    thead title tr track ul""".split())
 _QUOTE_MARK = re.compile(r"^ {0,3}> ?")
 
 
@@ -390,7 +406,7 @@ def _strip_code(text):
     # list context turned top-level indented code into a false fence whose
     # 'closer' consumed a genuine fence opener — a silent fail-open).
     para_open = False  # the previous line was paragraph text (lazy-continuable)
-    html_open = False  # inside an HTML block (raw until the next blank line)
+    html_open = None   # "1": in a type-1 HTML block; "b": blank-terminated one
     lines = text.split("\n")
     i = 0
     while i < len(lines):
@@ -401,16 +417,19 @@ def _strip_code(text):
                 _flush()
                 out.append(line)
                 para_open = False
-                html_open = False
+                if html_open != "1":
+                    html_open = None  # types 6/7 end at a blank; type 1 spans it
                 i += 1
                 continue
             if html_open:
-                # raw HTML-block content until the blank line — live text,
-                # never a fence opener
+                # raw HTML-block content — live text, never a fence opener
                 para.append(line)
+                if html_open == "1" and _HTML1_END.search(line):
+                    html_open = None
                 i += 1
                 continue
             cnt, rest = _consume(ctx, line)
+            html_kind = None
             if _THEMATIC.match(rest) or (para_open and _SETEXT.match(rest)):
                 new, code = [], False
                 block_start = True
@@ -418,6 +437,18 @@ def _strip_code(text):
                 new, rest, code = _new_markers(rest)
                 block_start = bool(_ATX_HEADING.match(rest)) or \
                     bool(_THEMATIC.match(rest))
+                if not code and not block_start:
+                    if _HTML1_START.match(rest):
+                        html_kind = "1"
+                    else:
+                        h6 = _HTML6_START.match(rest)
+                        if h6 and h6.group(1).lower() in _HTML6_TAGS:
+                            html_kind = "6"
+                        elif not para_open and _HTML7_LINE.match(rest):
+                            html_kind = "7"
+                # types 1 and 6 interrupt a paragraph; type 7 cannot (it is
+                # only recognized outside one)
+                block_start = block_start or html_kind in ("1", "6")
             # fence recognition comes BEFORE the lazy check: fenced code —
             # like a heading or thematic break — interrupts a paragraph, so
             # none of them is ever lazy text
@@ -437,9 +468,10 @@ def _strip_code(text):
                 f_chain = ctx
                 para_open = False
                 out.append("")
-            elif _HTML_START.match(rest):
+            elif html_kind:
                 para.append(line)
-                html_open = True
+                # "1" spans blank lines to its closing tag; 6/7 end at a blank
+                html_open = "1" if html_kind == "1" else "b"
                 para_open = False
             else:
                 para.append(line)

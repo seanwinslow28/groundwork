@@ -3784,6 +3784,29 @@ class TestStripCode(unittest.TestCase):
         self.assertEqual(
             self._imports("<div>\n@AGENTS.md\n</div>\n"), ["AGENTS.md"])
 
+    def test_type1_html_block_spans_blank_lines(self):
+        # Codex round 14: <script>/<pre> blocks run through blank lines to
+        # their closing tag — a fence-looking line inside one is raw content,
+        # and the genuine fence comes after the block ends.
+        self.assertEqual(
+            self._imports("<script>\n\n~~~\n</script>\n\n~~~\n@AGENTS.md\n"
+                          "~~~\n"), [])
+        self.assertEqual(
+            self._imports("<pre>\n\n```\n</pre>\n\n```\n@AGENTS.md\n```\n"),
+            [])
+
+    def test_html_block_interrupts_a_list_paragraph(self):
+        # Codex round 14: a type-6 start is a block start, never lazy
+        # continuation of the item's paragraph.
+        self.assertEqual(
+            self._imports("- note\n<div>\n~~~\n\n~~~\n@AGENTS.md\n~~~\n"), [])
+
+    def test_inline_html_in_prose_is_a_paragraph(self):
+        # Codex round 14: '<em> prose' is paragraph text (type 7 needs the
+        # tag alone on the line), so the following fence is genuine.
+        self.assertEqual(
+            self._imports("<em> prose\n~~~\n@AGENTS.md\n~~~\n"), [])
+
 
 class TestAggregateDedupe(unittest.TestCase):
     def test_agents_md_counted_once(self):
