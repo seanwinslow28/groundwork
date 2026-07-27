@@ -4266,6 +4266,17 @@ class TestExecTableHardening(unittest.TestCase):
                     any(f.level == "WARN" and "not listed" in f.message
                         for f in validate.check_ontology(d)), cell)
 
+    def test_missing_delimiter_row_errors(self):
+        # Codex round 31: without a delimiter row GFM renders NO table at
+        # all — the gate must say so, not silently 'validate' prose. The
+        # rows are still checked (loud on both axes).
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "# Sales\n\n| Activity | Direction |\n"
+                          "| Good | up |\n")
+            self.assertTrue(any(f.level == "ERROR" and "activity table"
+                                in f.message
+                                for f in validate.check_ontology(d)))
+
     def test_image_syntax_does_not_satisfy_listing(self):
         # Codex round 30: '![h](renewal.md)' renders an IMAGE, not a link to
         # the record — a one-character typo must not silence the WARN.

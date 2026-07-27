@@ -1048,6 +1048,7 @@ def _parse_exec_tables(text):
         link_col = header.index("deep record") \
             if "deep record" in header else None
         table_rows = 0
+        has_sep = False
         for j in range(idx + 1, end):
             # cells are evaluated as RENDERED: a comment-only Activity is an
             # empty Activity, and a comment-wrapped link is no link at all
@@ -1055,6 +1056,7 @@ def _parse_exec_tables(text):
             cells = [_HTML_COMMENT.sub("", c).strip()
                      for c in _split_cells(stripped[j])]
             if _is_separator(cells):
+                has_sep = True
                 continue
             activity = cells[act_col] if len(cells) > act_col else ""
             direction = cells[dir_col].lower() if len(cells) > dir_col else ""
@@ -1065,6 +1067,11 @@ def _parse_exec_tables(text):
             table_rows += 1
         if not table_rows:
             n_empty += 1
+        if not has_sep:
+            # without a delimiter row GFM renders NO table at all (Codex
+            # round 31) — the rows above were still checked, but the view
+            # must be told its table does not render
+            n_unrecognized += 1
         idx = end
     return rows, n_tables, n_empty, n_unrecognized
 
@@ -1180,11 +1187,12 @@ def check_ontology(root, ignore=()):
                     if n_unrec:
                         # a valid table must not mask a misspelled one: every
                         # table-shaped block here must be a parsable activity
-                        # table (#5; Codex round 27)
+                        # table (#5; Codex rounds 27 and 31)
                         findings.append(Finding("ERROR", rel_exec, None,
-                                                "executive view has a table without a 'Direction' header "
-                                                "cell — every table in an executive view must be a "
-                                                "parsable activity table (#5 exec tier)"))
+                                                "executive view has a table that does not parse as an "
+                                                "activity table (missing 'Direction' header cell or "
+                                                "delimiter row) — every table in an executive view must "
+                                                "be a parsable activity table (#5 exec tier)"))
             for activity, direction, link, ln in rows:
                 if not activity:
                     findings.append(Finding("ERROR", rel_exec, ln,
