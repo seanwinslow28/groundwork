@@ -3761,6 +3761,29 @@ class TestStripCode(unittest.TestCase):
             self._imports("- - -\noutside\n\n    ~~~\n\n  ~~~\n"
                           "@AGENTS.md\n  ~~~\n"), [])
 
+    def test_setext_underline_closes_the_paragraph(self):
+        # Codex round 13: a setext underline turns the paragraph into a
+        # heading and closes it — 'outside' cannot lazily continue the item.
+        self.assertEqual(
+            self._imports("- heading\n  ===\noutside\n\n    ~~~\n\n  ~~~\n"
+                          "@AGENTS.md\n  ~~~\n"), [])
+
+    def test_html_block_content_is_not_a_fence(self):
+        # Codex round 13: a fence-looking line inside a type-6 HTML block
+        # (which runs to the blank line) is raw HTML content, not a fence
+        # opener; the genuine fence comes after the blank.
+        self.assertEqual(
+            self._imports("- <div>\n  ~~~\n\n  ~~~\n  @AGENTS.md\n  ~~~\n"),
+            [])
+        self.assertEqual(
+            self._imports("- <div>\n  ```\n\n  ```\n  @AGENTS.md\n  ```\n"),
+            [])
+
+    def test_import_inside_html_block_is_live(self):
+        # Only code spans and fenced code are skipped — raw HTML is live text.
+        self.assertEqual(
+            self._imports("<div>\n@AGENTS.md\n</div>\n"), ["AGENTS.md"])
+
 
 class TestAggregateDedupe(unittest.TestCase):
     def test_agents_md_counted_once(self):

@@ -236,6 +236,12 @@ _CONTAINER = re.compile(r"^ {0,3}(> ?|(?:[-*+]|\d{1,9}[.)])(?: {1,4}|(?=$)))")
 # nested items — CommonMark precedence).
 _ATX_HEADING = re.compile(r" {0,3}#{1,6}(?:[ \t]|$)")
 _THEMATIC = re.compile(r" {0,3}(?:(?:\* *){3,}|(?:- *){3,}|(?:_ *){3,})[ \t]*$")
+# A setext underline (only meaningful while a paragraph is open) turns the
+# paragraph into a heading and closes it; it can never be lazy continuation.
+_SETEXT = re.compile(r" {0,3}(?:=+|-+)[ \t]*$")
+# An HTML block start: its raw content runs to the next blank line, and a
+# fence-looking line inside it is HTML content, not a fence (Codex round 13).
+_HTML_START = re.compile(r" {0,3}<(?:[A-Za-z]|/|!|\?)")
 _QUOTE_MARK = re.compile(r"^ {0,3}> ?")
 
 
@@ -384,6 +390,7 @@ def _strip_code(text):
     # list context turned top-level indented code into a false fence whose
     # 'closer' consumed a genuine fence opener — a silent fail-open).
     para_open = False  # the previous line was paragraph text (lazy-continuable)
+    html_open = False  # inside an HTML block (raw until the next blank line)
     lines = text.split("\n")
     i = 0
     while i < len(lines):
@@ -394,10 +401,17 @@ def _strip_code(text):
                 _flush()
                 out.append(line)
                 para_open = False
+                html_open = False
+                i += 1
+                continue
+            if html_open:
+                # raw HTML-block content until the blank line — live text,
+                # never a fence opener
+                para.append(line)
                 i += 1
                 continue
             cnt, rest = _consume(ctx, line)
-            if _THEMATIC.match(rest):
+            if _THEMATIC.match(rest) or (para_open and _SETEXT.match(rest)):
                 new, code = [], False
                 block_start = True
             else:
@@ -423,6 +437,10 @@ def _strip_code(text):
                 f_chain = ctx
                 para_open = False
                 out.append("")
+            elif _HTML_START.match(rest):
+                para.append(line)
+                html_open = True
+                para_open = False
             else:
                 para.append(line)
                 # a paragraph is open only when this line can host lazy
