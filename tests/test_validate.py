@@ -3850,6 +3850,26 @@ class TestDriftFenceBelt(unittest.TestCase):
             self.assertEqual([f for f in validate.check_root_files(d)
                               if f.level == "ERROR"], [])
 
+    def test_span_crossing_the_cut_cannot_expose_an_import(self):
+        # Codex round 16: truncating at a fence-ish line broke span pairing
+        # ('`code\n@AGENTS.md\n    ~~~\nclose`' is ONE multiline code span,
+        # so Claude imports nothing) and exposed the spanned import — the cut
+        # now also stops at the first backtick-bearing line.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "`code\n@AGENTS.md\n    ~~~\nclose`\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
+    def test_backtick_before_import_is_not_trusted(self):
+        # '# `' then '` @AGENTS.md `': the import sits in a code span, and
+        # nothing after a backtick-bearing line is trusted.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "# `\n` @AGENTS.md `\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
 
 class TestAggregateDedupe(unittest.TestCase):
     def test_agents_md_counted_once(self):

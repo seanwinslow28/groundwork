@@ -226,10 +226,13 @@ _IMPORT = re.compile(r"(?:(?<=\s)|^)@([^\s`]+)", re.M)
 _FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 _TICKS = re.compile(r"`+")
 # Any line that could be a fence under SOME container reading (deliberately
-# loose). The §6 drift check trusts only an import ABOVE the first such line:
-# below it, any divergence between this scanner and a harness's CommonMark
-# reading could make a documented import count as real, so it is ignored —
-# over-strip, a loud false ERROR at worst, never a silent pass.
+# loose). The §6 drift check trusts only an import ABOVE the first such line
+# AND above the first backtick-bearing line (see check_root_files): in that
+# region no code span can exist (spans need backticks — and a cut alone can
+# BREAK a multiline span open, Codex round 16) and no fenced block can exist
+# (its opener would match here), so an import found there is live under ANY
+# CommonMark reading. Below the cut an import is ignored regardless of what
+# the scanner concludes — a loud false ERROR at worst.
 _FENCEISH = re.compile(r"^[\s>*+\-\d.)]*(?:`{3,}|~{3,})")
 # Block-container markers a fence can nest under: blockquote, bullet, ordered.
 # A list marker may be followed by 1-4 spaces (all part of the item's
@@ -796,10 +799,13 @@ def check_root_files(root):
         findings += rd
         if text is not None:
             # Only the file's head — everything above the first fence-looking
-            # line — can satisfy this ERROR-level guarantee (see _FENCEISH).
+            # OR backtick-bearing line — can satisfy this ERROR-level
+            # guarantee (see _FENCEISH): with no backtick and no possible
+            # fence opener above the cut, no code construct can contain the
+            # import under any CommonMark reading.
             head = []
             for ln in text.split("\n"):
-                if _FENCEISH.match(ln.expandtabs(4)):
+                if "`" in ln or _FENCEISH.match(ln.expandtabs(4)):
                     break
                 head.append(ln)
             targets = _IMPORT.findall(_strip_code("\n".join(head)))
