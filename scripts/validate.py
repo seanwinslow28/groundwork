@@ -187,6 +187,7 @@ def check_context_budget(path, num_bytes):
 
 
 _LINK = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
+_CELL_SPLIT = re.compile(r"(?<!\\)\|")
 
 
 def check_links(abspath, text, root):
@@ -605,7 +606,8 @@ def parse_exec_table(text):
         line = lines[j]
         if not line.lstrip().startswith("|"):
             break
-        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        cells = [c.strip().replace("\\|", "|")
+                 for c in _CELL_SPLIT.split(line.strip().strip("|"))]
         if not cells or set("".join(cells)) <= set("-: "):
             continue  # the |---|---| separator row
         activity = cells[0] if len(cells) > 0 else ""
@@ -704,15 +706,34 @@ def check_ontology(root, ignore=()):
             exec_text, exec_findings = _read_utf8(exec_path, rel_exec)
             findings += exec_findings
             rows = parse_exec_table(exec_text) if exec_text is not None else []
+            if exec_text is not None and exec_text.strip() and not rows:
+                # A misspelled or missing 'Direction' header parses to zero rows,
+                # which would leave every Direction in this file UNCHECKED while
+                # the gate stayed green. Fail closed instead (#5).
+                findings.append(Finding("ERROR", rel_exec, None,
+                                        "executive view has no parsable activity table — a header "
+                                        "row containing 'Direction' and at least one activity row "
+                                        "are required (#5 exec tier)"))
             for activity, direction, link, ln in rows:
+                if not activity:
+                    findings.append(Finding("ERROR", rel_exec, ln,
+                                            "executive-view row has an empty Activity cell"))
                 if direction not in DIRECTIONS:
                     findings.append(Finding("ERROR", rel_exec, ln,
                                             "Direction must be 'up' or 'down', got %r" % direction))
                 if link:
-                    linked.add(os.path.basename(link))
+                    target = os.path.normpath(
+                        os.path.join(fdir, link.split("#", 1)[0]))
+                    linked.add(os.path.realpath(target))
         for df in deep_files:
-            findings += check_deep_record(os.path.join(fdir, df), root)
-            if df not in linked:
+            dpath = os.path.join(fdir, df)
+            if not os.path.isfile(dpath):
+                # a directory (or FIFO) named x.md would crash or block the read
+                findings.append(Finding("ERROR", os.path.join(rel_fdir, df), None,
+                                        "ontology entry ending in .md is not a regular file"))
+                continue
+            findings += check_deep_record(dpath, root)
+            if os.path.realpath(dpath) not in linked:
                 findings.append(Finding("WARN", os.path.join(rel_fdir, df), None,
                                         "deep record not listed in the executive view"))
     return findings

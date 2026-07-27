@@ -3566,6 +3566,93 @@ class TestAggregateDedupe(unittest.TestCase):
             self.assertEqual(total, 4000 + len("@alias.md\n"))
 
 
+class TestExecTableHardening(unittest.TestCase):
+    def _exec(self, d, body, fn="sales"):
+        _write(d, "ontologies/%s/_executive-view.md" % fn, body)
+
+    def test_misspelled_header_errors_instead_of_passing_silently(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "# Sales\n\n| Activity | Diretcion |\n|---|---|\n| Forecast | up |\n")
+            self.assertTrue(any(f.level == "ERROR" and "activity table" in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_missing_table_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "# Sales\n\nProse only, no table.\n")
+            self.assertTrue(any(f.level == "ERROR" and "activity table" in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_header_present_but_no_rows_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "# Sales\n\n| Activity | Direction |\n|---|---|\n")
+            self.assertTrue(any(f.level == "ERROR" and "activity table" in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_empty_file_is_silent(self):
+        # An untouched worksheet stays silent (#5): only a file with content
+        # that fails to parse is a problem.
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "")
+            self.assertEqual(validate.check_ontology(d), [])
+
+    def test_empty_activity_cell_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, "# Sales\n\n| Activity | Direction |\n|---|---|\n|  | up |\n")
+            self.assertTrue(any(f.level == "ERROR" and "Activity" in f.message
+                                for f in validate.check_ontology(d)))
+
+    def test_escaped_pipe_does_not_split_a_cell(self):
+        rows = validate.parse_exec_table(
+            "| Activity | Direction |\n|---|---|\n| Quote \\| order handoff | down |\n")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0][0], "Quote | order handoff")
+        self.assertEqual(rows[0][1], "down")
+
+    def test_good_table_still_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._exec(d, EXEC_OK)
+            self.assertEqual([f for f in validate.check_ontology(d)
+                              if f.level == "ERROR"], [])
+
+
+class TestOntologyFileSafety(unittest.TestCase):
+    def test_directory_named_md_does_not_crash(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/sales/_executive-view.md", EXEC_OK)
+            os.makedirs(os.path.join(d, "ontologies", "sales", "notes.md"))
+            findings = validate.check_ontology(d)  # must not raise
+            self.assertTrue(any(f.level == "ERROR" and "regular file" in f.message
+                                for f in findings))
+
+    def test_non_utf8_deep_record_fails_closed(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/sales/_executive-view.md", EXEC_OK)
+            _write_bytes(d, "ontologies/sales/bad.md", b"---\nmotion: automate\n---\n\xff\xfe\n")
+            self.assertTrue(any(f.level == "ERROR" for f in validate.check_ontology(d)))
+
+    def test_deep_record_linked_by_path_not_basename(self):
+        # A link to another function's file must not satisfy the listing check.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/sales/_executive-view.md",
+                   "| Activity | Direction | Deep record |\n|---|---|---|\n"
+                   "| Renewal | down | [d](../people-hr/renewal.md) |\n")
+            _write(d, "ontologies/people-hr/_executive-view.md", EXEC_OK)
+            _write(d, "ontologies/people-hr/renewal.md", AUTOMATE_OK)
+            _write(d, "ontologies/sales/renewal.md", AUTOMATE_OK)
+            self.assertTrue(any(f.level == "WARN" and "not listed" in f.message
+                                and "sales/renewal.md" in f.path.replace(os.sep, "/")
+                                for f in validate.check_ontology(d)))
+
+    def test_fragment_link_still_counts_as_listed(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/sales/_executive-view.md",
+                   "| Activity | Direction | Deep record |\n|---|---|---|\n"
+                   "| Renewal | down | [d](renewal.md#scores) |\n")
+            _write(d, "ontologies/sales/renewal.md", AUTOMATE_OK)
+            self.assertFalse(any("not listed" in f.message
+                                 for f in validate.check_ontology(d)))
+
+
 class TestAbsoluteImportMessage(unittest.TestCase):
     def test_absolute_import_gets_its_own_message(self):
         with tempfile.TemporaryDirectory() as d:
