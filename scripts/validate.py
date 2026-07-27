@@ -225,6 +225,38 @@ _IMPORT = re.compile(r"(?:(?<=\s)|^)@([^\s`]+)", re.M)
 
 _FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 _TICKS = re.compile(r"`+")
+# Block-container markers a fence can nest under: blockquote, bullet, ordered.
+_CONTAINER = re.compile(r"^ {0,3}(> ?|[-*+] |\d{1,9}[.)] )")
+_QUOTE_CONT = re.compile(r"^ {0,3}>")
+
+
+def _fence_match(line):
+    """A _FENCE match honoring CommonMark's backtick rule: a backtick fence's
+    info string cannot contain a backtick. None when the line is not a fence."""
+    m = _FENCE.match(line)
+    if m and m.group(1)[0] == "`" and "`" in m.group(2):
+        return None
+    return m
+
+
+def _container_fence(line):
+    """A fence nested in block containers (blockquote / list item): strip
+    leading markers, then match. Returns (match, in_quote); match is None when
+    no fence follows the markers. A `> ~~~` line is a real CommonMark fence
+    that Claude Code skips, so missing it would fail open (Codex round 3)."""
+    in_quote = False
+    stripped = False
+    while True:
+        m = _CONTAINER.match(line)
+        if not m:
+            break
+        if m.group(1).startswith(">"):
+            in_quote = True
+        line = line[m.end():]
+        stripped = True
+    if not stripped:
+        return None, False
+    return _fence_match(line), in_quote
 
 
 def _strip_spans(text):
@@ -277,7 +309,12 @@ def _strip_code(text):
     Spans are matched within a PARAGRAPH (a run of non-blank, non-fence lines):
     a CommonMark code span may cross line endings, so per-line scanning would
     fail open on a multiline span, while a blank line ends the paragraph and no
-    span crosses it."""
+    span crosses it.
+
+    Fences nested in block containers (`> ~~~`, `- ```` ``` ````) are fences
+    too. A fence opened inside a blockquote closes when the quote's `>` lines
+    stop (a code block cannot lazily continue), and the ending line is
+    reprocessed — it may itself open a new top-level fence."""
     out = []
     para = []  # non-fence lines accumulated until a paragraph boundary
 
@@ -286,27 +323,48 @@ def _strip_code(text):
             out.append(_strip_spans("\n".join(para)))
             del para[:]
 
-    fence = None  # (char, length) of the currently open fence
-    for line in text.split("\n"):
-        m = _FENCE.match(line)
-        if m and m.group(1)[0] == "`" and "`" in m.group(2):
-            m = None  # a backtick fence's info string cannot contain a backtick
+    fence = None   # (char, length) of the currently open fence
+    quoted = False  # the open fence lives inside a blockquote
+    lines = text.split("\n")
+    i = 0
+    while i < len(lines):
+        line = lines[i]
         if fence is None:
+            m = _fence_match(line)
+            in_quote = False
+            if m is None:
+                m, in_quote = _container_fence(line)
             if m:
                 _flush()
                 fence = (m.group(1)[0], len(m.group(1)))
+                quoted = in_quote
                 out.append("")
             elif not line.strip():
                 _flush()
                 out.append(line)
             else:
                 para.append(line)
-        else:
-            # a closing fence: same character, at least as long, no info string
-            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= fence[1] \
-                    and not m.group(2).strip():
-                fence = None
+            i += 1
+            continue
+        # a closing fence: same character, at least as long, no info string.
+        # Only a QUOTED fence may close via a container-prefixed line — inside
+        # a top-level fence, '> ```' is literal content, not a closer.
+        m = _fence_match(line)
+        if m is None and quoted:
+            m, _q = _container_fence(line)
+        if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= fence[1] \
+                and not m.group(2).strip():
+            fence = None
             out.append("")
+            i += 1
+            continue
+        if quoted and not _QUOTE_CONT.match(line):
+            # the blockquote ended, and the fence with it — reprocess this
+            # line outside the fence
+            fence = None
+            continue
+        out.append("")
+        i += 1
     _flush()
     return "\n".join(out)
 

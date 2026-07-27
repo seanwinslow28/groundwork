@@ -3578,6 +3578,29 @@ class TestStripCode(unittest.TestCase):
         # The placeholder must not hide a genuinely whitespace-separated import.
         self.assertEqual(self._imports("See `x` @AGENTS.md\n"), ["AGENTS.md"])
 
+    def test_blockquoted_fence_is_stripped(self):
+        # Codex round 3: a fence nested in a blockquote is a real CommonMark
+        # fenced block, so the import inside it is documentation, not loaded.
+        self.assertEqual(self._imports("> ~~~\n> @AGENTS.md\n> ~~~\n"), [])
+
+    def test_list_item_fence_is_stripped(self):
+        self.assertEqual(self._imports("- ```\n  @AGENTS.md\n  ```\n"), [])
+
+    def test_quote_end_closes_its_fence(self):
+        # Leaving the blockquote closes the fence (a code block cannot lazily
+        # continue), and the NEW top-level fence then swallows the import.
+        self.assertEqual(
+            self._imports("> ~~~\ntext\n~~~\n@AGENTS.md\n~~~\n"), [])
+
+    def test_import_after_a_closed_quoted_fence_is_seen(self):
+        self.assertEqual(
+            self._imports("> ~~~\n> code\n> ~~~\n@AGENTS.md\n"), ["AGENTS.md"])
+
+    def test_quoted_fence_line_does_not_close_a_top_level_fence(self):
+        # Inside a top-level fence, '> ```' is content, not a closer.
+        self.assertEqual(
+            self._imports("```\n> ```\n@AGENTS.md\n```\n"), [])
+
 
 class TestAggregateDedupe(unittest.TestCase):
     def test_agents_md_counted_once(self):

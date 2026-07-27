@@ -90,7 +90,8 @@ Honest limits of the current build. This file grows as the product does (brief �
   read by name for these checks, but the generic walker still skips dot-directories, so
   secret-scanning and link-checking do not cover them.
 - **Code-span detection is deliberately biased toward over-stripping.** `_strip_code`
-  scans fences (backtick and tilde, any length ≥ 3) and inline spans, but it does not
+  scans fences (backtick and tilde, any length ≥ 3, including fences nested under
+  blockquote and list-item markers) and inline spans, but it does not
   implement backslash escapes: `` \` `` reads as opening a code span. The bias is
   chosen, not accidental — the root-file drift check is an ERROR-level guarantee where
   *under*-stripping fails open (a fenced `@AGENTS.md` would satisfy the check while
