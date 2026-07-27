@@ -803,23 +803,37 @@ def check_root_files(root):
         text, rd = _read_utf8(claude, "CLAUDE.md")
         findings += rd
         if text is not None:
-            # Only the file's head — everything above the first fence-looking,
-            # backtick-bearing, or comment-opening line — can satisfy this
-            # ERROR-level guarantee (see _FENCEISH): with no backtick, no
-            # possible fence opener, and no '<!--' above the cut, no construct
-            # Claude Code skips (code spans, fenced blocks, HTML comments —
-            # verified against the installed consumer) can contain the import
-            # under any CommonMark reading.
+            # This ERROR-level guarantee is satisfied ONLY by the standalone
+            # canonical line '@AGENTS.md' (round 19: Claude Code's import
+            # walker skips code, html, link-definition, image, and
+            # front-matter tokens — trusting anything richer means betting on
+            # token classification, which keeps losing). The line must sit:
+            # outside leading YAML front matter (stripped before lexing), at
+            # under 4 columns of indent (4+ is an indented code token), and
+            # above the first backtick-bearing, comment-opening, fence-looking,
+            # or HTML-looking line (see _FENCEISH/_HTMLISH) — in that region
+            # the line is a paragraph under every CommonMark reading.
+            all_lines = text.split("\n")
+            start = 0
+            if all_lines and all_lines[0].strip() == "---":
+                start = len(all_lines)  # unclosed front matter: trust nothing
+                for k in range(1, len(all_lines)):
+                    if all_lines[k].strip() in ("---", "..."):
+                        start = k + 1
+                        break
+            satisfied = False
             head = []
-            for ln in text.split("\n"):
-                if "`" in ln or "<!--" in ln \
-                        or _FENCEISH.match(ln.expandtabs(4)) \
-                        or _HTMLISH.match(ln.expandtabs(4)):
+            for ln in all_lines[start:]:
+                x = ln.expandtabs(4)
+                if "`" in x or "<!--" in x or _FENCEISH.match(x) \
+                        or _HTMLISH.match(x):
                     break
-                head.append(ln)
-            targets = _IMPORT.findall(_strip_code("\n".join(head)))
-            if not any(os.path.normpath(t.replace("\\", "/")) == "AGENTS.md"
-                       for t in targets):
+                head.append(x)
+                if x.strip() == "@AGENTS.md" and not x.startswith("    "):
+                    satisfied = True
+                    break
+            if not satisfied:
+                targets = _IMPORT.findall(_strip_code("\n".join(head)))
                 abs_agents = [t for t in targets
                               if (os.path.isabs(t) or t.startswith("~"))
                               and os.path.basename(t) == "AGENTS.md"]
@@ -834,8 +848,8 @@ def check_root_files(root):
                         "ERROR", "CLAUDE.md", None,
                         "CLAUDE.md does not import AGENTS.md — the root files have drifted "
                         "into separate sources of truth; its content should be "
-                        "'@AGENTS.md' (§6; only an import above the first code fence, "
-                        "backtick, or HTML/comment line counts)"))
+                        "'@AGENTS.md' (§6; only a standalone '@AGENTS.md' line above "
+                        "any code, HTML, or comment content counts)"))
 
     cdir = os.path.join(root, ".cursor", "rules")
     if not os.path.isdir(cdir):

@@ -3864,6 +3864,49 @@ class TestDriftFenceBelt(unittest.TestCase):
             self.assertTrue(any(f.level == "ERROR"
                                 for f in validate.check_root_files(d)))
 
+    def test_indented_import_is_not_trusted(self):
+        # Codex round 19: a 4-column-indented import is an indented CODE
+        # token, and Claude Code's walker skips all code tokens.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "    @AGENTS.md\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
+    def test_link_definition_import_is_not_trusted(self):
+        # '[x]: @AGENTS.md' lexes as a link-reference definition whose href
+        # is never scanned for imports.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "[x]: @AGENTS.md\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
+    def test_frontmatter_import_is_not_trusted(self):
+        # Claude Code strips leading YAML front matter before lexing imports.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "---\n@AGENTS.md\n---\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
+    def test_import_after_frontmatter_is_trusted(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "---\ntitle: t\n---\n\n@AGENTS.md\n")
+            self.assertEqual([f for f in validate.check_root_files(d)
+                              if f.level == "ERROR"], [])
+
+    def test_prose_wrapped_import_is_not_trusted(self):
+        # Deliberately over-strict (loud): only the standalone canonical
+        # '@AGENTS.md' line counts — token classification of anything richer
+        # is exactly what rounds 15-19 showed to be unprovable.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "See @AGENTS.md for details\n")
+            self.assertTrue(any(f.level == "ERROR"
+                                for f in validate.check_root_files(d)))
+
     def test_import_inside_html_block_is_not_trusted(self):
         # Codex round 18: Claude Code's import walker skips every HTML token,
         # so an import wrapped in <script>/<pre>/any raw HTML loads nothing.

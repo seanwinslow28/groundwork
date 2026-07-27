@@ -103,20 +103,19 @@ Honest limits of the current build. This file grows as the product does (brief �
   never sees a closing fence line) swallows everything to end of file, hiding every
   later import from both consumers: loud for the drift check (false ERROR), silent for
   the budget (the swallowed imports' bytes go uncounted).
-- **The §6 drift check trusts only an import above the first fence-marker-looking,
-  backtick-bearing, `<!--`-bearing, or HTML-looking line of `CLAUDE.md`.** In that
-  head region no code span can exist (spans need backticks), no fenced block can
-  exist (its opener would end the region), and no HTML token can exist (Claude Code's
-  import walker skips every HTML token, comments included — verified against the
-  installed consumer), so an import found there is live under any CommonMark
-  reading; below the
-  cut an import is ignored regardless of what the scanner concludes, because scanner
-  divergence there could make a merely-documented import count as real. A legitimate
-  import placed below a code fence or an inline-code line draws a loud false ERROR
-  (the canonical `CLAUDE.md` is the one-line import, so this does not bite the
-  recommended layout). The budget aggregate still follows the full scanner, where a
-  misread shifts measurement (bytes counted, imports followed, per-file read
-  findings) rather than the §6 guarantee.
+- **The §6 drift check accepts only the standalone canonical `@AGENTS.md` line.**
+  Claude Code's import walker skips code tokens (spans, fenced and indented blocks),
+  every HTML token (comments included), link-reference definitions, image tokens, and
+  leading YAML front matter — so trusting an import found anywhere richer means
+  betting on Markdown token classification, where any divergence makes a
+  merely-documented import count as real. The accepted line must sit outside leading
+  front matter, at under 4 columns of indent, and above the first backtick-bearing,
+  `<!--`-bearing, fence-marker-looking, or HTML-looking line — in that region the
+  line is a paragraph under every CommonMark reading. Anything else (an import in
+  prose, below a code example, inside a quote) draws a loud false ERROR telling the
+  author to use the canonical one-line `CLAUDE.md`. The budget aggregate still
+  follows the full scanner, where a misread shifts measurement (bytes counted,
+  imports followed, per-file read findings) rather than the §6 guarantee.
 - **The always-loaded aggregate models the union of harnesses, deduplicated by real
   path.** `AGENTS.md` reached both directly and through `CLAUDE.md`'s import counts once:
   no single harness loads it twice, and double-counting could push a legitimate repo past
