@@ -96,8 +96,11 @@ Honest limits of the current build. This file grows as the product does (brief �
   chosen, not accidental — the root-file drift check is an ERROR-level guarantee where
   *under*-stripping fails open (a fenced `@AGENTS.md` would satisfy the check while
   Claude Code imported nothing), so ambiguity resolves toward stripping. The cost is a
-  possible false drift ERROR next to an escaped backtick, and a slight undercount in the
-  budget aggregate.
+  possible false drift ERROR next to an escaped backtick, and an undercount in the
+  budget aggregate — in the worst case an unclosed fence (e.g. a list-nested fence that
+  never sees a closing fence line) swallows everything to end of file, hiding every
+  later import from both consumers: loud for the drift check (false ERROR), silent for
+  the budget (the swallowed imports' bytes go uncounted).
 - **The always-loaded aggregate models the union of harnesses, deduplicated by real
   path.** `AGENTS.md` reached both directly and through `CLAUDE.md`'s import counts once:
   no single harness loads it twice, and double-counting could push a legitimate repo past

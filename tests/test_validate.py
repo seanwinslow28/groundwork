@@ -3601,6 +3601,25 @@ class TestStripCode(unittest.TestCase):
         self.assertEqual(
             self._imports("```\n> ```\n@AGENTS.md\n```\n"), [])
 
+    def test_unquoted_fence_after_quoted_opener_reopens(self):
+        # Codex round 4: '> ~~~' then bare '~~~' — the blockquote (and its
+        # fence) end BEFORE the bare line, which then opens a NEW top-level
+        # fence swallowing the import; consuming it as a closer failed open.
+        self.assertEqual(self._imports("> ~~~\n~~~\n@AGENTS.md\n~~~\n"), [])
+
+    def test_nested_quote_dedent_reopens_at_outer_level(self):
+        # '> > ~~~' then '> ~~~': the inner quote ends, closing its fence, and
+        # a new fence opens at the outer quote level — the import is inside it.
+        self.assertEqual(
+            self._imports("> > ~~~\n> ~~~\n> @AGENTS.md\n"), [])
+
+    def test_deeper_quoted_fence_line_is_content(self):
+        # Inside a '> ~~~' fence, a '> > ~~~' line is literal content; the
+        # fence still closes at '> ~~~' and the later import is real.
+        self.assertEqual(
+            self._imports("> ~~~\n> > ~~~\n> ~~~\n@AGENTS.md\n"),
+            ["AGENTS.md"])
+
 
 class TestAggregateDedupe(unittest.TestCase):
     def test_agents_md_counted_once(self):

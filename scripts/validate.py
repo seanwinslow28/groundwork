@@ -227,7 +227,7 @@ _FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 _TICKS = re.compile(r"`+")
 # Block-container markers a fence can nest under: blockquote, bullet, ordered.
 _CONTAINER = re.compile(r"^ {0,3}(> ?|[-*+] |\d{1,9}[.)] )")
-_QUOTE_CONT = re.compile(r"^ {0,3}>")
+_QUOTE_MARK = re.compile(r"^ {0,3}> ?")
 
 
 def _fence_match(line):
@@ -241,22 +241,38 @@ def _fence_match(line):
 
 def _container_fence(line):
     """A fence nested in block containers (blockquote / list item): strip
-    leading markers, then match. Returns (match, in_quote); match is None when
-    no fence follows the markers. A `> ~~~` line is a real CommonMark fence
-    that Claude Code skips, so missing it would fail open (Codex round 3)."""
-    in_quote = False
+    leading markers, then match. Returns (match, quote_depth, listed); match
+    is None when no fence follows the markers. A `> ~~~` line is a real
+    CommonMark fence that Claude Code skips, so missing it would fail open
+    (Codex round 3)."""
+    qdepth = 0
+    listed = False
     stripped = False
     while True:
         m = _CONTAINER.match(line)
         if not m:
             break
         if m.group(1).startswith(">"):
-            in_quote = True
+            qdepth += 1
+        else:
+            listed = True
         line = line[m.end():]
         stripped = True
     if not stripped:
-        return None, False
-    return _fence_match(line), in_quote
+        return None, 0, False
+    return _fence_match(line), qdepth, listed
+
+
+def _quote_strip(line):
+    """(depth, rest): strip leading blockquote markers only, so an open
+    fence's quote depth can be compared with the current line's."""
+    depth = 0
+    while True:
+        m = _QUOTE_MARK.match(line)
+        if not m:
+            return depth, line
+        depth += 1
+        line = line[m.end():]
 
 
 def _strip_spans(text):
@@ -324,20 +340,22 @@ def _strip_code(text):
             del para[:]
 
     fence = None   # (char, length) of the currently open fence
-    quoted = False  # the open fence lives inside a blockquote
+    f_qdepth = 0   # blockquote depth the open fence was opened at
+    f_listed = False  # the open fence lives inside a list item
     lines = text.split("\n")
     i = 0
     while i < len(lines):
         line = lines[i]
         if fence is None:
             m = _fence_match(line)
-            in_quote = False
+            qdepth = 0
+            listed = False
             if m is None:
-                m, in_quote = _container_fence(line)
+                m, qdepth, listed = _container_fence(line)
             if m:
                 _flush()
                 fence = (m.group(1)[0], len(m.group(1)))
-                quoted = in_quote
+                f_qdepth, f_listed = qdepth, listed
                 out.append("")
             elif not line.strip():
                 _flush()
@@ -346,23 +364,26 @@ def _strip_code(text):
                 para.append(line)
             i += 1
             continue
-        # a closing fence: same character, at least as long, no info string.
-        # Only a QUOTED fence may close via a container-prefixed line — inside
-        # a top-level fence, '> ```' is literal content, not a closer.
-        m = _fence_match(line)
-        if m is None and quoted:
-            m, _q = _container_fence(line)
+        # Container termination comes BEFORE closer matching (Codex round 4):
+        # a line below the fence's quote depth ends the blockquote and the
+        # fence with it (a code block cannot lazily continue), and must be
+        # REPROCESSED — it may itself open a new fence at a shallower level.
+        qd, rest = _quote_strip(line)
+        if qd < f_qdepth:
+            fence = None
+            continue
+        # a closing fence: same character, at least as long, no info string —
+        # and only at the fence's own quote depth. Inside a top-level fence a
+        # '> ```' line is literal content; inside a quoted fence a deeper
+        # '> > ```' line is literal content.
+        m = None
+        if qd == f_qdepth:
+            m = _fence_match(rest)
+            if m is None and f_listed:
+                m, _q2, _l2 = _container_fence(rest)
         if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= fence[1] \
                 and not m.group(2).strip():
             fence = None
-            out.append("")
-            i += 1
-            continue
-        if quoted and not _QUOTE_CONT.match(line):
-            # the blockquote ended, and the fence with it — reprocess this
-            # line outside the fence
-            fence = None
-            continue
         out.append("")
         i += 1
     _flush()
