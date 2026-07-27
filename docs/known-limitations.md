@@ -89,3 +89,15 @@ Honest limits of the current build. This file grows as the product does (brief �
 - **Dot-directories are not otherwise scanned.** `.claude/rules/` and `.cursor/rules/` are
   read by name for these checks, but the generic walker still skips dot-directories, so
   secret-scanning and link-checking do not cover them.
+- **Code-span detection is deliberately biased toward over-stripping.** `_strip_code`
+  scans fences (backtick and tilde, any length ≥ 3) and inline spans, but it does not
+  implement backslash escapes: `` \` `` reads as opening a code span. The bias is
+  chosen, not accidental — the root-file drift check is an ERROR-level guarantee where
+  *under*-stripping fails open (a fenced `@AGENTS.md` would satisfy the check while
+  Claude Code imported nothing), so ambiguity resolves toward stripping. The cost is a
+  possible false drift ERROR next to an escaped backtick, and a slight undercount in the
+  budget aggregate.
+- **The always-loaded aggregate models the union of harnesses, deduplicated by real
+  path.** `AGENTS.md` reached both directly and through `CLAUDE.md`'s import counts once:
+  no single harness loads it twice, and double-counting could push a legitimate repo past
+  the ERROR threshold for budget it does not spend.
