@@ -70,13 +70,29 @@ class TestZeroDep(unittest.TestCase):
         extra = mods - allowed
         self.assertEqual(extra, set(), "non-stdlib imports: %s" % extra)
 
-    def test_shipped_hook_scripts_only_stdlib(self):
+    def test_shipped_scripts_only_stdlib(self):
+        """Every shipped Python file imports the standard library only — the
+        validator, the action-class gate, and any runnable exemplar under demo/.
+
+        Scoped by directory this would have kept passing while a new script shipped
+        outside governance/hooks/, which is how an enforcement claim goes quietly
+        stale. AGENTS.md says 'every shipped script'; so does this scan.
+        """
         allowed = {"os", "sys", "re", "ast", "math", "fnmatch", "collections",
-                   "pathlib", "datetime", "subprocess", "unicodedata", "json"}
-        hooks_dir = REPO / "governance" / "hooks"
-        if not hooks_dir.is_dir():
-            self.skipTest("no shipped hooks")
-        for py in sorted(hooks_dir.glob("*.py")):
+                   "pathlib", "datetime", "subprocess", "unicodedata", "json", "shlex"}
+        skip = {"__pycache__", "tests"}
+        scripts = sorted(
+            p for p in REPO.rglob("*.py")
+            if not any(part in skip or part.startswith(".")
+                       for part in p.relative_to(REPO).parts))
+        rels = {str(p.relative_to(REPO)) for p in scripts}
+        # Anti-hollow: an empty or near-empty scan passes vacuously, so name what
+        # must be in it. Add to this list when a new script ships.
+        for expected in ("scripts/validate.py",
+                         "governance/hooks/action_class_gate.py",
+                         "demo/governance/reminders/meeting-challenger/meeting_challenger.py"):
+            self.assertIn(expected, rels, "the shipped-script scan is not finding %s" % expected)
+        for py in scripts:
             tree = ast.parse(py.read_text())
             mods = set()
             for node in ast.walk(tree):
@@ -85,7 +101,8 @@ class TestZeroDep(unittest.TestCase):
                         mods.add(n.name.split(".")[0])
                 elif isinstance(node, ast.ImportFrom) and node.module:
                     mods.add(node.module.split(".")[0])
-            self.assertEqual(mods - allowed, set(), "%s imports non-stdlib: %s" % (py.name, mods - allowed))
+            self.assertEqual(mods - allowed, set(), "%s imports non-stdlib: %s"
+                             % (py.relative_to(REPO), mods - allowed))
 
 
 class TestSecrets(unittest.TestCase):
