@@ -1,8 +1,9 @@
 # Product — executive view
 
 Every activity this function does, with its Direction — **up** (deserves more human
-time) or **down** (should stop being hand-run). No deep records yet: depth is earned
-by acting, not by planning to act.
+time) or **down** (should stop being hand-run). Deep records exist only for the
+activities the company has chosen to act on first; the rest are listed but not yet
+worked (depth is earned by acting, not by planning to act).
 
 *A starting template, not a claim about your company — edit it (see
 [ontologies/README.md](../README.md)).*
@@ -13,7 +14,7 @@ by acting, not by planning to act.
 | Roadmap prioritization | up | — |
 | Pricing and packaging decisions | up | — |
 | Sunset and deprecation decisions | up | — |
-| Feature-request triage | down | — |
+| Feature-request triage | down | [deep record](feature-request-triage.md) |
 | Customer-interview synthesis | down | — |
 | Specification and PRD drafting | down | — |
 | Release-notes authoring | down | — |
