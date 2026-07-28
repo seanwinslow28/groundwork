@@ -4797,5 +4797,101 @@ class TestInstanceRoots(unittest.TestCase):
             self.assertEqual(validate._instance_roots(d), validate._instance_roots(d))
 
 
+# SKILL_OK carries no `baseline:` (the provisioning-gate tests add it); a clean
+# provisioned instance needs it, so the miniature instance uses this variant.
+SKILL_BASELINED = SKILL_OK.replace(
+    "provisioned: yes",
+    "provisioned: yes\nbaseline: memory/onboarding-baseline.md")
+
+
+def _write_instance(d, prefix=""):
+    """A complete miniature instance: one function, one provisioned skill with
+    its card, and the baseline the skill cites."""
+    _write(d, prefix + "ontologies/people-hr/_executive-view.md", EXEC_OK)
+    _write(d, prefix + "ontologies/people-hr/onboarding-orchestration.md", AUTOMATE_OK)
+    _write(d, prefix + "skills/onboarding-orchestration/SKILL.md", SKILL_BASELINED)
+    _write(d, prefix + "skills/onboarding-orchestration/owner-card.md", CARD_OK)
+    _write(d, prefix + "memory/onboarding-baseline.md", MEM_OK)
+    _write(d, prefix + "memory/_index.md",
+           "# Index\n\n- [b](onboarding-baseline.md)\n")
+
+
+class TestNestedInstanceOntology(unittest.TestCase):
+    def test_nested_ontology_is_checked(self):
+        # The finding this whole slice exists for: before it, a broken demo
+        # ontology produced NOTHING.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/ontologies/sales/_executive-view.md",
+                   EXEC_OK.replace("| down |", "| sideways |"))
+            findings = validate.check_ontology(d)
+            self.assertTrue(any(f.level == "ERROR" and "Direction" in f.message
+                                for f in findings))
+
+    def test_finding_paths_stay_root_relative(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/ontologies/sales/_executive-view.md",
+                   EXEC_OK.replace("| down |", "| sideways |"))
+            self.assertTrue(any(f.path.startswith("demo/ontologies")
+                                for f in validate.check_ontology(d)))
+
+    def test_root_and_nested_instances_both_checked(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/people-hr/_executive-view.md",
+                   EXEC_OK.replace("| down |", "| sideways |"))
+            _write(d, "demo/ontologies/sales/_executive-view.md",
+                   EXEC_OK.replace("| down |", "| sideways |"))
+            paths = {f.path.split("/")[0] for f in validate.check_ontology(d)
+                     if f.level == "ERROR"}
+            self.assertEqual(paths, {"ontologies", "demo"})
+
+    def test_clean_nested_instance_is_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write_instance(d, "demo/")
+            self.assertEqual([f for f in validate.check_ontology(d)
+                              if f.level == "ERROR"], [])
+
+
+class TestNestedInstanceCards(unittest.TestCase):
+    def test_nested_skill_package_is_checked(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/skills/x/SKILL.md", SKILL_OK)  # name mismatch: x vs the frontmatter
+            findings = validate.check_owner_cards(d)
+            self.assertTrue(any(f.level == "ERROR" for f in findings))
+
+    def test_clean_nested_instance_is_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write_instance(d, "demo/")
+            self.assertEqual([f for f in validate.check_owner_cards(d)
+                              if f.level == "ERROR"], [])
+
+    def test_ontology_ref_resolves_inside_its_own_instance(self):
+        # demo/ has the ontology; root does not. Instance-relative resolution
+        # must find it.
+        with tempfile.TemporaryDirectory() as d:
+            _write_instance(d, "demo/")
+            self.assertEqual([f for f in validate.check_owner_cards(d)
+                              if f.level == "ERROR"], [])
+
+    def test_a_demo_skill_cannot_borrow_the_engine_ontology(self):
+        # The ontology exists only at the ROOT; the demo skill must not reach it.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/people-hr/_executive-view.md", EXEC_OK)
+            _write(d, "ontologies/people-hr/onboarding-orchestration.md", AUTOMATE_OK)
+            _write(d, "demo/skills/onboarding-orchestration/SKILL.md", SKILL_BASELINED)
+            _write(d, "demo/skills/onboarding-orchestration/owner-card.md", CARD_OK)
+            _write(d, "demo/memory/onboarding-baseline.md", MEM_OK)
+            self.assertTrue(any(f.level == "ERROR" and "ontology" in f.message.lower()
+                                for f in validate.check_owner_cards(d)))
+
+    def test_baseline_resolves_inside_its_own_instance(self):
+        # The baseline exists only at the root; a demo skill citing it must fail.
+        with tempfile.TemporaryDirectory() as d:
+            _write_instance(d, "demo/")
+            os.remove(os.path.join(d, "demo", "memory", "onboarding-baseline.md"))
+            _write(d, "memory/onboarding-baseline.md", MEM_OK)
+            self.assertTrue(any(f.level == "ERROR" and "baseline" in f.message.lower()
+                                for f in validate.check_owner_cards(d)))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1148,10 +1148,19 @@ def check_deep_record(abspath, root):
 
 
 def check_ontology(root, ignore=()):
-    """#5 structural checks over ontologies/<function>/ directories.
-    Honors the same .gitignore patterns as the generic walker."""
+    """#5 structural checks, run for every instance under root (see
+    _instance_roots): the engine root, demo/, your-company/."""
     findings = []
-    base = os.path.join(root, "ontologies")
+    for inst in _instance_roots(root, ignore):
+        findings += _check_ontology_instance(inst, root, ignore)
+    return findings
+
+
+def _check_ontology_instance(inst, root, ignore=()):
+    """#5 structural checks over one instance's ontologies/<function>/
+    directories. Honors the same .gitignore patterns as the generic walker."""
+    findings = []
+    base = os.path.join(inst, "ontologies")
     if not os.path.isdir(base):
         return findings
     for fn in sorted(os.listdir(base)):
@@ -1236,22 +1245,31 @@ def _parse_date(v):
 
 
 def check_owner_cards(root, ignore=()):
-    """#6 checks over skills/<name>/ work packages: required spine, track-2
-    trio, freshness, and the card<->skill<->ontology drift checks. Strictness
-    follows the skill's `provisioned` flag. Honors the same .gitignore
-    patterns as the generic walker."""
+    """#6 checks, run for every instance under root (see _instance_roots):
+    the engine root, demo/, your-company/."""
     findings = []
-    base = os.path.join(root, "skills")
+    for inst in _instance_roots(root, ignore):
+        findings += _check_owner_cards_instance(inst, root, ignore)
+    return findings
+
+
+def _check_owner_cards_instance(inst, root, ignore=()):
+    """#6 checks over one instance's skills/<name>/ work packages: required
+    spine, track-2 trio, freshness, and the card<->skill<->ontology drift
+    checks. Strictness follows the skill's `provisioned` flag. Honors the same
+    .gitignore patterns as the generic walker."""
+    findings = []
+    base = os.path.join(inst, "skills")
     if os.path.islink(base):
         return [Finding(
-            "ERROR", "skills", None,
+            "ERROR", os.path.relpath(base, root), None,
             "skills directory must not be a symlink")]
     if not os.path.isdir(base):
         return findings
     if _ignored("skills", ignore):
         return findings
     today = datetime.date.today()
-    ontologies_root = os.path.realpath(os.path.join(root, "ontologies"))
+    ontologies_root = os.path.realpath(os.path.join(inst, "ontologies"))
     memory_record_realpaths = None
     for name in sorted(os.listdir(base)):
         sdir = os.path.join(base, name)
@@ -1321,8 +1339,8 @@ def check_owner_cards(root, ignore=()):
             else:
                 if memory_record_realpaths is None:
                     memory_record_realpaths = _live_record_realpaths(
-                        _memory_record_files(root))
-                baseline_real = _record_ref_realpath(root, baseline)
+                        _memory_record_files(inst))
+                baseline_real = _record_ref_realpath(inst, baseline)
                 if baseline_real is None or \
                         baseline_real not in memory_record_realpaths:
                     findings.append(Finding(
@@ -1359,7 +1377,7 @@ def check_owner_cards(root, ignore=()):
             else:
                 try:
                     ontology_path = os.path.realpath(
-                        os.path.join(root, ontology_ref))
+                        os.path.join(inst, ontology_ref))
                 except (OSError, ValueError):
                     ontology_path = None
                     findings.append(Finding(
