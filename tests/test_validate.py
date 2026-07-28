@@ -4987,11 +4987,12 @@ class TestNestedInstanceMemory(unittest.TestCase):
     def test_instance_nested_inside_a_memory_tree_resolves_inward(self):
         # Codex r2: the record's instance is the parent of the LAST 'memory'
         # component — memory/company/ is its own instance here, and its chain
-        # must resolve inside it even though a decoy exists at the outer root.
+        # must resolve inside it. No record exists at the outer root, so the
+        # pre-fix root-relative resolution fails this test (Codex r3: with an
+        # outer decoy present it passed both ways and discriminated nothing).
         with tempfile.TemporaryDirectory() as d:
             _write(d, "memory/company/memory/old.md", MEM_SUPERSEDED)
             _write(d, "memory/company/memory/new.md", MEM_OK)
-            _write(d, "memory/new.md", MEM_OK)
             self.assertEqual([f for f in validate.check_memory(d)
                               if f.level == "ERROR"], [])
 
