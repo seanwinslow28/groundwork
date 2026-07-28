@@ -4984,6 +4984,26 @@ class TestNestedInstanceMemory(unittest.TestCase):
             self.assertEqual([f for f in validate.check_memory(d)
                               if f.level == "ERROR"], [])
 
+    def test_instance_nested_inside_a_memory_tree_resolves_inward(self):
+        # Codex r2: the record's instance is the parent of the LAST 'memory'
+        # component — memory/company/ is its own instance here, and its chain
+        # must resolve inside it even though a decoy exists at the outer root.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/company/memory/old.md", MEM_SUPERSEDED)
+            _write(d, "memory/company/memory/new.md", MEM_OK)
+            _write(d, "memory/new.md", MEM_OK)
+            self.assertEqual([f for f in validate.check_memory(d)
+                              if f.level == "ERROR"], [])
+
+    def test_memory_nested_instance_cannot_cite_the_outer_instance(self):
+        # The successor exists only at the OUTER instance; the inner record
+        # must not reach it (Codex r2 blocking edge).
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/company/memory/old.md", MEM_SUPERSEDED)
+            _write(d, "memory/new.md", MEM_OK)
+            self.assertTrue(any(f.level == "ERROR" and "dangling" in f.message
+                                for f in validate.check_memory(d)))
+
     def test_root_ignored_record_is_not_a_valid_baseline(self):
         # Codex review: the baseline allowlist must honor the validated
         # root's ignore set, not reload one from the nested instance.

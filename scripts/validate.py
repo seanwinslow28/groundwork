@@ -1652,9 +1652,15 @@ def check_memory(root):
                 # Slice 2.3a): a demo record's pointer is demo-relative, like
                 # every other instance-relative reference — resolving against
                 # the validated root false-errored a nested chain and silently
-                # accepted a cross-instance pointer.
-                parts = os.path.relpath(abspath, root).replace("\\", "/").split("/")
-                inst_base = os.path.join(root, *parts[:parts.index("memory")])
+                # accepted a cross-instance pointer. The instance is the parent
+                # of the LAST 'memory' component: for an instance nested inside
+                # a memory tree (memory/company/memory/x.md), the first
+                # component would select the outer root and reopen the
+                # cross-instance hole (Codex r2).
+                dparts = os.path.relpath(
+                    os.path.dirname(abspath), root).replace("\\", "/").split("/")
+                mem_idx = len(dparts) - 1 - dparts[::-1].index("memory")
+                inst_base = os.path.join(root, *dparts[:mem_idx])
                 target_real = _record_ref_realpath(inst_base, target)
                 if target_real is None or target_real not in record_realpaths:
                     findings.append(Finding(

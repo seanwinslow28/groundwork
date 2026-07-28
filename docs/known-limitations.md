@@ -141,12 +141,15 @@ Honest limits of the current build. This file grows as the product does (brief �
   `check_memory` discovers every record under the validated root, and an outer skill's
   `baseline:` allowlist is built by the same recursive walk — so a root skill *can*
   cite `demo/memory/...` while the reverse is blocked. Whether that outer→inner
-  direction should also be walled off is an open boundary decision, recorded here so
-  the asymmetry reads as a decision point rather than an oversight.
-- **Instance discovery shares the generic walker's traversal semantics**, including
+  direction should also be walled off is an open boundary decision **requiring
+  maintainer sign-off**, recorded here so the asymmetry reads as a decision point
+  rather than an oversight.
+- **Instance discovery shares the stateless walker's traversal semantics**, including
   its fail-open on unreadable directories: `os.walk` skips a directory it cannot list,
   so an instance beneath an unreadable ancestor is silently not discovered — exactly
-  as the same tree is silently skipped by every file-level scan today.
+  as the same tree is silently skipped by the stateless file-level scans today. The
+  `--diff` working-tree scan is the exception: it converts an unlistable directory
+  into an ERROR and fails closed.
 - **Discovery is by directory name, not by a marker file.** A directory that happens to
   be called `skills/` for unrelated reasons will be treated as an instance's skill
   directory. Renaming it, or adding it to `.gitignore`, is the way out; there is no
