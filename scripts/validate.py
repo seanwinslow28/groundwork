@@ -944,7 +944,17 @@ _EXEC_EMPHASIS = re.compile(r"\*|(?<![0-9A-Za-z])_|_(?![0-9A-Za-z])")
 # every cell a potential link. Rather than enumerate bracket spellings — the
 # whack-a-mole this grammar exists to end — forbid the definition, which makes
 # every bracket provably literal. That is what keeps "Coverage [EMEA]" legal.
-_LINK_REF_DEF = re.compile(r"^ {0,3}\[[^\]]+\]:")
+#
+# Recognizing definitions is CommonMark emulation: they nest in containers
+# ("> [r]: /url", "- [r]: /url"), wrap their labels across lines, and defer
+# their destination to the next line, so a line-anchored regex misses them
+# (Codex review of slice 2.2b). But every definition's label-closing line
+# carries the two-character sequence "]:" — the colon must immediately follow
+# the label — so THAT is the signature banned on every line outside the table.
+# Deliberately over-tight, like the pipe rule: a fenced example or a
+# destinationless "[r]:" line is rejected too, the latter because a definition
+# may put its destination on the following line.
+_LINK_REF_SIG = "]:"
 
 
 def _is_plain_text(cell):
@@ -995,12 +1005,13 @@ def parse_exec_table(text, path="<unknown>"):
     rows, findings = [], []
     lines = text.split("\n")
     for i, ln in enumerate(lines):
-        if _LINK_REF_DEF.match(ln):
+        if _LINK_REF_SIG in ln and "|" not in ln:
             findings.append(Finding(
                 "ERROR", path, i + 1,
                 "an executive view carries no link reference definition — it would make "
-                "every bracketed cell a potential link; write the one Deep record link "
-                "inline instead (#5 canonical form)"))
+                "every bracketed cell a potential link, and ']:' outside the table is "
+                "its signature; write the one Deep record link inline instead "
+                "(#5 canonical form)"))
     if findings:
         return rows, findings
     pipe_lines = [i for i, ln in enumerate(lines) if "|" in ln]

@@ -55,7 +55,9 @@ has to resolve from the file it is written in.
   characters it is spelled with: `Coverage [EMEA]` and `SOC_2 compliance` are fine,
   while a link, an image, or `**Coverage**` is not. Square brackets stay literal
   because the file may not contain a link reference definition (a `[label]: url`
-  line) — without one, no bracketed span can resolve to a link.
+  line) — without one, no bracketed span can resolve to a link. Enforced by its
+  signature: no line outside the table may carry `]:`, since a definition's colon
+  immediately follows its label wherever the definition sits or wraps.
 - The Deep record cell is either exactly `—` (an em dash — not a hyphen, not an en
   dash, not blank) or exactly one link.
 - The file contains **one** such table and no other line carrying a `|`.
@@ -73,6 +75,8 @@ for a B2B SaaS company, not claims about yours. The activity lists and Direction
 meant to be edited, cut, and argued with. A generated company's real ontology lives in
 its own private repository (see `AGENTS.md`, "Two repos").
 
-`people-hr/` is worked one level deeper than the rest: it carries the
-`onboarding-orchestration` deep record that the skill, Owner's Card, memory baseline,
-and constitution rule are all built on. Read it as the reference shape.
+Four functions are worked deeper than the rest: `people-hr/`, `customer-success/`,
+and `product/` each carry a deep record that a skill, Owner's Card, and memory
+baseline are built on, and `engineering/` carries a `Motion: hire` record — a
+deliberate decision not to automate. `people-hr/` remains the reference shape: it is
+the one whose record a constitution rule is also built on.

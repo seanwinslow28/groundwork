@@ -11,8 +11,9 @@ points here too. Edit **this** file — the others are pointers.
 ## Status — what is real today
 
 The design is fully charted (19 resolved decisions; see `CONTEXT.md`). Phase 1 is
-complete: the schema exists as files, two functions are worked end to end — one on
-each governance track — and the validator gates every layer of it.
+complete and Phase 2.2 extends it: the schema exists as files, three functions are
+worked end to end across both governance tracks, one function records a deliberate
+non-automation verdict, and the validator gates every layer of it.
 
 **Built and working:**
 
@@ -85,7 +86,7 @@ what should be automated, and under what rules — and generates your operating 
 from that map into a separate private repository.
 
 **That generator does not exist yet.** Today this repo is the proven schema, the
-validator, and two worked functions. Anything describing the interview as usable is
+validator, and three worked functions. Anything describing the interview as usable is
 wrong.
 
 ## Two repos

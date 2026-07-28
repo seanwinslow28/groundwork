@@ -518,6 +518,43 @@ class TestCanonicalExecTable(unittest.TestCase):
             "See the note [below]. Ratio 3:1 applies.\n\n" + EXEC_CANON)
         self.assertEqual(findings, [])
 
+    # --- Codex review of slice 2.2b: a line-anchored regex missed definitions
+    # wrapped in a container block or across lines. Each was ACCEPTED before
+    # the signature rule; every definition's label-closing line carries "]:",
+    # whatever wraps it, so THAT is what gets banned outside the table. ---
+
+    def test_blockquoted_link_reference_definition_is_rejected(self):
+        _rows, findings = self._parse("> [r]: https://example.com\n\n" + EXEC_CANON)
+        self.assertTrue(any(f.level == "ERROR" and "link reference definition"
+                            in f.message for f in findings))
+
+    def test_list_item_link_reference_definition_is_rejected(self):
+        _rows, findings = self._parse("- [r]: https://example.com\n\n" + EXEC_CANON)
+        self.assertTrue(any(f.level == "ERROR" and "link reference definition"
+                            in f.message for f in findings))
+
+    def test_wrapped_label_link_reference_definition_is_rejected(self):
+        # A label may wrap across lines; the line that CLOSES it carries "]:".
+        _rows, findings = self._parse("[foo\nbar]: https://example.com\n\n" + EXEC_CANON)
+        self.assertTrue(any(f.level == "ERROR" and "link reference definition"
+                            in f.message for f in findings))
+
+    def test_two_line_definition_is_rejected(self):
+        # "[r]:" alone is a definition when its destination sits on the next
+        # line — which is why a destinationless "[r]:" line stays banned.
+        _rows, findings = self._parse("[r]:\nhttps://example.com\n\n" + EXEC_CANON)
+        self.assertTrue(any(f.level == "ERROR" and "link reference definition"
+                            in f.message for f in findings))
+
+    def test_bracket_colon_inside_a_cell_still_parses(self):
+        # The signature rule binds lines OUTSIDE the table; a cell stays
+        # governed by the cell rules, so "]:"-bearing names are not collateral.
+        rows, findings = self._parse(
+            EXEC_CANON.replace("| Discovery calls | up | — |",
+                               "| Coverage [EMEA]: north | up | — |"))
+        self.assertEqual(findings, [])
+        self.assertEqual(rows[0][0], "Coverage [EMEA]: north")
+
 
 EXEC_OK = (
     "# People/HR — executive view\n\n"
