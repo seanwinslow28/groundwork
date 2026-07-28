@@ -30,10 +30,10 @@ non-automation verdict, and the validator gates every layer of it.
   action-class hook set, and the append-only changelog.
 - `memory/` — the org-memory record schema with three captured baselines and an index.
 - `proposals/` — the consent-gate convention for agent-proposed changes.
-- `demo/` — the pre-installed example company (**Umbercress**). Its canon declares the
-  fictional world and doubles as the validator's identifier allowlist. The company's
-  ontologies, skills, governance, and the 15-minute walkthrough are still being filled
-  in — `demo/README.md` says what is there today.
+- `demo/` — the pre-installed example company (**Umbercress**, ~20 people). Its canon
+  declares the fictional world and doubles as the validator's identifier allowlist; its
+  ontologies and org memory are complete. Skills, constitution, and the 15-minute
+  walkthrough are still being filled in — `demo/README.md` says what is there today.
 
 **Not built yet — do not describe these as working:**
 
