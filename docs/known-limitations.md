@@ -177,7 +177,11 @@ Honest limits of the current build. This file grows as the product does (brief �
   scheme is only recognized when it ends in one of a curated list of public suffixes.
   That is what stops `canon.md` and `validate.py` reading as domains, and it means a
   real domain on an unlisted suffix would pass. Emails and `http(s)://` URLs are matched
-  regardless of suffix.
+  regardless of suffix. The same curated posture applies to the canon's own entries: a
+  declared domain is rejected when it is a bare TLD or one of a curated list of
+  multi-label public suffixes (`co.uk` and kin), not checked against the full Public
+  Suffix List — an unlisted suffix (`com.sg`, say) could still be declared, so the
+  canon's `domains:` list is maintainer-reviewed like the rest of the file.
 - **The check is scoped by directory name.** Anything under a directory named `demo` is
   in scope; `your-company/` never is, by design — its identifiers are real and
   legitimate (#16's scope matrix). Running the validator with a demo directory *as* the
