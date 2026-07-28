@@ -5095,6 +5095,81 @@ class TestSyntheticIdentifiers(unittest.TestCase):
             self.assertTrue(any(f.level == "ERROR" and "8.8.8.8" in f.message
                                 for f in validate.check_synthetic_identifiers(d)))
 
+    def test_uppercase_url_host_errors(self):
+        # Codex r1: the URL scheme was matched lowercase-only, so
+        # 'HTTPS://ACME.COM' evaded the extractor entirely.
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "See HTTPS://ACME.COM/STATUS for detail.\n")
+            self.assertTrue(any(f.level == "ERROR" and "ACME.COM" in f.message
+                                for f in validate.check_synthetic_identifiers(d)))
+
+    def test_uppercase_bare_domain_errors(self):
+        # Codex r1: the bare-domain TLD alternation was lowercase-only.
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "Their site is ACME.COM and it is slow.\n")
+            self.assertTrue(any(f.level == "ERROR" and "ACME.COM" in f.message
+                                for f in validate.check_synthetic_identifiers(d)))
+
+    def test_seven_digit_real_phone_errors(self):
+        # Codex r1: only 10-digit NANP forms were extracted, so 'Call 867-5309'
+        # passed despite being outside the fiction range.
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "Call 867-5309 for support.\n")
+            self.assertTrue(any(f.level == "ERROR" and "867-5309" in f.message
+                                for f in validate.check_synthetic_identifiers(d)))
+
+    def test_fiction_phone_test_is_not_vacuous(self):
+        # Codex r1: 555-0142 was never extracted, so the fiction-phone test
+        # passed vacuously. This pair is the discriminator: same 7-digit shape,
+        # one inside the range (no finding), one outside (finding).
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "Call 555-0142 or, after hours, 555-9142.\n")
+            findings = validate.check_synthetic_identifiers(d)
+            self.assertTrue(any(f.level == "ERROR" and "555-9142" in f.message
+                                for f in findings))
+            self.assertEqual([f for f in findings if "555-0142" in f.message], [])
+
+    def test_demo_inside_your_company_is_not_scoped(self):
+        # Codex r1: the #16 scope matrix says NEVER your-company/ — including a
+        # directory it happens to call demo.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "your-company/demo/notes.md",
+                   "ceo@acme-logistics.com 8.8.8.8\n")
+            self.assertEqual(validate.check_synthetic_identifiers(d), [])
+
+    def test_bare_tld_canon_entry_errors_and_is_not_an_allowance(self):
+        # Codex r1: 'domains: com' must not turn every .com host into a
+        # subdomain of the canon (nor may a leading-dot '.com' entry).
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "Ask ceo@real-company.com about it.\n",
+                       canon=CANON_OK.replace("domains:\n  - umbercress.example",
+                                              "domains:\n  - com"))
+            findings = validate.check_synthetic_identifiers(d)
+            self.assertTrue(any(f.level == "ERROR" and "canon" in f.path
+                                for f in findings))
+            self.assertTrue(any(f.level == "ERROR" and "real-company.com" in f.message
+                                for f in findings))
+
+    def test_testnet_ip_as_url_host_passes(self):
+        # Codex r1: a TEST-NET IP used as a URL host was rejected as an
+        # undeclared 'domain' before the IPv4 rule could bless it.
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "The console is at https://192.0.2.14/status today.\n")
+            self.assertEqual(validate.check_synthetic_identifiers(d), [])
+
+    def test_real_ip_as_url_host_still_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "The console is at https://8.8.8.8/status today.\n")
+            self.assertTrue(any(f.level == "ERROR" and "8.8.8.8" in f.message
+                                for f in validate.check_synthetic_identifiers(d)))
+
+    def test_localhost_apex_passes(self):
+        # Codex r1: only '.localhost' subdomains passed; the reserved apex
+        # 'localhost' itself was rejected.
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "Point it at http://localhost/relay for local runs.\n")
+            self.assertEqual(validate.check_synthetic_identifiers(d), [])
+
     def test_longer_dotted_chain_is_not_carved_into_an_ip(self):
         # Regression for the in-session _IPV4 fix: the plan's lookahead
         # (?![\d.]) missed a sentence-final IP ('… at 8.8.8.8.'), so it was

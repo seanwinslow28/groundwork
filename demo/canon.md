@@ -24,8 +24,9 @@ no subsidiaries, and about 60 paying customers on annual contracts.
 
 Its size is the point. A 20-person company has a fractional CFO and a bookkeeper
 rather than a finance department, one person doing all of People operations, and three
-people in customer success — which is why the demo's ontology goes deep on customer
-success, product, and People/HR, and stays deliberately shallow elsewhere.
+people in customer success — which is why the demo's ontology, as it lands in the
+coming slices, goes deep on customer success, product, and People/HR, and stays
+deliberately shallow elsewhere.
 
 ## Identifiers
 

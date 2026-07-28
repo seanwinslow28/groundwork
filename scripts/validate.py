@@ -2423,6 +2423,9 @@ def _check_changelog_instance(inst, root, ignore=()):
 
 # Namespaces reserved for documentation and fiction — safe anywhere.
 RESERVED_TLDS = (".example", ".test", ".invalid", ".localhost")
+# The apex names themselves are equally reserved: http://localhost/ must pass
+# even though it has no dot to suffix-match on (Codex r1).
+_RESERVED_APEXES = tuple(t.lstrip(".") for t in RESERVED_TLDS)
 RESERVED_DOMAINS = ("example.com", "example.net", "example.org")
 # RFC 5737 TEST-NET-1/2/3.
 TESTNET_PREFIXES = ("192.0.2.", "198.51.100.", "203.0.113.")
@@ -2434,12 +2437,21 @@ PUBLIC_TLDS = ("com", "net", "org", "io", "co", "ai", "dev", "app", "cloud",
                "xyz", "me", "us", "uk", "ca", "de", "fr", "jp", "in", "tech",
                "info", "biz", "sh", "gg", "so", "to")
 
-_EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,})")
-_URL_HOST = re.compile(r"https?://(?:[^/@\s]*@)?([A-Za-z0-9.-]+)")
+# All three host extractors are case-insensitive (Codex r1): 'HTTPS://ACME.COM'
+# and bare 'ACME.COM' are the same identifiers as their lowercase spellings.
+_EMAIL = re.compile(
+    r"[A-Za-z0-9._%+-]+@([A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,})", re.IGNORECASE)
+_URL_HOST = re.compile(
+    r"https?://(?:[^/@\s]*@)?([A-Za-z0-9.-]+)", re.IGNORECASE)
 _BARE_DOMAIN = re.compile(
     r"(?<![A-Za-z0-9@._-])((?:[A-Za-z0-9-]+\.)+(?:%s))(?![A-Za-z0-9-])"
-    % "|".join(PUBLIC_TLDS))
-_PHONE = re.compile(r"(?<!\d)(?:\+?1[-. ]?)?\(?([2-9]\d{2})\)?[-. ]?(\d{3})[-. ]?(\d{4})(?!\d)")
+    % "|".join(PUBLIC_TLDS), re.IGNORECASE)
+# NANP shapes, 10-digit and 7-digit, in one pass (one pass so '415-555-2671'
+# yields one match, not a 10-digit match plus its own 7-digit tail). The
+# 7-digit form is what the canon itself writes ('555-01xx'), and missing it
+# made the fiction-phone test vacuous (Codex r1).
+_PHONE = re.compile(
+    r"(?<!\d)(?:\+?1[-. ]?)?(?:\(?([2-9]\d{2})\)?[-. ])?([2-9]\d{2})[-. ]?(\d{4})(?!\d)")
 # The lookahead tolerates a sentence-final period ('… at 8.8.8.8.') while
 # still refusing to carve four octets out of a longer dotted chain (1.2.3.4.5).
 _IPV4 = re.compile(r"(?<![\d.])((?:\d{1,3}\.){3}\d{1,3})(?!\.?\d)")
@@ -2452,10 +2464,10 @@ def _domain_allowed(host, allowed):
     host = host.strip().rstrip(".").lower()
     if not host:
         return True
-    if host.endswith(RESERVED_TLDS):
+    if host.endswith(RESERVED_TLDS) or host in _RESERVED_APEXES:
         return True
     for d in tuple(allowed) + RESERVED_DOMAINS:
-        d = d.strip().lower().rstrip(".")
+        d = d.strip().lower().strip(".")
         if d and (host == d or host.endswith("." + d)):
             return True
     return False
@@ -2473,8 +2485,14 @@ def check_synthetic_identifiers(root, ignore=()):
     apart; that layer rests on the canon plus maintainer review, and is recorded
     as a Known Limitation."""
     findings = []
-    demo_files = [p for p in iter_files(root, ignore)
-                  if "demo" in os.path.relpath(p, root).replace(os.sep, "/").split("/")[:-1]]
+    demo_files = []
+    for p in iter_files(root, ignore):
+        dirs = os.path.relpath(p, root).replace(os.sep, "/").split("/")[:-1]
+        # #16's scope matrix: in scope under a directory named demo, EXCEPT
+        # anywhere under your-company/ — its identifiers are real by design,
+        # even in a directory it happens to call demo (Codex r1).
+        if "demo" in dirs and "your-company" not in dirs:
+            demo_files.append(p)
     if not demo_files:
         return findings
 
@@ -2493,8 +2511,21 @@ def check_synthetic_identifiers(root, ignore=()):
         v = data.get(key)
         if _blank(v):
             continue
-        allowed += [x for x in (v if isinstance(v, list) else [v])
-                    if isinstance(x, str) and x.strip()]
+        for x in (v if isinstance(v, list) else [v]):
+            if not isinstance(x, str) or not x.strip():
+                continue
+            entry = x.strip().strip(".")
+            if "." not in entry:
+                # 'domains: com' (or '.com') would make every host under that
+                # TLD a 'subdomain' of the canon — a bare TLD is a hole in the
+                # allowlist, not an allowance (Codex r1).
+                findings.append(Finding(
+                    "ERROR", os.path.join("demo", "canon.md"), None,
+                    "canon %s entry %r is not a registrable domain — a bare "
+                    "TLD would allow every host under it (#16)"
+                    % (key, x.strip())))
+                continue
+            allowed.append(entry)
     prefix = data.get("phone_range")
     phone_prefix = prefix.strip() if isinstance(prefix, str) and prefix.strip() else "555-01"
 
@@ -2508,14 +2539,18 @@ def check_synthetic_identifiers(root, ignore=()):
             hosts = set(_EMAIL.findall(line)) | set(_URL_HOST.findall(line)) \
                 | {m.group(1) for m in _BARE_DOMAIN.finditer(line)}
             for host in sorted(hosts):
+                if re.fullmatch(r"(?:\d{1,3}\.){3}\d{1,3}", host):
+                    continue  # an IP used as a URL host; the IPv4 rule below
+                              # owns it — TEST-NET must pass here (Codex r1)
                 if not _domain_allowed(host, allowed):
                     findings.append(Finding(
                         "ERROR", rel, lineno,
                         "identifier %r is not in the demo canon or a reserved-for-"
                         "fiction namespace (#16)" % host))
-            for exch, mid, last in _PHONE.findall(line):
-                number = "%s-%s-%s" % (exch, mid, last)
-                if not ("%s-%s" % (mid, last)).startswith(phone_prefix):
+            for area, exch, last in _PHONE.findall(line):
+                digits = "%s-%s" % (exch, last)
+                number = "%s-%s" % (area, digits) if area else digits
+                if not digits.startswith(phone_prefix):
                     findings.append(Finding(
                         "ERROR", rel, lineno,
                         "phone number %r is outside the %sxx range reserved for "

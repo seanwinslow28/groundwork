@@ -187,3 +187,8 @@ Honest limits of the current build. This file grows as the product does (brief Â
 - **A four-number dotted string is treated as an IP address.** A version string like
   `10.4.2.1` in demo prose would be flagged. Failing toward a false positive is the
   intended direction here.
+- **Phone detection is NANP-shaped.** The extractor recognizes 10-digit and
+  separator-written 7-digit North American forms; an international number
+  (`+44 20 7123 4567`) is not extracted and therefore not checked. The same
+  false-positive bias applies in the other direction: a 7-digit range written like
+  `555-2026` in prose would be flagged as a phone number outside the fiction range.
