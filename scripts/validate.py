@@ -1339,7 +1339,7 @@ def _check_owner_cards_instance(inst, root, ignore=()):
             else:
                 if memory_record_realpaths is None:
                     memory_record_realpaths = _live_record_realpaths(
-                        _memory_record_files(inst))
+                        _memory_record_files(inst, ignore))
                 baseline_real = _record_ref_realpath(inst, baseline)
                 if baseline_real is None or \
                         baseline_real not in memory_record_realpaths:
@@ -1540,9 +1540,16 @@ def _check_owner_cards_instance(inst, root, ignore=()):
     return findings
 
 
-def _memory_record_files(root):
+def _memory_record_files(root, ignore=None):
+    """ignore=None loads root's own .gitignore (the validated-root case).
+    Instance-scoped callers must pass the validated root's ignore set — a
+    nested instance has no .gitignore of its own, and reloading from it would
+    let a root-ignored record satisfy the provisioning gate (Codex review of
+    Slice 2.3a)."""
+    if ignore is None:
+        ignore = load_gitignore(root)
     out = []
-    for abspath in iter_files(root, load_gitignore(root)):
+    for abspath in iter_files(root, ignore):
         rel = os.path.relpath(abspath, root).replace("\\", "/")
         parts = rel.split("/")
         if "memory" in parts and abspath.endswith(".md") \
@@ -1641,7 +1648,14 @@ def check_memory(root):
             if not isinstance(target, str):
                 findings.append(Finding("ERROR", rel, None, "'superseded_by' must be a single value"))
             else:
-                target_real = _record_ref_realpath(root, target)
+                # Resolve inside the record's own instance (Codex review of
+                # Slice 2.3a): a demo record's pointer is demo-relative, like
+                # every other instance-relative reference — resolving against
+                # the validated root false-errored a nested chain and silently
+                # accepted a cross-instance pointer.
+                parts = os.path.relpath(abspath, root).replace("\\", "/").split("/")
+                inst_base = os.path.join(root, *parts[:parts.index("memory")])
+                target_real = _record_ref_realpath(inst_base, target)
                 if target_real is None or target_real not in record_realpaths:
                     findings.append(Finding(
                         "ERROR", rel, None,
@@ -2156,8 +2170,8 @@ CONTENT_DIRS = ("ontologies", "skills", "governance", "proposals", "memory")
 def _instance_roots(root, ignore=()):
     """Every directory holding groundwork content: the validated root itself, if
     it carries one of the well-known content directories, plus any directory
-    beneath it that does. Absolute paths, root first, then depth-then-name order
-    so output is deterministic.
+    beneath it that does. Paths are prefixed by `root` as given; walk order
+    (root first, children depth-first in name order) so output is deterministic.
 
     Why this exists: check_memory has always discovered `memory/` folders
     anywhere under root, but every other structural check started at
@@ -2167,14 +2181,21 @@ def _instance_roots(root, ignore=()):
     a demo skill's `ontology:`/`baseline:` resolve inside demo/, exactly as a
     company repo's resolve inside that repo (#10)."""
     roots = []
-    for dirpath, dirnames, _filenames in os.walk(root):
+    for dirpath, dirnames, filenames in os.walk(root):
         rel_dir = os.path.relpath(dirpath, root)
         dirnames[:] = sorted(
             d for d in dirnames
             if d not in SKIP_DIRS and not d.startswith(".")
             and os.path.normpath(os.path.join(rel_dir, d)) not in SKIP_RELPATHS
             and not _ignored(d, ignore))
-        if any(d in CONTENT_DIRS for d in dirnames):
+        # A symlink named as a content dir lands in filenames (dangling or
+        # file-target), not dirnames. It must still mark an instance, or the
+        # per-check symlink ERRORs ("skills directory must not be a symlink")
+        # would be silently skipped (Codex review of Slice 2.3a).
+        if any(d in CONTENT_DIRS for d in dirnames) or any(
+                f in CONTENT_DIRS and not _ignored(f, ignore)
+                and os.path.islink(os.path.join(dirpath, f))
+                for f in filenames):
             roots.append(dirpath)
     return roots
 

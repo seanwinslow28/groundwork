@@ -133,10 +133,20 @@ Honest limits of the current build. This file grows as the product does (brief �
   `demo/`, and so is a `your-company/` checkout. Structural checks run once per
   instance, and findings are still reported relative to the validated root.
 - **References resolve inside their own instance.** A skill's `ontology:` and
-  `baseline:`, a proposal's `target:`, and a changelog's skill path are all relative to
-  the instance that contains them — matching a company repo, where those paths are
-  relative to the repo root (#10). A nested instance therefore cannot reference the
-  engine's exemplars by climbing out of itself.
+  `baseline:`, a proposal's `target:`, a changelog's skill path, and a memory record's
+  `superseded_by` are all relative to the instance that contains them — matching a
+  company repo, where those paths are relative to the repo root (#10). A nested
+  instance therefore cannot reference the engine's exemplars by climbing out of itself.
+- **An outer instance currently subsumes the memory of instances nested inside it.**
+  `check_memory` discovers every record under the validated root, and an outer skill's
+  `baseline:` allowlist is built by the same recursive walk — so a root skill *can*
+  cite `demo/memory/...` while the reverse is blocked. Whether that outer→inner
+  direction should also be walled off is an open boundary decision, recorded here so
+  the asymmetry reads as a decision point rather than an oversight.
+- **Instance discovery shares the generic walker's traversal semantics**, including
+  its fail-open on unreadable directories: `os.walk` skips a directory it cannot list,
+  so an instance beneath an unreadable ancestor is silently not discovered — exactly
+  as the same tree is silently skipped by every file-level scan today.
 - **Discovery is by directory name, not by a marker file.** A directory that happens to
   be called `skills/` for unrelated reasons will be treated as an instance's skill
   directory. Renaming it, or adding it to `.gitignore`, is the way out; there is no

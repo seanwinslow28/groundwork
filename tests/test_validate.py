@@ -4793,8 +4793,11 @@ class TestInstanceRoots(unittest.TestCase):
             _write(d, "skills/x/SKILL.md", SKILL_OK)
             _write(d, "zeta/skills/x/SKILL.md", SKILL_OK)
             _write(d, "alpha/skills/x/SKILL.md", SKILL_OK)
-            self.assertEqual(self._rel(d, validate._instance_roots(d))[0], ".")
-            self.assertEqual(validate._instance_roots(d), validate._instance_roots(d))
+            roots = validate._instance_roots(d)
+            # unsorted: the actual walk order is root first, then name order
+            self.assertEqual([os.path.relpath(r, d) for r in roots],
+                             [".", "alpha", "zeta"])
+            self.assertEqual(roots, validate._instance_roots(d))
 
 
 # SKILL_OK carries no `baseline:` (the provisioning-gate tests add it); a clean
@@ -4947,6 +4950,96 @@ class TestNestedInstanceGovernance(unittest.TestCase):
                    "# c\n\n## Entries\n\n- bad demo entry\n")
             tops = {f.path.split("/")[0] for f in validate.check_changelog(d)}
             self.assertEqual(tops, {"governance", "demo"})
+
+
+MEM_SUPERSEDED = MEM_OK.replace(
+    "provenance: observed",
+    "provenance: superseded\nsuperseded_by: memory/new.md\ninvalid_at: 2026-07-01")
+
+
+class TestNestedInstanceMemory(unittest.TestCase):
+    # Codex review of this slice: `superseded_by` resolved against the
+    # validated root, so a nested chain false-errored and a cross-instance
+    # pointer was silently accepted.
+    def test_nested_supersession_resolves_in_its_instance(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/memory/old.md", MEM_SUPERSEDED)
+            _write(d, "demo/memory/new.md", MEM_OK)
+            self.assertEqual([f for f in validate.check_memory(d)
+                              if f.level == "ERROR"], [])
+
+    def test_supersession_cannot_cross_out_of_its_instance(self):
+        # The successor exists only at the ROOT; the demo record must not
+        # reach it.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/memory/old.md", MEM_SUPERSEDED)
+            _write(d, "memory/new.md", MEM_OK)
+            self.assertTrue(any(f.level == "ERROR" and "dangling" in f.message
+                                for f in validate.check_memory(d)))
+
+    def test_root_supersession_still_resolves_at_root(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/old.md", MEM_SUPERSEDED)
+            _write(d, "memory/new.md", MEM_OK)
+            self.assertEqual([f for f in validate.check_memory(d)
+                              if f.level == "ERROR"], [])
+
+    def test_root_ignored_record_is_not_a_valid_baseline(self):
+        # Codex review: the baseline allowlist must honor the validated
+        # root's ignore set, not reload one from the nested instance.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/ontologies/people-hr/onboarding-orchestration.md",
+                   AUTOMATE_OK)
+            _write(d, "demo/skills/onboarding-orchestration/SKILL.md",
+                   SKILL_OK.replace(
+                       "provisioned: yes",
+                       "provisioned: yes\nbaseline: memory/secret-baseline.md"))
+            _write(d, "demo/skills/onboarding-orchestration/owner-card.md",
+                   CARD_OK)
+            _write(d, "demo/memory/secret-baseline.md", MEM_OK)
+            errs = [f for f in validate.check_owner_cards(d, ("secret*",))
+                    if f.level == "ERROR" and "baseline" in f.message]
+            self.assertTrue(errs)
+
+
+class TestInstanceRootsSymlinkMarkers(unittest.TestCase):
+    # Codex review: a dangling `skills` symlink stopped marking an instance,
+    # silently dropping the pre-existing "must not be a symlink" ERROR.
+    def test_dangling_content_symlink_still_marks_an_instance(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.symlink(os.path.join(d, "nonexistent"), os.path.join(d, "skills"))
+            self.assertEqual(validate._instance_roots(d), [d])
+
+    def test_dangling_skills_symlink_still_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.symlink(os.path.join(d, "nonexistent"), os.path.join(d, "skills"))
+            self.assertTrue(any(f.level == "ERROR" and "symlink" in f.message
+                                for f in validate.check_owner_cards(d)))
+
+    def test_nested_dangling_skills_symlink_errors_with_nested_path(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "demo"))
+            os.symlink(os.path.join(d, "nonexistent"),
+                       os.path.join(d, "demo", "skills"))
+            findings = validate.check_owner_cards(d)
+            self.assertTrue(any(f.level == "ERROR" and f.path == "demo/skills"
+                                for f in findings))
+
+    def test_file_symlink_named_as_content_dir_marks_an_instance(self):
+        with tempfile.TemporaryDirectory() as d:
+            target = _write(d, "somefile.md", "# x\n")
+            os.symlink(target, os.path.join(d, "skills"))
+            self.assertEqual(validate._instance_roots(d), [d])
+
+    def test_plain_file_named_as_content_dir_is_not_a_marker(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "skills", "# just a file\n")
+            self.assertEqual(validate._instance_roots(d), [])
+
+    def test_ignored_symlink_marker_is_skipped(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.symlink(os.path.join(d, "nonexistent"), os.path.join(d, "skills"))
+            self.assertEqual(validate._instance_roots(d, ("skills",)), [])
 
 
 if __name__ == "__main__":
