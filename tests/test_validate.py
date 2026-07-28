@@ -5023,6 +5023,48 @@ class TestNestedInstanceMemory(unittest.TestCase):
             self.assertTrue(errs)
 
 
+class TestMemoryInstanceOwnership(unittest.TestCase):
+    def test_root_skill_cannot_borrow_a_nested_instance_baseline(self):
+        # The asymmetry Slice 2.3a left open: containment held inward and
+        # leaked outward, so an engine exemplar could take its baseline from
+        # the demo company's numbers.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/people-hr/_executive-view.md", EXEC_OK)
+            _write(d, "ontologies/people-hr/onboarding-orchestration.md", AUTOMATE_OK)
+            _write(d, "skills/onboarding-orchestration/SKILL.md",
+                   SKILL_BASELINED.replace("baseline: memory/onboarding-baseline.md",
+                                           "baseline: demo/memory/onboarding-baseline.md"))
+            _write(d, "skills/onboarding-orchestration/owner-card.md", CARD_OK)
+            _write(d, "demo/memory/onboarding-baseline.md", MEM_OK)
+            self.assertTrue(any(f.level == "ERROR" and "baseline" in f.message.lower()
+                                for f in validate.check_owner_cards(d)))
+
+    def test_own_instance_baseline_still_resolves(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write_instance(d)
+            self.assertEqual([f for f in validate.check_owner_cards(d)
+                              if f.level == "ERROR"], [])
+
+    def test_nested_instance_baseline_still_resolves(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write_instance(d, "demo/")
+            self.assertEqual([f for f in validate.check_owner_cards(d)
+                              if f.level == "ERROR"], [])
+
+    def test_memory_instance_base_picks_the_last_memory_component(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "memory", "company", "memory", "x.md")
+            self.assertEqual(
+                os.path.realpath(validate._memory_instance_base(d, p)),
+                os.path.realpath(os.path.join(d, "memory", "company")))
+
+    def test_memory_instance_base_at_root(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "memory", "x.md")
+            self.assertEqual(os.path.realpath(validate._memory_instance_base(d, p)),
+                             os.path.realpath(d))
+
+
 class TestInstanceRootsSymlinkMarkers(unittest.TestCase):
     # Codex review: a dangling `skills` symlink stopped marking an instance,
     # silently dropping the pre-existing "must not be a symlink" ERROR.

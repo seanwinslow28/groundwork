@@ -1338,8 +1338,11 @@ def _check_owner_cards_instance(inst, root, ignore=()):
                                         "skill baseline must be a single value"))
             else:
                 if memory_record_realpaths is None:
+                    inst_real = os.path.realpath(inst)
                     memory_record_realpaths = _live_record_realpaths(
-                        _memory_record_files(inst, ignore))
+                        [p for p in _memory_record_files(inst, ignore)
+                         if os.path.realpath(_memory_instance_base(inst, p))
+                         == inst_real])
                 baseline_real = _record_ref_realpath(inst, baseline)
                 if baseline_real is None or \
                         baseline_real not in memory_record_realpaths:
@@ -1558,6 +1561,23 @@ def _memory_record_files(root, ignore=None):
     return out
 
 
+def _memory_instance_base(base, abspath):
+    """The instance a memory record belongs to: the parent of the LAST 'memory'
+    component in its path. A record under demo/memory/ belongs to demo/; one
+    under memory/company/memory/ belongs to memory/company/ — taking the FIRST
+    component would select the outer root and reopen cross-instance resolution
+    (Codex r2 of Slice 2.3a). `base` is the directory `abspath` is relative to.
+
+    One rule, one home: check_memory resolves `superseded_by` with it, and
+    check_owner_cards scopes the baseline allowlist with it. Both consumers
+    agreeing is what makes 'a record belongs to exactly one instance' true
+    rather than merely intended."""
+    dparts = os.path.relpath(
+        os.path.dirname(abspath), base).replace("\\", "/").split("/")
+    mem_idx = len(dparts) - 1 - dparts[::-1].index("memory")
+    return os.path.join(base, *dparts[:mem_idx])
+
+
 def _record_ref_realpath(root, ref):
     """Resolve a memory-record reference. None if the literal path is absolute
     or escapes the repo root (the schema says repo-relative), or unresolvable.
@@ -1657,10 +1677,7 @@ def check_memory(root):
                 # a memory tree (memory/company/memory/x.md), the first
                 # component would select the outer root and reopen the
                 # cross-instance hole (Codex r2).
-                dparts = os.path.relpath(
-                    os.path.dirname(abspath), root).replace("\\", "/").split("/")
-                mem_idx = len(dparts) - 1 - dparts[::-1].index("memory")
-                inst_base = os.path.join(root, *dparts[:mem_idx])
+                inst_base = _memory_instance_base(root, abspath)
                 target_real = _record_ref_realpath(inst_base, target)
                 if target_real is None or target_real not in record_realpaths:
                     findings.append(Finding(
