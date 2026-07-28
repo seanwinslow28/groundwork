@@ -4736,5 +4736,332 @@ class TestAbsoluteImportMessage(unittest.TestCase):
             self.assertFalse(any("drifted" in f.message for f in findings))
 
 
+class TestInstanceRoots(unittest.TestCase):
+    def _rel(self, d, roots):
+        return sorted(os.path.relpath(r, d) for r in roots)
+
+    def test_root_with_content_is_an_instance(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/people-hr/_executive-view.md", EXEC_OK)
+            self.assertEqual(self._rel(d, validate._instance_roots(d)), ["."])
+
+    def test_nested_instance_is_discovered(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/people-hr/_executive-view.md", EXEC_OK)
+            _write(d, "demo/ontologies/sales/_executive-view.md", EXEC_OK)
+            self.assertEqual(self._rel(d, validate._instance_roots(d)), [".", "demo"])
+
+    def test_instance_without_root_content(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/skills/x/SKILL.md", SKILL_OK)
+            self.assertEqual(self._rel(d, validate._instance_roots(d)), ["demo"])
+
+    def test_every_content_dir_marks_an_instance(self):
+        for cd, rel in (("ontologies", "ontologies/f/_executive-view.md"),
+                        ("skills", "skills/x/SKILL.md"),
+                        ("governance", "governance/constitution/r.md"),
+                        ("proposals", "proposals/p.md"),
+                        ("memory", "memory/m.md")):
+            with tempfile.TemporaryDirectory() as d:
+                _write(d, "demo/" + rel, "# x\n")
+                self.assertIn("demo", self._rel(d, validate._instance_roots(d)), cd)
+
+    def test_no_content_means_no_instance(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "README.md", "# x\n")
+            self.assertEqual(validate._instance_roots(d), [])
+
+    def test_workbench_and_dot_dirs_are_skipped(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "tests/fixtures/ontologies/f/_executive-view.md", EXEC_OK)
+            _write(d, "docs/superpowers/ontologies/f/_executive-view.md", EXEC_OK)
+            _write(d, ".hidden/ontologies/f/_executive-view.md", EXEC_OK)
+            self.assertEqual(validate._instance_roots(d), [])
+
+    def test_gitignored_content_dir_does_not_mark_an_instance(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "vendor/skills/x/SKILL.md", SKILL_OK)
+            self.assertEqual(validate._instance_roots(d, ("vendor",)), [])
+
+    def test_deeply_nested_instances(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "a/b/c/memory/m.md", "# x\n")
+            self.assertEqual(self._rel(d, validate._instance_roots(d)), ["a/b/c"])
+
+    def test_root_first_and_deterministic(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "skills/x/SKILL.md", SKILL_OK)
+            _write(d, "zeta/skills/x/SKILL.md", SKILL_OK)
+            _write(d, "alpha/skills/x/SKILL.md", SKILL_OK)
+            roots = validate._instance_roots(d)
+            # unsorted: the actual walk order is root first, then name order
+            self.assertEqual([os.path.relpath(r, d) for r in roots],
+                             [".", "alpha", "zeta"])
+            self.assertEqual(roots, validate._instance_roots(d))
+
+
+# SKILL_OK carries no `baseline:` (the provisioning-gate tests add it); a clean
+# provisioned instance needs it, so the miniature instance uses this variant.
+SKILL_BASELINED = SKILL_OK.replace(
+    "provisioned: yes",
+    "provisioned: yes\nbaseline: memory/onboarding-baseline.md")
+
+
+def _write_instance(d, prefix=""):
+    """A complete miniature instance: one function, one provisioned skill with
+    its card, and the baseline the skill cites."""
+    _write(d, prefix + "ontologies/people-hr/_executive-view.md", EXEC_OK)
+    _write(d, prefix + "ontologies/people-hr/onboarding-orchestration.md", AUTOMATE_OK)
+    _write(d, prefix + "skills/onboarding-orchestration/SKILL.md", SKILL_BASELINED)
+    _write(d, prefix + "skills/onboarding-orchestration/owner-card.md", CARD_OK)
+    _write(d, prefix + "memory/onboarding-baseline.md", MEM_OK)
+    _write(d, prefix + "memory/_index.md",
+           "# Index\n\n- [b](onboarding-baseline.md)\n")
+
+
+class TestNestedInstanceOntology(unittest.TestCase):
+    def test_nested_ontology_is_checked(self):
+        # The finding this whole slice exists for: before it, a broken demo
+        # ontology produced NOTHING.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/ontologies/sales/_executive-view.md",
+                   EXEC_OK.replace("| down |", "| sideways |"))
+            findings = validate.check_ontology(d)
+            self.assertTrue(any(f.level == "ERROR" and "Direction" in f.message
+                                for f in findings))
+
+    def test_finding_paths_stay_root_relative(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/ontologies/sales/_executive-view.md",
+                   EXEC_OK.replace("| down |", "| sideways |"))
+            self.assertTrue(any(f.path.startswith("demo/ontologies")
+                                for f in validate.check_ontology(d)))
+
+    def test_root_and_nested_instances_both_checked(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/people-hr/_executive-view.md",
+                   EXEC_OK.replace("| down |", "| sideways |"))
+            _write(d, "demo/ontologies/sales/_executive-view.md",
+                   EXEC_OK.replace("| down |", "| sideways |"))
+            paths = {f.path.split("/")[0] for f in validate.check_ontology(d)
+                     if f.level == "ERROR"}
+            self.assertEqual(paths, {"ontologies", "demo"})
+
+    def test_clean_nested_instance_is_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write_instance(d, "demo/")
+            self.assertEqual([f for f in validate.check_ontology(d)
+                              if f.level == "ERROR"], [])
+
+
+class TestNestedInstanceCards(unittest.TestCase):
+    def test_nested_skill_package_is_checked(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/skills/x/SKILL.md", SKILL_OK)  # name mismatch: x vs the frontmatter
+            findings = validate.check_owner_cards(d)
+            self.assertTrue(any(f.level == "ERROR" for f in findings))
+
+    def test_clean_nested_instance_is_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write_instance(d, "demo/")
+            self.assertEqual([f for f in validate.check_owner_cards(d)
+                              if f.level == "ERROR"], [])
+
+    def test_ontology_ref_resolves_inside_its_own_instance(self):
+        # demo/ has the ontology; root does not. Instance-relative resolution
+        # must find it.
+        with tempfile.TemporaryDirectory() as d:
+            _write_instance(d, "demo/")
+            self.assertEqual([f for f in validate.check_owner_cards(d)
+                              if f.level == "ERROR"], [])
+
+    def test_a_demo_skill_cannot_borrow_the_engine_ontology(self):
+        # The ontology exists only at the ROOT; the demo skill must not reach it.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/people-hr/_executive-view.md", EXEC_OK)
+            _write(d, "ontologies/people-hr/onboarding-orchestration.md", AUTOMATE_OK)
+            _write(d, "demo/skills/onboarding-orchestration/SKILL.md", SKILL_BASELINED)
+            _write(d, "demo/skills/onboarding-orchestration/owner-card.md", CARD_OK)
+            _write(d, "demo/memory/onboarding-baseline.md", MEM_OK)
+            self.assertTrue(any(f.level == "ERROR" and "ontology" in f.message.lower()
+                                for f in validate.check_owner_cards(d)))
+
+    def test_baseline_resolves_inside_its_own_instance(self):
+        # The baseline exists only at the root; a demo skill citing it must fail.
+        with tempfile.TemporaryDirectory() as d:
+            _write_instance(d, "demo/")
+            os.remove(os.path.join(d, "demo", "memory", "onboarding-baseline.md"))
+            _write(d, "memory/onboarding-baseline.md", MEM_OK)
+            self.assertTrue(any(f.level == "ERROR" and "baseline" in f.message.lower()
+                                for f in validate.check_owner_cards(d)))
+
+
+class TestNestedInstanceGovernance(unittest.TestCase):
+    def test_nested_constitution_rule_is_checked(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/governance/constitution/r.md",
+                   RULE_OK.replace("rung: human-decision", "rung: rung-six"))
+            self.assertTrue(any(f.level == "ERROR" and "demo/" in f.path
+                                for f in validate.check_constitution(d)))
+
+    def test_clean_nested_rule_is_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/governance/constitution/r.md", RULE_OK)
+            self.assertEqual([f for f in validate.check_constitution(d)
+                              if f.level == "ERROR"], [])
+
+    def test_nested_proposal_is_schema_checked(self):
+        # The 1.5d-ii deferral, closed.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/skills/onboarding-orchestration/SKILL.md", SKILL_OK)
+            _write(d, "demo/proposals/p1.md",
+                   PROPOSAL_OK.replace("blast_radius: escalating",
+                                       "blast_radius: trivial"))
+            self.assertTrue(any(f.level == "ERROR" and "blast_radius" in f.message
+                                for f in validate.check_proposals(d)))
+
+    def test_nested_proposal_target_resolves_in_its_instance(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/skills/onboarding-orchestration/SKILL.md", SKILL_OK)
+            _write(d, "demo/memory/onboarding-baseline.md", MEM_OK)
+            _write(d, "demo/proposals/p1.md", PROPOSAL_OK)
+            self.assertEqual([f for f in validate.check_proposals(d)
+                              if f.level == "ERROR"], [])
+
+    def test_a_demo_proposal_cannot_target_an_engine_skill(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "skills/onboarding-orchestration/SKILL.md", SKILL_OK)
+            _write(d, "demo/proposals/p1.md", PROPOSAL_OK)
+            self.assertTrue(any(f.level == "ERROR" and "target" in f.message
+                                for f in validate.check_proposals(d)))
+
+    def test_nested_changelog_is_checked(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/governance/changelog.md",
+                   "# Governance changelog\n\n## Entries\n\n- oops not an entry\n")
+            self.assertTrue(any(f.level == "WARN" and "demo/" in f.path
+                                for f in validate.check_changelog(d)))
+
+    def test_both_instances_checked_independently(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/changelog.md",
+                   "# c\n\n## Entries\n\n- bad root entry\n")
+            _write(d, "demo/governance/changelog.md",
+                   "# c\n\n## Entries\n\n- bad demo entry\n")
+            tops = {f.path.split("/")[0] for f in validate.check_changelog(d)}
+            self.assertEqual(tops, {"governance", "demo"})
+
+
+MEM_SUPERSEDED = MEM_OK.replace(
+    "provenance: observed",
+    "provenance: superseded\nsuperseded_by: memory/new.md\ninvalid_at: 2026-07-01")
+
+
+class TestNestedInstanceMemory(unittest.TestCase):
+    # Codex review of this slice: `superseded_by` resolved against the
+    # validated root, so a nested chain false-errored and a cross-instance
+    # pointer was silently accepted.
+    def test_nested_supersession_resolves_in_its_instance(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/memory/old.md", MEM_SUPERSEDED)
+            _write(d, "demo/memory/new.md", MEM_OK)
+            self.assertEqual([f for f in validate.check_memory(d)
+                              if f.level == "ERROR"], [])
+
+    def test_supersession_cannot_cross_out_of_its_instance(self):
+        # The successor exists only at the ROOT; the demo record must not
+        # reach it.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/memory/old.md", MEM_SUPERSEDED)
+            _write(d, "memory/new.md", MEM_OK)
+            self.assertTrue(any(f.level == "ERROR" and "dangling" in f.message
+                                for f in validate.check_memory(d)))
+
+    def test_root_supersession_still_resolves_at_root(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/old.md", MEM_SUPERSEDED)
+            _write(d, "memory/new.md", MEM_OK)
+            self.assertEqual([f for f in validate.check_memory(d)
+                              if f.level == "ERROR"], [])
+
+    def test_instance_nested_inside_a_memory_tree_resolves_inward(self):
+        # Codex r2: the record's instance is the parent of the LAST 'memory'
+        # component — memory/company/ is its own instance here, and its chain
+        # must resolve inside it. No record exists at the outer root, so the
+        # pre-fix root-relative resolution fails this test (Codex r3: with an
+        # outer decoy present it passed both ways and discriminated nothing).
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/company/memory/old.md", MEM_SUPERSEDED)
+            _write(d, "memory/company/memory/new.md", MEM_OK)
+            self.assertEqual([f for f in validate.check_memory(d)
+                              if f.level == "ERROR"], [])
+
+    def test_memory_nested_instance_cannot_cite_the_outer_instance(self):
+        # The successor exists only at the OUTER instance; the inner record
+        # must not reach it (Codex r2 blocking edge).
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "memory/company/memory/old.md", MEM_SUPERSEDED)
+            _write(d, "memory/new.md", MEM_OK)
+            self.assertTrue(any(f.level == "ERROR" and "dangling" in f.message
+                                for f in validate.check_memory(d)))
+
+    def test_root_ignored_record_is_not_a_valid_baseline(self):
+        # Codex review: the baseline allowlist must honor the validated
+        # root's ignore set, not reload one from the nested instance.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/ontologies/people-hr/onboarding-orchestration.md",
+                   AUTOMATE_OK)
+            _write(d, "demo/skills/onboarding-orchestration/SKILL.md",
+                   SKILL_OK.replace(
+                       "provisioned: yes",
+                       "provisioned: yes\nbaseline: memory/secret-baseline.md"))
+            _write(d, "demo/skills/onboarding-orchestration/owner-card.md",
+                   CARD_OK)
+            _write(d, "demo/memory/secret-baseline.md", MEM_OK)
+            errs = [f for f in validate.check_owner_cards(d, ("secret*",))
+                    if f.level == "ERROR" and "baseline" in f.message]
+            self.assertTrue(errs)
+
+
+class TestInstanceRootsSymlinkMarkers(unittest.TestCase):
+    # Codex review: a dangling `skills` symlink stopped marking an instance,
+    # silently dropping the pre-existing "must not be a symlink" ERROR.
+    def test_dangling_content_symlink_still_marks_an_instance(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.symlink(os.path.join(d, "nonexistent"), os.path.join(d, "skills"))
+            self.assertEqual(validate._instance_roots(d), [d])
+
+    def test_dangling_skills_symlink_still_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.symlink(os.path.join(d, "nonexistent"), os.path.join(d, "skills"))
+            self.assertTrue(any(f.level == "ERROR" and "symlink" in f.message
+                                for f in validate.check_owner_cards(d)))
+
+    def test_nested_dangling_skills_symlink_errors_with_nested_path(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "demo"))
+            os.symlink(os.path.join(d, "nonexistent"),
+                       os.path.join(d, "demo", "skills"))
+            findings = validate.check_owner_cards(d)
+            self.assertTrue(any(f.level == "ERROR" and f.path == "demo/skills"
+                                for f in findings))
+
+    def test_file_symlink_named_as_content_dir_marks_an_instance(self):
+        with tempfile.TemporaryDirectory() as d:
+            target = _write(d, "somefile.md", "# x\n")
+            os.symlink(target, os.path.join(d, "skills"))
+            self.assertEqual(validate._instance_roots(d), [d])
+
+    def test_plain_file_named_as_content_dir_is_not_a_marker(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "skills", "# just a file\n")
+            self.assertEqual(validate._instance_roots(d), [])
+
+    def test_ignored_symlink_marker_is_skipped(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.symlink(os.path.join(d, "nonexistent"), os.path.join(d, "skills"))
+            self.assertEqual(validate._instance_roots(d, ("skills",)), [])
+
+
 if __name__ == "__main__":
     unittest.main()

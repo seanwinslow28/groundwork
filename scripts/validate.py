@@ -1148,10 +1148,19 @@ def check_deep_record(abspath, root):
 
 
 def check_ontology(root, ignore=()):
-    """#5 structural checks over ontologies/<function>/ directories.
-    Honors the same .gitignore patterns as the generic walker."""
+    """#5 structural checks, run for every instance under root (see
+    _instance_roots): the engine root, demo/, your-company/."""
     findings = []
-    base = os.path.join(root, "ontologies")
+    for inst in _instance_roots(root, ignore):
+        findings += _check_ontology_instance(inst, root, ignore)
+    return findings
+
+
+def _check_ontology_instance(inst, root, ignore=()):
+    """#5 structural checks over one instance's ontologies/<function>/
+    directories. Honors the same .gitignore patterns as the generic walker."""
+    findings = []
+    base = os.path.join(inst, "ontologies")
     if not os.path.isdir(base):
         return findings
     for fn in sorted(os.listdir(base)):
@@ -1236,22 +1245,31 @@ def _parse_date(v):
 
 
 def check_owner_cards(root, ignore=()):
-    """#6 checks over skills/<name>/ work packages: required spine, track-2
-    trio, freshness, and the card<->skill<->ontology drift checks. Strictness
-    follows the skill's `provisioned` flag. Honors the same .gitignore
-    patterns as the generic walker."""
+    """#6 checks, run for every instance under root (see _instance_roots):
+    the engine root, demo/, your-company/."""
     findings = []
-    base = os.path.join(root, "skills")
+    for inst in _instance_roots(root, ignore):
+        findings += _check_owner_cards_instance(inst, root, ignore)
+    return findings
+
+
+def _check_owner_cards_instance(inst, root, ignore=()):
+    """#6 checks over one instance's skills/<name>/ work packages: required
+    spine, track-2 trio, freshness, and the card<->skill<->ontology drift
+    checks. Strictness follows the skill's `provisioned` flag. Honors the same
+    .gitignore patterns as the generic walker."""
+    findings = []
+    base = os.path.join(inst, "skills")
     if os.path.islink(base):
         return [Finding(
-            "ERROR", "skills", None,
+            "ERROR", os.path.relpath(base, root), None,
             "skills directory must not be a symlink")]
     if not os.path.isdir(base):
         return findings
     if _ignored("skills", ignore):
         return findings
     today = datetime.date.today()
-    ontologies_root = os.path.realpath(os.path.join(root, "ontologies"))
+    ontologies_root = os.path.realpath(os.path.join(inst, "ontologies"))
     memory_record_realpaths = None
     for name in sorted(os.listdir(base)):
         sdir = os.path.join(base, name)
@@ -1321,8 +1339,8 @@ def check_owner_cards(root, ignore=()):
             else:
                 if memory_record_realpaths is None:
                     memory_record_realpaths = _live_record_realpaths(
-                        _memory_record_files(root))
-                baseline_real = _record_ref_realpath(root, baseline)
+                        _memory_record_files(inst, ignore))
+                baseline_real = _record_ref_realpath(inst, baseline)
                 if baseline_real is None or \
                         baseline_real not in memory_record_realpaths:
                     findings.append(Finding(
@@ -1359,7 +1377,7 @@ def check_owner_cards(root, ignore=()):
             else:
                 try:
                     ontology_path = os.path.realpath(
-                        os.path.join(root, ontology_ref))
+                        os.path.join(inst, ontology_ref))
                 except (OSError, ValueError):
                     ontology_path = None
                     findings.append(Finding(
@@ -1522,9 +1540,16 @@ def check_owner_cards(root, ignore=()):
     return findings
 
 
-def _memory_record_files(root):
+def _memory_record_files(root, ignore=None):
+    """ignore=None loads root's own .gitignore (the validated-root case).
+    Instance-scoped callers must pass the validated root's ignore set — a
+    nested instance has no .gitignore of its own, and reloading from it would
+    let a root-ignored record satisfy the provisioning gate (Codex review of
+    Slice 2.3a)."""
+    if ignore is None:
+        ignore = load_gitignore(root)
     out = []
-    for abspath in iter_files(root, load_gitignore(root)):
+    for abspath in iter_files(root, ignore):
         rel = os.path.relpath(abspath, root).replace("\\", "/")
         parts = rel.split("/")
         if "memory" in parts and abspath.endswith(".md") \
@@ -1623,7 +1648,20 @@ def check_memory(root):
             if not isinstance(target, str):
                 findings.append(Finding("ERROR", rel, None, "'superseded_by' must be a single value"))
             else:
-                target_real = _record_ref_realpath(root, target)
+                # Resolve inside the record's own instance (Codex review of
+                # Slice 2.3a): a demo record's pointer is demo-relative, like
+                # every other instance-relative reference — resolving against
+                # the validated root false-errored a nested chain and silently
+                # accepted a cross-instance pointer. The instance is the parent
+                # of the LAST 'memory' component: for an instance nested inside
+                # a memory tree (memory/company/memory/x.md), the first
+                # component would select the outer root and reopen the
+                # cross-instance hole (Codex r2).
+                dparts = os.path.relpath(
+                    os.path.dirname(abspath), root).replace("\\", "/").split("/")
+                mem_idx = len(dparts) - 1 - dparts[::-1].index("memory")
+                inst_base = os.path.join(root, *dparts[:mem_idx])
+                target_real = _record_ref_realpath(inst_base, target)
                 if target_real is None or target_real not in record_realpaths:
                     findings.append(Finding(
                         "ERROR", rel, None,
@@ -1707,11 +1745,21 @@ _H1 = re.compile(r"^# \S", re.MULTILINE)
 
 
 def check_constitution(root, ignore=()):
-    """#8 typed-rule checks. Strict where a rule backs a safety invariant; WARN on
-    incomplete thinking. The runnable hook set is a separate artifact (Slice 1.5b).
-    Honors the same .gitignore patterns as the generic walker."""
+    """#8 typed-rule checks, run for every instance under root (see
+    _instance_roots): the engine root, demo/, your-company/."""
     findings = []
-    base = os.path.join(root, "governance", "constitution")
+    for inst in _instance_roots(root, ignore):
+        findings += _check_constitution_instance(inst, root, ignore)
+    return findings
+
+
+def _check_constitution_instance(inst, root, ignore=()):
+    """#8 typed-rule checks over one instance. Strict where a rule backs a
+    safety invariant; WARN on incomplete thinking. The runnable hook set is a
+    separate artifact (Slice 1.5b). Honors the same .gitignore patterns as the
+    generic walker."""
+    findings = []
+    base = os.path.join(inst, "governance", "constitution")
     if not os.path.isdir(base):
         return findings
     if _ignored("governance", ignore) or _ignored("constitution", ignore):
@@ -2120,20 +2168,68 @@ def iter_files(root, ignore=()):
             yield os.path.join(dirpath, fn)
 
 
+# The directory names that mark a groundwork instance. A company OS repo carries
+# these at ITS root; inside this repo, demo/ carries them too.
+CONTENT_DIRS = ("ontologies", "skills", "governance", "proposals", "memory")
+
+
+def _instance_roots(root, ignore=()):
+    """Every directory holding groundwork content: the validated root itself, if
+    it carries one of the well-known content directories, plus any directory
+    beneath it that does. Paths are prefixed by `root` as given; walk order
+    (root first, children depth-first in name order) so output is deterministic.
+
+    Why this exists: check_memory has always discovered `memory/` folders
+    anywhere under root, but every other structural check started at
+    `root/<content-dir>`. That meant a complete instance under demo/ — its
+    ontologies, skills, cards, rules, and proposals — was scanned by NOTHING,
+    with a green gate throughout. Reference resolution follows the instance, so
+    a demo skill's `ontology:`/`baseline:` resolve inside demo/, exactly as a
+    company repo's resolve inside that repo (#10)."""
+    roots = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        rel_dir = os.path.relpath(dirpath, root)
+        dirnames[:] = sorted(
+            d for d in dirnames
+            if d not in SKIP_DIRS and not d.startswith(".")
+            and os.path.normpath(os.path.join(rel_dir, d)) not in SKIP_RELPATHS
+            and not _ignored(d, ignore))
+        # A symlink named as a content dir lands in filenames (dangling or
+        # file-target), not dirnames. It must still mark an instance, or the
+        # per-check symlink ERRORs ("skills directory must not be a symlink")
+        # would be silently skipped (Codex review of Slice 2.3a).
+        if any(d in CONTENT_DIRS for d in dirnames) or any(
+                f in CONTENT_DIRS and not _ignored(f, ignore)
+                and os.path.islink(os.path.join(dirpath, f))
+                for f in filenames):
+            roots.append(dirpath)
+    return roots
+
+
 BLAST_RADIUS = {"track1-body", "escalating"}
 
 
 def check_proposals(root, ignore=()):
-    """#17/#18 proposal-file schema. Diff-based declared-vs-actual matching is 1.5d-ii;
-    this checks the static schema, the routing domain, and the pending-only lifecycle."""
+    """#17/#18 proposal-file schema, run for every instance under root (see
+    _instance_roots): the engine root, demo/, your-company/."""
     findings = []
-    base = os.path.join(root, "proposals")
+    for inst in _instance_roots(root, ignore):
+        findings += _check_proposals_instance(inst, root, ignore)
+    return findings
+
+
+def _check_proposals_instance(inst, root, ignore=()):
+    """#17/#18 proposal-file schema for one instance. Diff-based
+    declared-vs-actual matching is 1.5d-ii; this checks the static schema, the
+    routing domain, and the pending-only lifecycle."""
+    findings = []
+    base = os.path.join(inst, "proposals")
     if not os.path.isdir(base) or _ignored("proposals", ignore):
         return findings
     try:
         names = sorted(os.listdir(base))
     except OSError as e:
-        return [Finding("ERROR", "proposals", None,
+        return [Finding("ERROR", os.path.relpath(base, root), None,
                         "cannot list proposals/ — fail closed: %s" % e)]
     for name in names:
         if not name.endswith(".md") or name in {"README.md", "_index.md"} or _ignored(name, ignore):
@@ -2164,15 +2260,15 @@ def check_proposals(root, ignore=()):
                 findings.append(Finding("ERROR", rel, None,
                                         "proposal 'target' must be a skill (skills/) or a constitution rule "
                                         "(governance/constitution/); other artifacts keep their own governance (#17)"))
-            elif not os.path.isfile(os.path.join(root, t)):
+            elif not os.path.isfile(os.path.join(inst, t)):
                 findings.append(Finding("ERROR", rel, None, "proposal 'target' not found: %s" % t))
             else:
                 # Filesystem aliases too (1.4b precedent): classification is by
                 # where the target RESOLVES, not just how it is spelled — a
                 # symlink under skills/ pointing at a rule must fail closed.
                 resolved = os.path.relpath(
-                    os.path.realpath(os.path.join(root, t)),
-                    os.path.realpath(root)).replace("\\", "/")
+                    os.path.realpath(os.path.join(inst, t)),
+                    os.path.realpath(inst)).replace("\\", "/")
                 bucket = "skills/" if target_is_skill else "governance/constitution/"
                 if not resolved.startswith(bucket):
                     findings.append(Finding("ERROR", rel, None,
@@ -2218,7 +2314,7 @@ def check_proposals(root, ignore=()):
                                     "incomplete proposal: missing 'evidence' links — demote to a working note (#17)"))
         else:
             for e in (ev if isinstance(ev, list) else [ev]):
-                if isinstance(e, str) and e.strip() and not os.path.isfile(os.path.join(root, e.strip())):
+                if isinstance(e, str) and e.strip() and not os.path.isfile(os.path.join(inst, e.strip())):
                     findings.append(Finding("WARN", rel, None, "evidence link not found: %s" % e.strip()))
 
         # #17 completeness includes the diff itself: the proposal file IS the
@@ -2253,10 +2349,20 @@ def check_proposals(root, ignore=()):
 
 
 def check_changelog(root, ignore=()):
-    """#17 governance changelog: append-only index of auto-applied track-1 changes.
-    Validates entry format; append-only enforcement is the --diff mode (1.5d-ii)."""
+    """#17 governance changelog, run for every instance under root (see
+    _instance_roots): the engine root, demo/, your-company/."""
     findings = []
-    path = os.path.join(root, "governance", "changelog.md")
+    for inst in _instance_roots(root, ignore):
+        findings += _check_changelog_instance(inst, root, ignore)
+    return findings
+
+
+def _check_changelog_instance(inst, root, ignore=()):
+    """#17 governance changelog for one instance: append-only index of
+    auto-applied track-1 changes. Validates entry format; append-only
+    enforcement is the --diff mode (1.5d-ii)."""
+    findings = []
+    path = os.path.join(inst, "governance", "changelog.md")
     if not os.path.isfile(path) or _ignored("governance", ignore) or _ignored("changelog.md", ignore):
         return findings
     rel = os.path.relpath(path, root)
@@ -2283,12 +2389,12 @@ def check_changelog(root, ignore=()):
         elif not skill_norm.endswith("/SKILL.md"):
             findings.append(Finding("WARN", rel, lineno,
                                     "changelog entry should point at a SKILL.md (auto-apply is body-only SKILL.md edits)"))
-        elif os.path.isfile(os.path.join(root, skill_norm)):
+        elif os.path.isfile(os.path.join(inst, skill_norm)):
             # Symlink parity with check_proposals: a path spelled skills/ that
             # resolves elsewhere in the current tree is an alias, not a skill.
             resolved = os.path.relpath(
-                os.path.realpath(os.path.join(root, skill_norm)),
-                os.path.realpath(root)).replace("\\", "/")
+                os.path.realpath(os.path.join(inst, skill_norm)),
+                os.path.realpath(inst)).replace("\\", "/")
             if not resolved.startswith("skills/"):
                 findings.append(Finding("WARN", rel, lineno,
                                         "changelog entry skill path is a filesystem alias resolving outside "
