@@ -18,14 +18,16 @@ each governance track — and the validator gates every layer of it.
 
 - `scripts/validate.py` — the gate. Python 3 standard library only, no dependencies.
 - `ontologies/` — the two-tier ontology schema, all 8 function executive views, and
-  two worked deep records (People/HR `onboarding-orchestration`, Customer success
-  `renewal-prep`).
-- `skills/` — the work-package convention and two worked packages
-  (`onboarding-orchestration`, an external-side-effect skill, and `renewal-prep`, a
-  reversible-write one), each with its `SKILL.md` and `owner-card.md`.
+  four worked deep records: three on the automation path (People/HR onboarding,
+  customer-success renewal prep, product feature-request triage) and one recording a
+  deliberate decision *not* to automate (engineering hiring loops, `Motion: hire`).
+- `skills/` — the work-package convention and three worked packages: one
+  external-side-effect (`onboarding-orchestration`) and two reversible-write
+  (`renewal-prep`, `feature-request-triage`), each with its `SKILL.md` and
+  `owner-card.md`.
 - `governance/` — the constitution rule schema with one compiled rule, the
   action-class hook set, and the append-only changelog.
-- `memory/` — the org-memory record schema with two captured baselines and an index.
+- `memory/` — the org-memory record schema with three captured baselines and an index.
 - `proposals/` — the consent-gate convention for agent-proposed changes.
 
 **Not built yet — do not describe these as working:**
@@ -41,7 +43,7 @@ each governance track — and the validator gates every layer of it.
 | Path | What it holds |
 |---|---|
 | `CONTEXT.md` | The glossary. Every resolved decision's vocabulary. Read this first. |
-| `ontologies/` | One directory per function. All 8 executive views; `people-hr/` and `customer-success/` also carry a worked deep record. |
+| `ontologies/` | One directory per function. All 8 executive views; `people-hr/`, `customer-success/`, `product/`, and `engineering/` also carry a worked deep record. |
 | `skills/` | Work packages: `skills/<name>/SKILL.md` + `owner-card.md`. |
 | `governance/` | `constitution/` (typed rules), `hooks/` (the action-class gate), `changelog.md`. |
 | `memory/` | Org-memory records, one per file, with an index. |
