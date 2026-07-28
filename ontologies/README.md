@@ -53,7 +53,9 @@ has to resolve from the file it is written in.
 - Activity and Direction are **plain text** — no link or image syntax, no emphasis
   markers. Only the Deep record cell may carry markup. This bans the *syntax*, not the
   characters it is spelled with: `Coverage [EMEA]` and `SOC_2 compliance` are fine,
-  while a link, an image, or `**Coverage**` is not.
+  while a link, an image, or `**Coverage**` is not. Square brackets stay literal
+  because the file may not contain a link reference definition (a `[label]: url`
+  line) — without one, no bracketed span can resolve to a link.
 - The Deep record cell is either exactly `—` (an em dash — not a hyphen, not an en
   dash, not blank) or exactly one link.
 - The file contains **one** such table and no other line carrying a `|`.

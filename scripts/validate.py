@@ -940,6 +940,11 @@ _EXEC_LINKISH = re.compile(r"\]\(")   # the signature of a link or an image
 # '*' cannot appear in plain prose without opening emphasis. '_' can: CommonMark
 # does not read INTRAWORD '_' as emphasis, so "SOC_2" is text while "_x_" is not.
 _EXEC_EMPHASIS = re.compile(r"\*|(?<![0-9A-Za-z])_|_(?![0-9A-Za-z])")
+# A link reference definition anywhere in the file makes every bracketed span in
+# every cell a potential link. Rather than enumerate bracket spellings — the
+# whack-a-mole this grammar exists to end — forbid the definition, which makes
+# every bracket provably literal. That is what keeps "Coverage [EMEA]" legal.
+_LINK_REF_DEF = re.compile(r"^ {0,3}\[[^\]]+\]:")
 
 
 def _is_plain_text(cell):
@@ -989,6 +994,15 @@ def parse_exec_table(text, path="<unknown>"):
     empty worksheet is silent (#5) or a missing table is an error."""
     rows, findings = [], []
     lines = text.split("\n")
+    for i, ln in enumerate(lines):
+        if _LINK_REF_DEF.match(ln):
+            findings.append(Finding(
+                "ERROR", path, i + 1,
+                "an executive view carries no link reference definition — it would make "
+                "every bracketed cell a potential link; write the one Deep record link "
+                "inline instead (#5 canonical form)"))
+    if findings:
+        return rows, findings
     pipe_lines = [i for i, ln in enumerate(lines) if "|" in ln]
     if not pipe_lines:
         return rows, findings
