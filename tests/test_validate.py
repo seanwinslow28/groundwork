@@ -5129,6 +5129,43 @@ class TestSyntheticIdentifiers(unittest.TestCase):
                                 for f in findings))
             self.assertEqual([f for f in findings if "555-0142" in f.message], [])
 
+    def test_compact_ten_digit_phone_errors(self):
+        # Codex r2: requiring a separator after the area code regressed the
+        # compact 10-digit form the original pattern accepted.
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "Call 4155552671 now.\n")
+            self.assertTrue(any(f.level == "ERROR" and "415-555-2671" in f.message
+                                for f in validate.check_synthetic_identifiers(d)))
+
+    def test_compact_seven_digit_token_is_not_a_phone(self):
+        # Codex r2: a bare 7-digit token ('Order 8675309') must not read as a
+        # phone — the 7-digit form is only recognized separator-written.
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "Order 8675309 shipped yesterday.\n")
+            self.assertEqual(validate.check_synthetic_identifiers(d), [])
+
+    def test_multi_label_public_suffix_canon_entry_errors(self):
+        # Codex r2: '.co.uk' normalized to 'co.uk', which contains a dot and
+        # slipped past the bare-TLD rule — laundering every .co.uk host.
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "Ask ceo@real-company.co.uk about it.\n",
+                       canon=CANON_OK.replace("domains:\n  - umbercress.example",
+                                              "domains:\n  - .co.uk"))
+            findings = validate.check_synthetic_identifiers(d)
+            self.assertTrue(any(f.level == "ERROR" and "canon" in f.path
+                                for f in findings))
+            self.assertTrue(any(f.level == "ERROR" and "real-company.co.uk" in f.message
+                                for f in findings))
+
+    def test_invalid_ip_shaped_url_host_errors(self):
+        # Codex r2: '999.999.999.999' as a URL host was skipped as IPv4-shaped,
+        # then discarded by the octet-validity carve-out — falling through both
+        # rules. Only a VALID IPv4 host defers to the IP rule.
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "See https://999.999.999.999/status for detail.\n")
+            self.assertTrue(any(f.level == "ERROR" and "999.999.999.999" in f.message
+                                for f in validate.check_synthetic_identifiers(d)))
+
     def test_demo_inside_your_company_is_not_scoped(self):
         # Codex r1: the #16 scope matrix says NEVER your-company/ — including a
         # directory it happens to call demo.

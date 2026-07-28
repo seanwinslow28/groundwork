@@ -2436,6 +2436,13 @@ TESTNET_PREFIXES = ("192.0.2.", "198.51.100.", "203.0.113.")
 PUBLIC_TLDS = ("com", "net", "org", "io", "co", "ai", "dev", "app", "cloud",
                "xyz", "me", "us", "uk", "ca", "de", "fr", "jp", "in", "tech",
                "info", "biz", "sh", "gg", "so", "to")
+# Multi-label public suffixes a canon entry must not claim: 'co.uk' contains a
+# dot, so the bare-TLD rule alone would let it launder every .co.uk host into
+# the allowlist (Codex r2). Curated, not the PSL — the same posture as
+# PUBLIC_TLDS.
+PUBLIC_SLDS = ("co.uk", "org.uk", "ac.uk", "gov.uk", "com.au", "net.au",
+               "org.au", "co.jp", "co.nz", "co.in", "com.br", "com.cn",
+               "com.mx")
 
 # All three host extractors are case-insensitive (Codex r1): 'HTTPS://ACME.COM'
 # and bare 'ACME.COM' are the same identifiers as their lowercase spellings.
@@ -2449,9 +2456,15 @@ _BARE_DOMAIN = re.compile(
 # NANP shapes, 10-digit and 7-digit, in one pass (one pass so '415-555-2671'
 # yields one match, not a 10-digit match plus its own 7-digit tail). The
 # 7-digit form is what the canon itself writes ('555-01xx'), and missing it
-# made the fiction-phone test vacuous (Codex r1).
+# made the fiction-phone test vacuous (Codex r1). The two forms differ on
+# compactness (Codex r2): a 10-digit run is phone-shaped on its own
+# ('4155552671'), but a bare 7-digit token ('Order 8675309') is not — the
+# 7-digit branch requires a written separator.
 _PHONE = re.compile(
-    r"(?<!\d)(?:\+?1[-. ]?)?(?:\(?([2-9]\d{2})\)?[-. ])?([2-9]\d{2})[-. ]?(\d{4})(?!\d)")
+    r"(?<!\d)(?:"
+    r"(?:\+?1[-. ]?)?\(?([2-9]\d{2})\)?[-. ]?([2-9]\d{2})[-. ]?(\d{4})"
+    r"|([2-9]\d{2})[-. ](\d{4})"
+    r")(?!\d)")
 # The lookahead tolerates a sentence-final period ('… at 8.8.8.8.') while
 # still refusing to carve four octets out of a longer dotted chain (1.2.3.4.5).
 _IPV4 = re.compile(r"(?<![\d.])((?:\d{1,3}\.){3}\d{1,3})(?!\.?\d)")
@@ -2515,14 +2528,15 @@ def check_synthetic_identifiers(root, ignore=()):
             if not isinstance(x, str) or not x.strip():
                 continue
             entry = x.strip().strip(".")
-            if "." not in entry:
-                # 'domains: com' (or '.com') would make every host under that
-                # TLD a 'subdomain' of the canon — a bare TLD is a hole in the
-                # allowlist, not an allowance (Codex r1).
+            if "." not in entry or entry.lower() in PUBLIC_SLDS:
+                # 'domains: com' (or '.com', or 'co.uk') would make every host
+                # under that suffix a 'subdomain' of the canon — a public
+                # suffix is a hole in the allowlist, not an allowance
+                # (Codex r1/r2).
                 findings.append(Finding(
                     "ERROR", os.path.join("demo", "canon.md"), None,
-                    "canon %s entry %r is not a registrable domain — a bare "
-                    "TLD would allow every host under it (#16)"
+                    "canon %s entry %r is a public suffix, not a registrable "
+                    "domain — it would allow every host under it (#16)"
                     % (key, x.strip())))
                 continue
             allowed.append(entry)
@@ -2539,15 +2553,23 @@ def check_synthetic_identifiers(root, ignore=()):
             hosts = set(_EMAIL.findall(line)) | set(_URL_HOST.findall(line)) \
                 | {m.group(1) for m in _BARE_DOMAIN.finditer(line)}
             for host in sorted(hosts):
-                if re.fullmatch(r"(?:\d{1,3}\.){3}\d{1,3}", host):
-                    continue  # an IP used as a URL host; the IPv4 rule below
-                              # owns it — TEST-NET must pass here (Codex r1)
+                if re.fullmatch(r"(?:\d{1,3}\.){3}\d{1,3}", host) and \
+                        all(int(o) <= 255 for o in host.split(".")):
+                    # A VALID IP used as a URL host; the IPv4 rule below owns
+                    # it — TEST-NET must pass here (Codex r1). An invalid one
+                    # (999.999.999.999) stays here and fails the domain check,
+                    # instead of falling through both rules (Codex r2).
+                    continue
                 if not _domain_allowed(host, allowed):
                     findings.append(Finding(
                         "ERROR", rel, lineno,
                         "identifier %r is not in the demo canon or a reserved-for-"
                         "fiction namespace (#16)" % host))
-            for area, exch, last in _PHONE.findall(line):
+            for m in _PHONE.finditer(line):
+                # Groups 1-3 are the 10-digit branch, 4-5 the 7-digit one.
+                area = m.group(1)
+                exch = m.group(2) or m.group(4)
+                last = m.group(3) or m.group(5)
                 digits = "%s-%s" % (exch, last)
                 number = "%s-%s" % (area, digits) if area else digits
                 if not digits.startswith(phone_prefix):
