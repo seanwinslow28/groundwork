@@ -99,6 +99,10 @@ Upstream improvements arrive by `git pull` on the engine; content is never re-co
 ## Conventions that bind
 
 - **Files, not engines.** No runtime, no server, no database. Conventions plus checks.
+- **Content is checked wherever it lives.** Any directory carrying `ontologies/`,
+  `skills/`, `governance/`, `proposals/`, or `memory/` is validated as its own
+  instance, with references resolving inside it. That is what lets `demo/` be a
+  faithful model of a company repo rather than a folder borrowing this one's examples.
 - **Zero dependencies.** `scripts/validate.py` and every shipped script import the
   Python standard library only. There is no `requirements.txt` and there will not be.
 - **Claims match what is built.** No capability is described before it exists. If you

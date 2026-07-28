@@ -125,3 +125,26 @@ Honest limits of the current build. This file grows as the product does (brief �
   path.** `AGENTS.md` reached both directly and through `CLAUDE.md`'s import counts once:
   no single harness loads it twice, and double-counting could push a legitimate repo past
   the ERROR threshold for budget it does not spend.
+
+## What the validator treats as an "instance"
+
+- **An instance is any directory carrying `ontologies/`, `skills/`, `governance/`,
+  `proposals/`, or `memory/`.** The validated root is one if it has them; so is
+  `demo/`, and so is a `your-company/` checkout. Structural checks run once per
+  instance, and findings are still reported relative to the validated root.
+- **References resolve inside their own instance.** A skill's `ontology:` and
+  `baseline:`, a proposal's `target:`, and a changelog's skill path are all relative to
+  the instance that contains them — matching a company repo, where those paths are
+  relative to the repo root (#10). A nested instance therefore cannot reference the
+  engine's exemplars by climbing out of itself.
+- **Discovery is by directory name, not by a marker file.** A directory that happens to
+  be called `skills/` for unrelated reasons will be treated as an instance's skill
+  directory. Renaming it, or adding it to `.gitignore`, is the way out; there is no
+  opt-out frontmatter, because a marker would re-assert rather than verify (#16's
+  reasoning applied to layout).
+- **`check_hooks` stays root-only.** The action-class gate is one shipped artifact with
+  one registration, not per-instance content. A nested `governance/hooks/` is not
+  scanned, and a demo demonstrates the gate by reference rather than by shipping a
+  second copy whose registration nothing could satisfy.
+- **The always-loaded budget and the root-file drift check stay root-only** — both
+  describe one repository's session surface, not per-instance content.
