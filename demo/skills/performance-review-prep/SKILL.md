@@ -10,16 +10,18 @@ ontology: ontologies/people-hr/performance-review-prep.md
 
 For each employee in the cycle, assemble an evidence pack for their manager: goals
 against recorded outcomes, submitted peer feedback grouped by theme with every
-attribution intact, and the previous cycle's commitments with their status. File it in
-the review workspace one week before the review conversation. Every item links to the
-submission it came from.
+attribution intact, the manager's own running notes on that employee, and the previous
+cycle's commitments with their status. File it in the review workspace one week before
+the review conversation. Every item links to the submission it came from.
 
 **Gather and stop.** This skill does not rate, rank, score, summarize the evidence into
 a verdict, or draft any assessment language. Evaluating a person is a human-owned
-decision, and it is not a matter of instruction: the rule at
+decision. The rule at
 [writing a performance assessment is a human-owned decision](../../governance/constitution/assessment-is-human-owned.md)
-sits on the human-decision rung and refuses the request when it is made, naming its
-owner and the appeal path.
+sits on the human-decision rung: asked for a rating, refuse and name the rule, Ruth
+Okafor as its owner, and Priya Raman as the appeal — a refusal with no address is a
+dead end. No hook enforces this. It is an instruction, the card's forbidden actions,
+and the manager's read of every pack, and that is stated plainly in the rule.
 
 Halt rather than fill a gap. Missing goals, fewer than two peer submissions, or an
 employee who changed manager mid-cycle stops the pack and routes to Ruth Okafor. Peer
@@ -31,7 +33,8 @@ stop ([ontology record](../../ontologies/people-hr/performance-review-prep.md)).
   [memory/review-prep-baseline.md](../../memory/review-prep-baseline.md) (the
   `baseline:` this skill cites — the #5 provisioning gate).
 - Read access to the HR information system, the goal tracker, peer-feedback
-  submissions, and the previous cycle's records.
+  submissions, the manager's running notes on each employee in the cycle, and the
+  previous cycle's records — the five inputs the ontology's Describability Gate names.
 - Write access to the review workspace location where packs are filed, and nowhere
   else.
 

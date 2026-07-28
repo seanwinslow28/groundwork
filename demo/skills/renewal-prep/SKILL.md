@@ -12,7 +12,9 @@ Forty-five days before a contract renewal, assemble a brief for the account's CS
 contract terms and dates from the CRM, the last 90 days of Relay usage read against
 the account's own history, open and recently closed support tickets, and the notes
 from the most recent quarterly check-in. Name the risks you can see and give an
-expansion-or-contraction read. Every number carries a link to the record it came from.
+expansion-or-contraction read. Every claim in the brief carries a link to the record it
+came from — not only the numbers. A named risk with no source behind it is the kind of
+line a CSM repeats in a renewal conversation and cannot back up.
 
 Halt rather than guess. A missing or contradictory contract record, or usage data more
 than seven days stale, stops the brief and routes to Marcus Bell. A brief with an

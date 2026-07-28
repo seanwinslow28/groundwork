@@ -5,11 +5,20 @@ Pairs with governance/constitution/every-meeting-names-a-decision.md: when an ag
 schedules or extends a recurring meeting, remind it to name the decision the series
 exists to make and the person who owns that decision.
 
-RUNG 3 IS NOT RUNG 4. A reminder does not change what happens. This hook emits
-`permissionDecision: "defer"` — Claude Code's "use the normal permission flow" — and
-carries the reminder in `additionalContext` (for the agent) and `systemMessage` (for
-the person). It never denies and never auto-approves. A reminder that blocks is rung
-inflation: machinery claiming more authority than the rule was granted.
+RUNG 3 IS NOT RUNG 4. A reminder does not change what happens. This hook emits **no
+`permissionDecision` at all** — it carries the reminder in `additionalContext` (for the
+agent) and `systemMessage` (for the person) and leaves the permission outcome exactly
+as it found it. It never denies, never auto-approves, and never prompts. A reminder
+that blocks is rung inflation: machinery claiming more authority than the rule was
+granted.
+
+Every one of the four decision values would have been wrong here. `deny` is rung 4.
+`allow` grants authority the rule was never given. `ask` turns a nudge into a gate.
+`defer` reads like "use the normal flow" but is not: it is the headless signal that a
+call was blocked without user input, it behaves as `ask` interactively, and
+`additionalContext` is ignored alongside it — so it would both prompt the human and
+drop the agent's half of the reminder. Emitting no decision is the only shape that
+changes what people KNOW without touching what they MAY DO.
 
 IT FIRES ON SHAPE, NEVER ON CONTENT. It does not try to decide whether an invite
 "already names a decision" — that would be a guess about text nobody controls, with an
@@ -48,19 +57,37 @@ _MEETING = re.compile(
     r"one-on-one|1:1|calendar\s+event)\b", re.I)
 
 
+_MAX_DEPTH = 6
+
+
+def _strings(value, depth=0):
+    """Every string anywhere inside a JSON-shaped value, nested dicts and lists
+    included. A one-level scan would have missed the common calendar shape —
+    {"event": {"title": ..., "recurrence": "weekly"}} — and a missed reminder is
+    invisible, so this walks the whole payload. Depth is bounded because the
+    payload comes from a tool call this hook does not control; anything deeper
+    contributes nothing rather than raising."""
+    if isinstance(value, str):
+        return [value]
+    if depth >= _MAX_DEPTH:
+        return []
+    out = []
+    if isinstance(value, dict):
+        for v in value.values():
+            out.extend(_strings(v, depth + 1))
+    elif isinstance(value, (list, tuple)):
+        for v in value:
+            out.extend(_strings(v, depth + 1))
+    return out
+
+
 def _text(tool_name, tool_input):
     """Flatten a tool call into one searchable string: the tool's name plus every
-    string value in its input, one level deep plus strings inside lists. Anything
-    unreadable contributes nothing rather than raising."""
+    string value anywhere in its input. Anything unreadable contributes nothing."""
     parts = []
     if isinstance(tool_name, str):
         parts.append(tool_name)
-    if isinstance(tool_input, dict):
-        for value in tool_input.values():
-            if isinstance(value, str):
-                parts.append(value)
-            elif isinstance(value, list):
-                parts.extend(v for v in value if isinstance(v, str))
+    parts.extend(_strings(tool_input))
     return "\n".join(parts)
 
 
@@ -89,13 +116,14 @@ def decide(payload):
     return {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
-            # 'defer' = use the normal permission flow. The reminder changes what the
-            # agent and the human KNOW, never what they are ALLOWED to do.
-            "permissionDecision": "defer",
+            # No 'permissionDecision' key. Its absence IS the rung-3 mechanism: the
+            # tool call goes through whatever permission flow it would have hit
+            # anyway, and the only thing this hook changes is what the agent and
+            # the human know. Adding any decision here would be rung inflation.
             "additionalContext": REMINDER,
         },
-        # A universal field, so the person sees the reminder regardless of how
-        # additionalContext is rendered alongside a deferred decision.
+        # Universal field, shown to the person and not to the agent — the two
+        # halves of the reminder reach two different readers.
         "systemMessage": REMINDER,
     }
 

@@ -27,8 +27,10 @@ checklist against the hire's actual readiness
   standard-role account-provisioning systems.
 - Permission to order approved standard equipment and to send calendar invites and
   onboarding messages to people inside the company.
-- No permissions for non-standard access grants, discretionary spend, compensation,
-  offers, or record deletion (see the Owner's Card).
+- No *standing* permission for a non-standard access grant: it is proposed-only, and
+  the grant happens only after Ruth Okafor approves that specific request. No
+  permissions at all for discretionary spend, compensation, offers, or record deletion
+  (see the Owner's Card).
 
 ## Compatibility notes
 - Claude Code / Codex / Cursor / Gemini CLI load the `SKILL.md` convention (#19).

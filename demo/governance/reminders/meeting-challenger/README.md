@@ -8,7 +8,8 @@ to name the decision the series exists to make and who owns it.
 
 It is **hand-authored and copied, never generated**. groundwork's interview does not
 write hooks. This exists so the shape of a runnable rule is concrete and copyable —
-take it, change the rule text, ship your own.
+take [`meeting_challenger.py`](meeting_challenger.py), change the rule text, ship your
+own.
 
 ## What a rung-3 hook looks like
 
@@ -19,10 +20,25 @@ The five-rung ladder is `value` → `instruction` → `reminder` → `hard-block
 | Rung | What the hook returns |
 |---|---|
 | hard-block (4) | `permissionDecision: "deny"` — the action does not run |
-| **reminder (3)** | **`permissionDecision: "defer"` plus the reminder text** — the action runs as it otherwise would; only what the agent and the human *know* changes |
+| **reminder (3)** | **no `permissionDecision` at all, plus the reminder text** — the action runs as it otherwise would; only what the agent and the human *know* changes |
 
-A reminder that returns `"ask"` has quietly become a gate. That is rung inflation, and
-it is how a company ends up with machinery nobody agreed to.
+That empty space is the whole design. Claude Code's `PreToolUse` hook may return
+`additionalContext` without deciding anything, and a rung-3 rule is exactly the case
+that convention exists for.
+
+All four decision values would be wrong here, and it is worth knowing why before you
+copy this:
+
+| Value | Why not |
+|---|---|
+| `deny` | That is rung 4. This rule was never granted the authority to stop a meeting. |
+| `allow` | Auto-approves a call the company never said could skip its permission flow. |
+| `ask` | Turns a nudge into a gate — rung inflation, and how a company ends up with machinery nobody agreed to. |
+| `defer` | Reads like "use the normal flow" but is not. It is the headless signal that a call was blocked without user input; interactively it behaves as `ask` and prompts anyway, and `additionalContext` is ignored alongside it — so it would gate the human *and* drop the agent's half of the reminder. |
+
+The reminder goes out twice on purpose: `additionalContext` is read by the agent, and
+the top-level `systemMessage` is shown to the person and not to the agent. Two readers,
+two channels, one rule.
 
 ## Install (Claude Code, in your company repo)
 
@@ -61,7 +77,16 @@ echo '{"hook_event_name":"PreToolUse","tool_name":"calendar_create_event","tool_
   | python3 governance/reminders/meeting-challenger/meeting_challenger.py
 ```
 
-You should see JSON containing `"permissionDecision": "defer"` and the reminder text.
+You should see JSON carrying `"additionalContext"` and `"systemMessage"` with the
+reminder text — and **no** `"permissionDecision"` key, which is what leaves the
+permission outcome untouched. A nested payload works the same way, because the hook
+reads every string in the call rather than a fixed set of fields:
+
+```
+echo '{"hook_event_name":"PreToolUse","tool_name":"calendar_tool","tool_input":{"event":{"title":"Weekly ops sync","recurrence":{"freq":"weekly"}}}}' \
+  | python3 governance/reminders/meeting-challenger/meeting_challenger.py
+```
+
 Anything else prints nothing at all:
 
 ```
@@ -89,7 +114,12 @@ cross-harness runtime parity is a named later graduation, not something V1 claim
 
 - **Does:** remind, on every tool call that looks like scheduling or extending a
   recurring meeting, and stay completely silent otherwise.
-- **Does:** leave the permission outcome exactly as it found it.
+- **Does:** leave the permission outcome exactly as it found it — no decision is
+  returned, so nothing is approved, denied, or escalated by this hook.
+- **Does:** read every string anywhere in the tool input, nested objects and lists
+  included, because a calendar tool may bury the title and the recurrence rule inside
+  an `event` object and a reminder that silently misses is worse than one that fires
+  too often.
 - **Does not:** judge whether an invite already names a decision. It fires on *shape*,
   never on content — guessing at the meaning of text nobody controls has an unbounded
   supply of ways to be wrong, and a reminder that fires on a well-formed invite is

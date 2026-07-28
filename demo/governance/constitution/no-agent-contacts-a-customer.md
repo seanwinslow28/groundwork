@@ -5,7 +5,7 @@ action_class: external-side-effect
 sunset: 2027-06-30
 value: A customer hears from a person at Umbercress, not from a process
 value_owner: Priya Raman
-runtime_check: No skill may send a message, ticket reply, or post that reaches a customer. The renewal brief is filed in the customer-success workspace and the triage queue lives in the product tracker; both are internal documents that a person acts on. On Claude Code the action-class gate blocks outbound sends, and everywhere else the same rule ships as a review-gate instruction
+runtime_check: No skill may send a message, ticket reply, or post that reaches a customer. The check is structural rather than runtime — neither renewal-prep nor triage is granted an outbound channel at all, the brief is filed in the customer-success workspace and the triage queue lives in the product tracker, and 'contact the customer' is a forbidden action on both Owner's Cards. No hook ships for this rule: the engine's action-class gate reads Bash commands and does not see a message send, so the enforcement is the permission grant plus the CSM review gate, and giving a skill an outbound channel is the change this rule exists to catch at review
 runtime_check_owner: Marcus Bell
 human_appeal: A CSM who needs something to reach a customer faster than a person can send it raises it with Marcus Bell, who either sends it themselves or approves a written exception naming the message and the recipient
 human_appeal_owner: Marcus Bell

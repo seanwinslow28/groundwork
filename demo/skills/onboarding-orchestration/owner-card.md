@@ -26,8 +26,10 @@ rather than discovering during a holiday.
 
 It provisions against the HR information system record and pauses non-standard roles or
 access to Ruth Okafor, and contractor conversions to outside counsel. It may *propose*
-those exceptions and never perform them. It may never touch compensation, offers, or
-record deletion, and it may not contact anyone outside the company.
+those exceptions and never perform them unilaterally: the approval comes first and the
+agent holds no standing permission to grant non-standard access without one. It may
+never touch compensation, offers, or record deletion, and it may not contact anyone
+outside the company.
 
 This is the company's only track-2 skill, so the card carries the full evidence trio:
 what the run must produce, what it may never treat as a source, and who reads a sample.

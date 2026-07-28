@@ -20,7 +20,15 @@ One of the three ships as working machinery:
 [the meeting challenger](reminders/meeting-challenger/README.md) is a real Claude Code
 hook that fires the reminder rule at the moment somebody schedules a recurring meeting.
 It is hand-authored and copied, never generated — the interview does not write hooks.
-The other two rules are typed records that the Owner's Cards and review gates enforce.
+
+**The other two ship no runtime machinery at all,** and it would be dishonest to say
+otherwise. They are typed records whose force comes from three places: what each skill
+is permitted to reach in the first place, the forbidden actions on its Owner's Card, and
+a named human reading the output before it matters. That is real, and it is weaker than
+a hook — an instruction the agent is asked to follow can be talked out of; a permission
+it was never granted cannot. Where the gap sits is written into each rule's
+`runtime_check` rather than smoothed over, because a rule that claims enforcement it
+does not have is worse than one that admits the gap.
 
 ## The changelog
 

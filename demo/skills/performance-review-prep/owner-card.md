@@ -3,7 +3,7 @@ owner: Ruth Okafor
 backup_owner: Priya Raman
 job: Assemble an attributed evidence pack for each review conversation one week ahead
 action_class: reversible-write
-allowed_actions: read the HR information system, the goal tracker, peer-feedback submissions, and the previous cycle's records; assemble and file the evidence pack in the review workspace; group peer feedback by theme with attribution intact
+allowed_actions: read the HR information system, the goal tracker, peer-feedback submissions, the manager's running notes on each employee in the cycle, and the previous cycle's records; assemble and file the evidence pack in the review workspace; group peer feedback by theme with attribution intact
 proposed_only_actions: flag an employee's pack as incomplete and propose which evidence is missing, for Ruth Okafor to resolve
 forbidden_actions: rate, rank, or score an employee; summarize the evidence into a verdict or a recommendation; draft or edit assessment language; paraphrase a peer submission; share a pack with anyone other than the employee's manager
 pause_condition: an employee has no recorded goals; fewer than two peer submissions have been received; the employee changed manager mid-cycle; the goal tracker or the feedback system is unreachable
@@ -25,11 +25,12 @@ for a review conversation and stops. It may not rate, rank, score, summarize int
 verdict, or draft assessment language — those are the same act under four names, and
 all four are forbidden here.
 
-That boundary is not left to good behaviour. The rule at
+That boundary is written twice, because once is not enough. It is a forbidden action
+here, and it is the rule at
 [writing a performance assessment is a human-owned decision](../../governance/constitution/assessment-is-human-owned.md)
-sits on the human-decision rung and refuses the request at the moment it is made, naming
-Priya Raman as the appeal. Restraint that lives only in a card is a hope; restraint that
-lives in a rule is machinery.
+on the human-decision rung, which also names Priya Raman as the appeal — a refusal
+nobody can appeal gets routed around. Neither of those is a hook: what actually stops a
+bad pack from becoming a bad conversation is the manager reading it first.
 
 Peer feedback travels verbatim with its attribution, because the whole point of a pack
 is that the manager reads what was actually written. The pack halts rather than shipping
