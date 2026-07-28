@@ -4736,5 +4736,66 @@ class TestAbsoluteImportMessage(unittest.TestCase):
             self.assertFalse(any("drifted" in f.message for f in findings))
 
 
+class TestInstanceRoots(unittest.TestCase):
+    def _rel(self, d, roots):
+        return sorted(os.path.relpath(r, d) for r in roots)
+
+    def test_root_with_content_is_an_instance(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/people-hr/_executive-view.md", EXEC_OK)
+            self.assertEqual(self._rel(d, validate._instance_roots(d)), ["."])
+
+    def test_nested_instance_is_discovered(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/people-hr/_executive-view.md", EXEC_OK)
+            _write(d, "demo/ontologies/sales/_executive-view.md", EXEC_OK)
+            self.assertEqual(self._rel(d, validate._instance_roots(d)), [".", "demo"])
+
+    def test_instance_without_root_content(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/skills/x/SKILL.md", SKILL_OK)
+            self.assertEqual(self._rel(d, validate._instance_roots(d)), ["demo"])
+
+    def test_every_content_dir_marks_an_instance(self):
+        for cd, rel in (("ontologies", "ontologies/f/_executive-view.md"),
+                        ("skills", "skills/x/SKILL.md"),
+                        ("governance", "governance/constitution/r.md"),
+                        ("proposals", "proposals/p.md"),
+                        ("memory", "memory/m.md")):
+            with tempfile.TemporaryDirectory() as d:
+                _write(d, "demo/" + rel, "# x\n")
+                self.assertIn("demo", self._rel(d, validate._instance_roots(d)), cd)
+
+    def test_no_content_means_no_instance(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "README.md", "# x\n")
+            self.assertEqual(validate._instance_roots(d), [])
+
+    def test_workbench_and_dot_dirs_are_skipped(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "tests/fixtures/ontologies/f/_executive-view.md", EXEC_OK)
+            _write(d, "docs/superpowers/ontologies/f/_executive-view.md", EXEC_OK)
+            _write(d, ".hidden/ontologies/f/_executive-view.md", EXEC_OK)
+            self.assertEqual(validate._instance_roots(d), [])
+
+    def test_gitignored_content_dir_does_not_mark_an_instance(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "vendor/skills/x/SKILL.md", SKILL_OK)
+            self.assertEqual(validate._instance_roots(d, ("vendor",)), [])
+
+    def test_deeply_nested_instances(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "a/b/c/memory/m.md", "# x\n")
+            self.assertEqual(self._rel(d, validate._instance_roots(d)), ["a/b/c"])
+
+    def test_root_first_and_deterministic(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "skills/x/SKILL.md", SKILL_OK)
+            _write(d, "zeta/skills/x/SKILL.md", SKILL_OK)
+            _write(d, "alpha/skills/x/SKILL.md", SKILL_OK)
+            self.assertEqual(self._rel(d, validate._instance_roots(d))[0], ".")
+            self.assertEqual(validate._instance_roots(d), validate._instance_roots(d))
+
+
 if __name__ == "__main__":
     unittest.main()

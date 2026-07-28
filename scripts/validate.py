@@ -2120,6 +2120,37 @@ def iter_files(root, ignore=()):
             yield os.path.join(dirpath, fn)
 
 
+# The directory names that mark a groundwork instance. A company OS repo carries
+# these at ITS root; inside this repo, demo/ carries them too.
+CONTENT_DIRS = ("ontologies", "skills", "governance", "proposals", "memory")
+
+
+def _instance_roots(root, ignore=()):
+    """Every directory holding groundwork content: the validated root itself, if
+    it carries one of the well-known content directories, plus any directory
+    beneath it that does. Absolute paths, root first, then depth-then-name order
+    so output is deterministic.
+
+    Why this exists: check_memory has always discovered `memory/` folders
+    anywhere under root, but every other structural check started at
+    `root/<content-dir>`. That meant a complete instance under demo/ — its
+    ontologies, skills, cards, rules, and proposals — was scanned by NOTHING,
+    with a green gate throughout. Reference resolution follows the instance, so
+    a demo skill's `ontology:`/`baseline:` resolve inside demo/, exactly as a
+    company repo's resolve inside that repo (#10)."""
+    roots = []
+    for dirpath, dirnames, _filenames in os.walk(root):
+        rel_dir = os.path.relpath(dirpath, root)
+        dirnames[:] = sorted(
+            d for d in dirnames
+            if d not in SKIP_DIRS and not d.startswith(".")
+            and os.path.normpath(os.path.join(rel_dir, d)) not in SKIP_RELPATHS
+            and not _ignored(d, ignore))
+        if any(d in CONTENT_DIRS for d in dirnames):
+            roots.append(dirpath)
+    return roots
+
+
 BLAST_RADIUS = {"track1-body", "escalating"}
 
 
