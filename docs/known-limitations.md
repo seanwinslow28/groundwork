@@ -137,13 +137,14 @@ Honest limits of the current build. This file grows as the product does (brief �
   `superseded_by` are all relative to the instance that contains them — matching a
   company repo, where those paths are relative to the repo root (#10). A nested
   instance therefore cannot reference the engine's exemplars by climbing out of itself.
-- **An outer instance currently subsumes the memory of instances nested inside it.**
-  `check_memory` discovers every record under the validated root, and an outer skill's
-  `baseline:` allowlist is built by the same recursive walk — so a root skill *can*
-  cite `demo/memory/...` while the reverse is blocked. Whether that outer→inner
-  direction should also be walled off is an open boundary decision **requiring
-  maintainer sign-off**, recorded here so the asymmetry reads as a decision point
-  rather than an oversight.
+- **A memory record belongs to exactly one instance** — the parent of the last
+  `memory` component in its path — and only that instance may cite it as a
+  `baseline:` or `superseded_by` target. Slice 2.3b closed the earlier
+  outer-subsumes-inner asymmetry (a root skill could cite `demo/memory/...` while
+  the reverse was blocked), so containment now holds in both directions. The cost,
+  accepted deliberately: there is no shared memory pool across instances, and if one
+  is ever wanted it must arrive as an explicit declaration, not as a side effect of
+  how a walker recurses.
 - **Instance discovery shares the stateless walker's traversal semantics**, including
   its fail-open on unreadable directories: `os.walk` skips a directory it cannot list,
   so an instance beneath an unreadable ancestor is silently not discovered — exactly
@@ -161,3 +162,28 @@ Honest limits of the current build. This file grows as the product does (brief �
   second copy whose registration nothing could satisfy.
 - **The always-loaded budget and the root-file drift check stay root-only** — both
   describe one repository's session surface, not per-instance content.
+
+## Demo content (#16)
+
+- **The synthetic ceiling.** groundwork mechanically verifies that structured
+  identifiers in demo content resolve to reserved-for-fiction namespaces or the
+  declared demo canon, and scans all committed content for high-signal secret
+  patterns. It does not — and cannot, mechanically — prove that no real-world entity is
+  referenced in free prose. That the demo's narrative names no real company, person, or
+  customer rests on the fixed fictional canon plus maintainer review, not an automated
+  check. The company name was searched for prior art before it was chosen; the person
+  names cannot be searched in any meaningful sense, because every name is somebody's.
+- **Bare-domain detection is high-signal, not exhaustive.** A hostname written without a
+  scheme is only recognized when it ends in one of a curated list of public suffixes.
+  That is what stops `canon.md` and `validate.py` reading as domains, and it means a
+  real domain on an unlisted suffix would pass. Emails and `http(s)://` URLs are matched
+  regardless of suffix.
+- **The check is scoped by directory name.** Anything under a directory named `demo` is
+  in scope; `your-company/` never is, by design — its identifiers are real and
+  legitimate (#16's scope matrix). Running the validator with a demo directory *as* the
+  root finds no `demo` component and skips the check; the repo gate runs from the repo
+  root, which is the supported setting. This mirrors the existing limitation for
+  `validate.py <memory-dir>`.
+- **A four-number dotted string is treated as an IP address.** A version string like
+  `10.4.2.1` in demo prose would be flagged. Failing toward a false positive is the
+  intended direction here.
