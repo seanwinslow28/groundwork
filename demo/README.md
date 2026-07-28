@@ -20,7 +20,7 @@ allowlist the validator checks every identifier in this directory against.
 
 ## What is coming
 
-- The skills and Owner's Cards for the four acted-on activities, and the constitution
+- The skills and Owner's Cards for the four automation-path activities, and the constitution
   — including the rule that stops an agent from writing a performance assessment.
 - The 15-minute walkthrough script, and the version pin that puts this directory under
   the same governance the validator applies to a real company repo.

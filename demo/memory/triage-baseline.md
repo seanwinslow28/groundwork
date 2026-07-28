@@ -7,8 +7,8 @@ source: The product tracker export, Q2 2026 (one hundred and forty-one requests)
 ---
 # Feature-request-triage baseline (pre-provisioning)
 
-Captured before the feature-request-triage skill was provisioned (#5 provisioning
-gate).
+Captured as the pre-provisioning baseline for the feature-request-triage skill (#5
+provisioning gate).
 
 - Median time from a request being raised to being filed and assigned: **nine business
   days**.

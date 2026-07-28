@@ -30,8 +30,8 @@ twice a year by one person. The gathering should stop being hand-run.
 which would normally point away from automation. It does not here, because the activity
 is deliberately drawn to *exclude* the judgment: the agent assembles evidence and stops.
 It does not rate, rank, summarize, or draft an assessment. Evaluating a person is a
-human-owned decision, and the constitution rule that governs this skill blocks the
-agent from crossing that line rather than trusting it not to.
+human-owned decision, and the constitution rule planned for this skill will block the
+agent from crossing that line once provisioned, rather than trusting it not to.
 
 Ticket #4 described this activity's motion as "assist". That is the same idea expressed
 as a verdict rather than a boundary: the Motion ladder records *how the work gets done*,

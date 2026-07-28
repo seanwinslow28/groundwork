@@ -7,8 +7,8 @@ source: The H1 2026 review cycle: nineteen employees, manager debrief notes
 ---
 # Review-prep baseline (pre-provisioning)
 
-Captured before the performance-review-prep skill was provisioned (#5 provisioning
-gate).
+Captured as the pre-provisioning baseline for the performance-review-prep skill (#5
+provisioning gate).
 
 - Median time from cycle open to a manager holding an evidence pack: **eleven days**.
 - Packs delivered at least one week before the review conversation: **six of nineteen**.
