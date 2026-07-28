@@ -4893,5 +4893,61 @@ class TestNestedInstanceCards(unittest.TestCase):
                                 for f in validate.check_owner_cards(d)))
 
 
+class TestNestedInstanceGovernance(unittest.TestCase):
+    def test_nested_constitution_rule_is_checked(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/governance/constitution/r.md",
+                   RULE_OK.replace("rung: human-decision", "rung: rung-six"))
+            self.assertTrue(any(f.level == "ERROR" and "demo/" in f.path
+                                for f in validate.check_constitution(d)))
+
+    def test_clean_nested_rule_is_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/governance/constitution/r.md", RULE_OK)
+            self.assertEqual([f for f in validate.check_constitution(d)
+                              if f.level == "ERROR"], [])
+
+    def test_nested_proposal_is_schema_checked(self):
+        # The 1.5d-ii deferral, closed.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/skills/onboarding-orchestration/SKILL.md", SKILL_OK)
+            _write(d, "demo/proposals/p1.md",
+                   PROPOSAL_OK.replace("blast_radius: escalating",
+                                       "blast_radius: trivial"))
+            self.assertTrue(any(f.level == "ERROR" and "blast_radius" in f.message
+                                for f in validate.check_proposals(d)))
+
+    def test_nested_proposal_target_resolves_in_its_instance(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/skills/onboarding-orchestration/SKILL.md", SKILL_OK)
+            _write(d, "demo/memory/onboarding-baseline.md", MEM_OK)
+            _write(d, "demo/proposals/p1.md", PROPOSAL_OK)
+            self.assertEqual([f for f in validate.check_proposals(d)
+                              if f.level == "ERROR"], [])
+
+    def test_a_demo_proposal_cannot_target_an_engine_skill(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "skills/onboarding-orchestration/SKILL.md", SKILL_OK)
+            _write(d, "demo/proposals/p1.md", PROPOSAL_OK)
+            self.assertTrue(any(f.level == "ERROR" and "target" in f.message
+                                for f in validate.check_proposals(d)))
+
+    def test_nested_changelog_is_checked(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/governance/changelog.md",
+                   "# Governance changelog\n\n## Entries\n\n- oops not an entry\n")
+            self.assertTrue(any(f.level == "WARN" and "demo/" in f.path
+                                for f in validate.check_changelog(d)))
+
+    def test_both_instances_checked_independently(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/changelog.md",
+                   "# c\n\n## Entries\n\n- bad root entry\n")
+            _write(d, "demo/governance/changelog.md",
+                   "# c\n\n## Entries\n\n- bad demo entry\n")
+            tops = {f.path.split("/")[0] for f in validate.check_changelog(d)}
+            self.assertEqual(tops, {"governance", "demo"})
+
+
 if __name__ == "__main__":
     unittest.main()

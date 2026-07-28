@@ -1725,11 +1725,21 @@ _H1 = re.compile(r"^# \S", re.MULTILINE)
 
 
 def check_constitution(root, ignore=()):
-    """#8 typed-rule checks. Strict where a rule backs a safety invariant; WARN on
-    incomplete thinking. The runnable hook set is a separate artifact (Slice 1.5b).
-    Honors the same .gitignore patterns as the generic walker."""
+    """#8 typed-rule checks, run for every instance under root (see
+    _instance_roots): the engine root, demo/, your-company/."""
     findings = []
-    base = os.path.join(root, "governance", "constitution")
+    for inst in _instance_roots(root, ignore):
+        findings += _check_constitution_instance(inst, root, ignore)
+    return findings
+
+
+def _check_constitution_instance(inst, root, ignore=()):
+    """#8 typed-rule checks over one instance. Strict where a rule backs a
+    safety invariant; WARN on incomplete thinking. The runnable hook set is a
+    separate artifact (Slice 1.5b). Honors the same .gitignore patterns as the
+    generic walker."""
+    findings = []
+    base = os.path.join(inst, "governance", "constitution")
     if not os.path.isdir(base):
         return findings
     if _ignored("governance", ignore) or _ignored("constitution", ignore):
@@ -2173,16 +2183,26 @@ BLAST_RADIUS = {"track1-body", "escalating"}
 
 
 def check_proposals(root, ignore=()):
-    """#17/#18 proposal-file schema. Diff-based declared-vs-actual matching is 1.5d-ii;
-    this checks the static schema, the routing domain, and the pending-only lifecycle."""
+    """#17/#18 proposal-file schema, run for every instance under root (see
+    _instance_roots): the engine root, demo/, your-company/."""
     findings = []
-    base = os.path.join(root, "proposals")
+    for inst in _instance_roots(root, ignore):
+        findings += _check_proposals_instance(inst, root, ignore)
+    return findings
+
+
+def _check_proposals_instance(inst, root, ignore=()):
+    """#17/#18 proposal-file schema for one instance. Diff-based
+    declared-vs-actual matching is 1.5d-ii; this checks the static schema, the
+    routing domain, and the pending-only lifecycle."""
+    findings = []
+    base = os.path.join(inst, "proposals")
     if not os.path.isdir(base) or _ignored("proposals", ignore):
         return findings
     try:
         names = sorted(os.listdir(base))
     except OSError as e:
-        return [Finding("ERROR", "proposals", None,
+        return [Finding("ERROR", os.path.relpath(base, root), None,
                         "cannot list proposals/ — fail closed: %s" % e)]
     for name in names:
         if not name.endswith(".md") or name in {"README.md", "_index.md"} or _ignored(name, ignore):
@@ -2213,15 +2233,15 @@ def check_proposals(root, ignore=()):
                 findings.append(Finding("ERROR", rel, None,
                                         "proposal 'target' must be a skill (skills/) or a constitution rule "
                                         "(governance/constitution/); other artifacts keep their own governance (#17)"))
-            elif not os.path.isfile(os.path.join(root, t)):
+            elif not os.path.isfile(os.path.join(inst, t)):
                 findings.append(Finding("ERROR", rel, None, "proposal 'target' not found: %s" % t))
             else:
                 # Filesystem aliases too (1.4b precedent): classification is by
                 # where the target RESOLVES, not just how it is spelled — a
                 # symlink under skills/ pointing at a rule must fail closed.
                 resolved = os.path.relpath(
-                    os.path.realpath(os.path.join(root, t)),
-                    os.path.realpath(root)).replace("\\", "/")
+                    os.path.realpath(os.path.join(inst, t)),
+                    os.path.realpath(inst)).replace("\\", "/")
                 bucket = "skills/" if target_is_skill else "governance/constitution/"
                 if not resolved.startswith(bucket):
                     findings.append(Finding("ERROR", rel, None,
@@ -2267,7 +2287,7 @@ def check_proposals(root, ignore=()):
                                     "incomplete proposal: missing 'evidence' links — demote to a working note (#17)"))
         else:
             for e in (ev if isinstance(ev, list) else [ev]):
-                if isinstance(e, str) and e.strip() and not os.path.isfile(os.path.join(root, e.strip())):
+                if isinstance(e, str) and e.strip() and not os.path.isfile(os.path.join(inst, e.strip())):
                     findings.append(Finding("WARN", rel, None, "evidence link not found: %s" % e.strip()))
 
         # #17 completeness includes the diff itself: the proposal file IS the
@@ -2302,10 +2322,20 @@ def check_proposals(root, ignore=()):
 
 
 def check_changelog(root, ignore=()):
-    """#17 governance changelog: append-only index of auto-applied track-1 changes.
-    Validates entry format; append-only enforcement is the --diff mode (1.5d-ii)."""
+    """#17 governance changelog, run for every instance under root (see
+    _instance_roots): the engine root, demo/, your-company/."""
     findings = []
-    path = os.path.join(root, "governance", "changelog.md")
+    for inst in _instance_roots(root, ignore):
+        findings += _check_changelog_instance(inst, root, ignore)
+    return findings
+
+
+def _check_changelog_instance(inst, root, ignore=()):
+    """#17 governance changelog for one instance: append-only index of
+    auto-applied track-1 changes. Validates entry format; append-only
+    enforcement is the --diff mode (1.5d-ii)."""
+    findings = []
+    path = os.path.join(inst, "governance", "changelog.md")
     if not os.path.isfile(path) or _ignored("governance", ignore) or _ignored("changelog.md", ignore):
         return findings
     rel = os.path.relpath(path, root)
@@ -2332,12 +2362,12 @@ def check_changelog(root, ignore=()):
         elif not skill_norm.endswith("/SKILL.md"):
             findings.append(Finding("WARN", rel, lineno,
                                     "changelog entry should point at a SKILL.md (auto-apply is body-only SKILL.md edits)"))
-        elif os.path.isfile(os.path.join(root, skill_norm)):
+        elif os.path.isfile(os.path.join(inst, skill_norm)):
             # Symlink parity with check_proposals: a path spelled skills/ that
             # resolves elsewhere in the current tree is an alias, not a skill.
             resolved = os.path.relpath(
-                os.path.realpath(os.path.join(root, skill_norm)),
-                os.path.realpath(root)).replace("\\", "/")
+                os.path.realpath(os.path.join(inst, skill_norm)),
+                os.path.realpath(inst)).replace("\\", "/")
             if not resolved.startswith("skills/"):
                 findings.append(Finding("WARN", rel, lineno,
                                         "changelog entry skill path is a filesystem alias resolving outside "
