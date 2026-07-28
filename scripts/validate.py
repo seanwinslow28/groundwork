@@ -1338,8 +1338,11 @@ def _check_owner_cards_instance(inst, root, ignore=()):
                                         "skill baseline must be a single value"))
             else:
                 if memory_record_realpaths is None:
+                    inst_real = os.path.realpath(inst)
                     memory_record_realpaths = _live_record_realpaths(
-                        _memory_record_files(inst, ignore))
+                        [p for p in _memory_record_files(inst, ignore)
+                         if os.path.realpath(_memory_instance_base(inst, p))
+                         == inst_real])
                 baseline_real = _record_ref_realpath(inst, baseline)
                 if baseline_real is None or \
                         baseline_real not in memory_record_realpaths:
@@ -1558,6 +1561,23 @@ def _memory_record_files(root, ignore=None):
     return out
 
 
+def _memory_instance_base(base, abspath):
+    """The instance a memory record belongs to: the parent of the LAST 'memory'
+    component in its path. A record under demo/memory/ belongs to demo/; one
+    under memory/company/memory/ belongs to memory/company/ — taking the FIRST
+    component would select the outer root and reopen cross-instance resolution
+    (Codex r2 of Slice 2.3a). `base` is the directory `abspath` is relative to.
+
+    One rule, one home: check_memory resolves `superseded_by` with it, and
+    check_owner_cards scopes the baseline allowlist with it. Both consumers
+    agreeing is what makes 'a record belongs to exactly one instance' true
+    rather than merely intended."""
+    dparts = os.path.relpath(
+        os.path.dirname(abspath), base).replace("\\", "/").split("/")
+    mem_idx = len(dparts) - 1 - dparts[::-1].index("memory")
+    return os.path.join(base, *dparts[:mem_idx])
+
+
 def _record_ref_realpath(root, ref):
     """Resolve a memory-record reference. None if the literal path is absolute
     or escapes the repo root (the schema says repo-relative), or unresolvable.
@@ -1657,10 +1677,7 @@ def check_memory(root):
                 # a memory tree (memory/company/memory/x.md), the first
                 # component would select the outer root and reopen the
                 # cross-instance hole (Codex r2).
-                dparts = os.path.relpath(
-                    os.path.dirname(abspath), root).replace("\\", "/").split("/")
-                mem_idx = len(dparts) - 1 - dparts[::-1].index("memory")
-                inst_base = os.path.join(root, *dparts[:mem_idx])
+                inst_base = _memory_instance_base(root, abspath)
                 target_real = _record_ref_realpath(inst_base, target)
                 if target_real is None or target_real not in record_realpaths:
                     findings.append(Finding(
@@ -2404,6 +2421,174 @@ def _check_changelog_instance(inst, root, ignore=()):
     return findings
 
 
+# Namespaces reserved for documentation and fiction — safe anywhere.
+RESERVED_TLDS = (".example", ".test", ".invalid", ".localhost")
+# The apex names themselves are equally reserved: http://localhost/ must pass
+# even though it has no dot to suffix-match on (Codex r1).
+_RESERVED_APEXES = tuple(t.lstrip(".") for t in RESERVED_TLDS)
+RESERVED_DOMAINS = ("example.com", "example.net", "example.org")
+# RFC 5737 TEST-NET-1/2/3.
+TESTNET_PREFIXES = ("192.0.2.", "198.51.100.", "203.0.113.")
+# A curated set of real public suffixes. Bare hostnames are only recognized when
+# they end in one of these, which is what keeps 'canon.md', 'validate.py', and
+# 'config.json' from reading as domains. High-signal, not exhaustive — the same
+# posture as the secrets floor (#16).
+PUBLIC_TLDS = ("com", "net", "org", "io", "co", "ai", "dev", "app", "cloud",
+               "xyz", "me", "us", "uk", "ca", "de", "fr", "jp", "in", "tech",
+               "info", "biz", "sh", "gg", "so", "to")
+# Multi-label public suffixes a canon entry must not claim: 'co.uk' contains a
+# dot, so the bare-TLD rule alone would let it launder every .co.uk host into
+# the allowlist (Codex r2). Curated, not the PSL — the same posture as
+# PUBLIC_TLDS.
+PUBLIC_SLDS = ("co.uk", "org.uk", "ac.uk", "gov.uk", "com.au", "net.au",
+               "org.au", "co.jp", "co.nz", "co.in", "com.br", "com.cn",
+               "com.mx")
+
+# All three host extractors are case-insensitive (Codex r1): 'HTTPS://ACME.COM'
+# and bare 'ACME.COM' are the same identifiers as their lowercase spellings.
+_EMAIL = re.compile(
+    r"[A-Za-z0-9._%+-]+@([A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,})", re.IGNORECASE)
+_URL_HOST = re.compile(
+    r"https?://(?:[^/@\s]*@)?([A-Za-z0-9.-]+)", re.IGNORECASE)
+_BARE_DOMAIN = re.compile(
+    r"(?<![A-Za-z0-9@._-])((?:[A-Za-z0-9-]+\.)+(?:%s))(?![A-Za-z0-9-])"
+    % "|".join(PUBLIC_TLDS), re.IGNORECASE)
+# NANP shapes, 10-digit and 7-digit, in one pass (one pass so '415-555-2671'
+# yields one match, not a 10-digit match plus its own 7-digit tail). The
+# 7-digit form is what the canon itself writes ('555-01xx'), and missing it
+# made the fiction-phone test vacuous (Codex r1). The two forms differ on
+# compactness (Codex r2): a 10-digit run is phone-shaped on its own
+# ('4155552671'), but a bare 7-digit token ('Order 8675309') is not — the
+# 7-digit branch requires a written separator.
+_PHONE = re.compile(
+    r"(?<!\d)(?:"
+    r"(?:\+?1[-. ]?)?\(?([2-9]\d{2})\)?[-. ]?([2-9]\d{2})[-. ]?(\d{4})"
+    r"|([2-9]\d{2})[-. ](\d{4})"
+    r")(?!\d)")
+# The lookahead tolerates a sentence-final period ('… at 8.8.8.8.') while
+# still refusing to carve four octets out of a longer dotted chain (1.2.3.4.5).
+_IPV4 = re.compile(r"(?<![\d.])((?:\d{1,3}\.){3}\d{1,3})(?!\.?\d)")
+
+
+def _domain_allowed(host, allowed):
+    """A host passes when it is, or is a subdomain of, a declared or reserved
+    domain. Suffix matching is component-wise on purpose: 'notumbercress.com'
+    ends with 'umbercress.com' as a string but is a different domain."""
+    host = host.strip().rstrip(".").lower()
+    if not host:
+        return True
+    if host.endswith(RESERVED_TLDS) or host in _RESERVED_APEXES:
+        return True
+    for d in tuple(allowed) + RESERVED_DOMAINS:
+        d = d.strip().lower().strip(".")
+        if d and (host == d or host.endswith("." + d)):
+            return True
+    return False
+
+
+def check_synthetic_identifiers(root, ignore=()):
+    """#16, scoped to demo/ and ERROR: every structured identifier in demo
+    content must trace to the demo canon or to a namespace reserved for fiction.
+    Deliberately NOT applied to your-company/, whose identifiers are real by
+    design — a WARN there would be cry-wolf noise that teaches adopters to
+    ignore the validator.
+
+    This verifies the structured surface only. A real company or person named in
+    free prose looks exactly like a fictional one, and no check can tell them
+    apart; that layer rests on the canon plus maintainer review, and is recorded
+    as a Known Limitation."""
+    findings = []
+    demo_files = []
+    for p in iter_files(root, ignore):
+        dirs = os.path.relpath(p, root).replace(os.sep, "/").split("/")[:-1]
+        # #16's scope matrix: in scope under a directory named demo, EXCEPT
+        # anywhere under your-company/ — its identifiers are real by design,
+        # even in a directory it happens to call demo (Codex r1).
+        if "demo" in dirs and "your-company" not in dirs:
+            demo_files.append(p)
+    if not demo_files:
+        return findings
+
+    canon_path = os.path.join(root, "demo", "canon.md")
+    if not os.path.isfile(canon_path):
+        return [Finding("ERROR", os.path.join("demo", "canon.md"), None,
+                        "demo content is present but there is no canon to verify it "
+                        "against — every identifier under demo/ must trace to the "
+                        "declared fictional world (#16)")]
+    data, fm = _load_frontmatter(canon_path, os.path.join("demo", "canon.md"))
+    findings += fm
+    if data is None:
+        return findings
+    allowed = []
+    for key in ("domains", "external_domains"):
+        v = data.get(key)
+        if _blank(v):
+            continue
+        for x in (v if isinstance(v, list) else [v]):
+            if not isinstance(x, str) or not x.strip():
+                continue
+            entry = x.strip().strip(".")
+            if "." not in entry or entry.lower() in PUBLIC_SLDS:
+                # 'domains: com' (or '.com', or 'co.uk') would make every host
+                # under that suffix a 'subdomain' of the canon — a public
+                # suffix is a hole in the allowlist, not an allowance
+                # (Codex r1/r2).
+                findings.append(Finding(
+                    "ERROR", os.path.join("demo", "canon.md"), None,
+                    "canon %s entry %r is a public suffix, not a registrable "
+                    "domain — it would allow every host under it (#16)"
+                    % (key, x.strip())))
+                continue
+            allowed.append(entry)
+    prefix = data.get("phone_range")
+    phone_prefix = prefix.strip() if isinstance(prefix, str) and prefix.strip() else "555-01"
+
+    for abspath in sorted(demo_files):
+        rel = os.path.relpath(abspath, root)
+        text, rd = _read_utf8(abspath, rel)
+        if text is None:
+            findings += rd
+            continue
+        for lineno, line in enumerate(text.split("\n"), 1):
+            hosts = set(_EMAIL.findall(line)) | set(_URL_HOST.findall(line)) \
+                | {m.group(1) for m in _BARE_DOMAIN.finditer(line)}
+            for host in sorted(hosts):
+                if re.fullmatch(r"(?:\d{1,3}\.){3}\d{1,3}", host) and \
+                        all(int(o) <= 255 for o in host.split(".")):
+                    # A VALID IP used as a URL host; the IPv4 rule below owns
+                    # it — TEST-NET must pass here (Codex r1). An invalid one
+                    # (999.999.999.999) stays here and fails the domain check,
+                    # instead of falling through both rules (Codex r2).
+                    continue
+                if not _domain_allowed(host, allowed):
+                    findings.append(Finding(
+                        "ERROR", rel, lineno,
+                        "identifier %r is not in the demo canon or a reserved-for-"
+                        "fiction namespace (#16)" % host))
+            for m in _PHONE.finditer(line):
+                # Groups 1-3 are the 10-digit branch, 4-5 the 7-digit one.
+                area = m.group(1)
+                exch = m.group(2) or m.group(4)
+                last = m.group(3) or m.group(5)
+                digits = "%s-%s" % (exch, last)
+                number = "%s-%s" % (area, digits) if area else digits
+                if not digits.startswith(phone_prefix):
+                    findings.append(Finding(
+                        "ERROR", rel, lineno,
+                        "phone number %r is outside the %sxx range reserved for "
+                        "fiction (#16)" % (number, phone_prefix)))
+            for ip in _IPV4.findall(line):
+                octets = ip.split(".")
+                if any(not o.isdigit() or int(o) > 255 for o in octets):
+                    continue  # not an address; a version string or similar
+                if not ip.startswith(TESTNET_PREFIXES):
+                    findings.append(Finding(
+                        "ERROR", rel, lineno,
+                        "IP address %r is not in a TEST-NET range reserved for "
+                        "documentation (#16)" % ip))
+    return findings
+
+
 def _governed_class(rel):
     """Classify a path (relative to a governed root) into #17's routing domain:
     'rule' (any constitution file), 'skill-md' (a package's own SKILL.md),
@@ -2525,6 +2710,7 @@ def validate(root):
     findings += check_symlinked_dirs(root)
     findings += check_proposals(root, ignore)
     findings += check_changelog(root, ignore)
+    findings += check_synthetic_identifiers(root, ignore)
     findings += check_agents_chain(root, ignore)
     findings += check_always_loaded_budget(root)
     findings += check_root_files(root)

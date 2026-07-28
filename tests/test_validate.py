@@ -5023,6 +5023,295 @@ class TestNestedInstanceMemory(unittest.TestCase):
             self.assertTrue(errs)
 
 
+CANON_OK = ("---\ncompany: Umbercress\nproduct: Umbercress Relay\n"
+            "domains:\n  - umbercress.example\nexternal_domains:\n"
+            "phone_range: 555-01\n---\n# The Umbercress world\n")
+
+
+class TestSyntheticIdentifiers(unittest.TestCase):
+    def _demo(self, d, body, name="notes.md", canon=CANON_OK):
+        if canon is not None:
+            _write(d, "demo/canon.md", canon)
+        _write(d, "demo/" + name, body)
+
+    def test_no_demo_directory_is_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "README.md", "mail me at real.person@acme.com\n")
+            self.assertEqual(validate.check_synthetic_identifiers(d), [])
+
+    def test_canon_domain_email_passes(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "Ask ruth.okafor@umbercress.example about it.\n")
+            self.assertEqual(validate.check_synthetic_identifiers(d), [])
+
+    def test_real_domain_email_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "Ask ruth.okafor@acme-logistics.com about it.\n")
+            self.assertTrue(any(f.level == "ERROR" and "acme-logistics.com" in f.message
+                                for f in validate.check_synthetic_identifiers(d)))
+
+    def test_reserved_namespaces_pass(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "a@x.test b@y.invalid c@example.com d@sub.example.org\n")
+            self.assertEqual(validate.check_synthetic_identifiers(d), [])
+
+    def test_real_url_host_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "See https://status.acme-logistics.com/incidents for detail.\n")
+            self.assertTrue(any(f.level == "ERROR" for f in
+                                validate.check_synthetic_identifiers(d)))
+
+    def test_bare_public_domain_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "Their site is acme-logistics.com and it is slow.\n")
+            self.assertTrue(any(f.level == "ERROR" for f in
+                                validate.check_synthetic_identifiers(d)))
+
+    def test_filenames_are_not_domains(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "See canon.md, SKILL.md, validate.py and config.json.\n")
+            self.assertEqual(validate.check_synthetic_identifiers(d), [])
+
+    def test_fiction_phone_passes(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "Call 555-0142 or (555) 019-9 nonsense.\n")
+            self.assertEqual([f for f in validate.check_synthetic_identifiers(d)
+                              if "555-0142" in f.message], [])
+
+    def test_real_phone_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "Call 415-555-2671 for support.\n")
+            self.assertTrue(any(f.level == "ERROR" for f in
+                                validate.check_synthetic_identifiers(d)))
+
+    def test_testnet_ip_passes(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "The relay runs at 192.0.2.14 and 203.0.113.7.\n")
+            self.assertEqual(validate.check_synthetic_identifiers(d), [])
+
+    def test_real_ip_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "The relay runs at 8.8.8.8.\n")
+            self.assertTrue(any(f.level == "ERROR" and "8.8.8.8" in f.message
+                                for f in validate.check_synthetic_identifiers(d)))
+
+    def test_uppercase_url_host_errors(self):
+        # Codex r1: the URL scheme was matched lowercase-only, so
+        # 'HTTPS://ACME.COM' evaded the extractor entirely.
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "See HTTPS://ACME.COM/STATUS for detail.\n")
+            self.assertTrue(any(f.level == "ERROR" and "ACME.COM" in f.message
+                                for f in validate.check_synthetic_identifiers(d)))
+
+    def test_uppercase_bare_domain_errors(self):
+        # Codex r1: the bare-domain TLD alternation was lowercase-only.
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "Their site is ACME.COM and it is slow.\n")
+            self.assertTrue(any(f.level == "ERROR" and "ACME.COM" in f.message
+                                for f in validate.check_synthetic_identifiers(d)))
+
+    def test_seven_digit_real_phone_errors(self):
+        # Codex r1: only 10-digit NANP forms were extracted, so 'Call 867-5309'
+        # passed despite being outside the fiction range.
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "Call 867-5309 for support.\n")
+            self.assertTrue(any(f.level == "ERROR" and "867-5309" in f.message
+                                for f in validate.check_synthetic_identifiers(d)))
+
+    def test_fiction_phone_test_is_not_vacuous(self):
+        # Codex r1: 555-0142 was never extracted, so the fiction-phone test
+        # passed vacuously. This pair is the discriminator: same 7-digit shape,
+        # one inside the range (no finding), one outside (finding).
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "Call 555-0142 or, after hours, 555-9142.\n")
+            findings = validate.check_synthetic_identifiers(d)
+            self.assertTrue(any(f.level == "ERROR" and "555-9142" in f.message
+                                for f in findings))
+            self.assertEqual([f for f in findings if "555-0142" in f.message], [])
+
+    def test_compact_ten_digit_phone_errors(self):
+        # Codex r2: requiring a separator after the area code regressed the
+        # compact 10-digit form the original pattern accepted.
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "Call 4155552671 now.\n")
+            self.assertTrue(any(f.level == "ERROR" and "415-555-2671" in f.message
+                                for f in validate.check_synthetic_identifiers(d)))
+
+    def test_compact_seven_digit_token_is_not_a_phone(self):
+        # Codex r2: a bare 7-digit token ('Order 8675309') must not read as a
+        # phone — the 7-digit form is only recognized separator-written.
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "Order 8675309 shipped yesterday.\n")
+            self.assertEqual(validate.check_synthetic_identifiers(d), [])
+
+    def test_multi_label_public_suffix_canon_entry_errors(self):
+        # Codex r2: '.co.uk' normalized to 'co.uk', which contains a dot and
+        # slipped past the bare-TLD rule — laundering every .co.uk host.
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "Ask ceo@real-company.co.uk about it.\n",
+                       canon=CANON_OK.replace("domains:\n  - umbercress.example",
+                                              "domains:\n  - .co.uk"))
+            findings = validate.check_synthetic_identifiers(d)
+            self.assertTrue(any(f.level == "ERROR" and "canon" in f.path
+                                for f in findings))
+            self.assertTrue(any(f.level == "ERROR" and "real-company.co.uk" in f.message
+                                for f in findings))
+
+    def test_invalid_ip_shaped_url_host_errors(self):
+        # Codex r2: '999.999.999.999' as a URL host was skipped as IPv4-shaped,
+        # then discarded by the octet-validity carve-out — falling through both
+        # rules. Only a VALID IPv4 host defers to the IP rule.
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "See https://999.999.999.999/status for detail.\n")
+            self.assertTrue(any(f.level == "ERROR" and "999.999.999.999" in f.message
+                                for f in validate.check_synthetic_identifiers(d)))
+
+    def test_demo_inside_your_company_is_not_scoped(self):
+        # Codex r1: the #16 scope matrix says NEVER your-company/ — including a
+        # directory it happens to call demo.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "your-company/demo/notes.md",
+                   "ceo@acme-logistics.com 8.8.8.8\n")
+            self.assertEqual(validate.check_synthetic_identifiers(d), [])
+
+    def test_bare_tld_canon_entry_errors_and_is_not_an_allowance(self):
+        # Codex r1: 'domains: com' must not turn every .com host into a
+        # subdomain of the canon (nor may a leading-dot '.com' entry).
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "Ask ceo@real-company.com about it.\n",
+                       canon=CANON_OK.replace("domains:\n  - umbercress.example",
+                                              "domains:\n  - com"))
+            findings = validate.check_synthetic_identifiers(d)
+            self.assertTrue(any(f.level == "ERROR" and "canon" in f.path
+                                for f in findings))
+            self.assertTrue(any(f.level == "ERROR" and "real-company.com" in f.message
+                                for f in findings))
+
+    def test_testnet_ip_as_url_host_passes(self):
+        # Codex r1: a TEST-NET IP used as a URL host was rejected as an
+        # undeclared 'domain' before the IPv4 rule could bless it.
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "The console is at https://192.0.2.14/status today.\n")
+            self.assertEqual(validate.check_synthetic_identifiers(d), [])
+
+    def test_real_ip_as_url_host_still_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "The console is at https://8.8.8.8/status today.\n")
+            self.assertTrue(any(f.level == "ERROR" and "8.8.8.8" in f.message
+                                for f in validate.check_synthetic_identifiers(d)))
+
+    def test_localhost_apex_passes(self):
+        # Codex r1: only '.localhost' subdomains passed; the reserved apex
+        # 'localhost' itself was rejected.
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "Point it at http://localhost/relay for local runs.\n")
+            self.assertEqual(validate.check_synthetic_identifiers(d), [])
+
+    def test_longer_dotted_chain_is_not_carved_into_an_ip(self):
+        # Regression for the in-session _IPV4 fix: the plan's lookahead
+        # (?![\d.]) missed a sentence-final IP ('… at 8.8.8.8.'), so it was
+        # loosened to (?!\.?\d) — which must NOT start matching four octets
+        # out of a five-part version string.
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "Upgrade from 1.2.3.4.5 to the next build.\n")
+            self.assertEqual(validate.check_synthetic_identifiers(d), [])
+
+    def test_external_domain_declared_in_canon_passes(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "Source: https://github.com/x/y\n",
+                       canon=CANON_OK.replace("external_domains:\n",
+                                              "external_domains:\n  - github.com\n"))
+            self.assertEqual(validate.check_synthetic_identifiers(d), [])
+
+    def test_missing_canon_fails_closed(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/notes.md", "nothing identifying here\n")
+            self.assertTrue(any(f.level == "ERROR" and "canon" in f.message.lower()
+                                for f in validate.check_synthetic_identifiers(d)))
+
+    def test_unreadable_canon_fails_closed(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write_bytes(d, "demo/canon.md", b"---\ndomains:\n  - \xff\xfe\n---\n")
+            _write(d, "demo/notes.md", "x\n")
+            self.assertTrue(any(f.level == "ERROR" for f in
+                                validate.check_synthetic_identifiers(d)))
+
+    def test_your_company_is_never_scoped(self):
+        # #16 is explicit: real identifiers are legitimate in your-company/.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/canon.md", CANON_OK)
+            _write(d, "your-company/notes.md", "ceo@acme-logistics.com 8.8.8.8\n")
+            self.assertEqual(validate.check_synthetic_identifiers(d), [])
+
+    def test_subdomain_of_a_canon_domain_passes(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "app.umbercress.example is the console.\n")
+            self.assertEqual(validate.check_synthetic_identifiers(d), [])
+
+    def test_lookalike_suffix_does_not_pass(self):
+        # 'notumbercress.example' ends with the canon domain as a STRING but is
+        # not a subdomain of it.
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "notumbercress.example is someone else.\n")
+            findings = validate.check_synthetic_identifiers(d)
+            self.assertEqual(findings, [])  # .example is reserved regardless
+
+    def test_lookalike_suffix_on_a_public_tld_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._demo(d, "notumbercress.com is someone else.\n",
+                       canon=CANON_OK.replace("umbercress.example", "umbercress.com"))
+            self.assertTrue(any(f.level == "ERROR" for f in
+                                validate.check_synthetic_identifiers(d)))
+
+    def test_wired_into_validate(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/canon.md", CANON_OK)
+            _write(d, "demo/notes.md", "ceo@acme-logistics.com\n")
+            self.assertTrue(any(f.level == "ERROR" for f in validate.validate(d)))
+
+
+class TestMemoryInstanceOwnership(unittest.TestCase):
+    def test_root_skill_cannot_borrow_a_nested_instance_baseline(self):
+        # The asymmetry Slice 2.3a left open: containment held inward and
+        # leaked outward, so an engine exemplar could take its baseline from
+        # the demo company's numbers.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/people-hr/_executive-view.md", EXEC_OK)
+            _write(d, "ontologies/people-hr/onboarding-orchestration.md", AUTOMATE_OK)
+            _write(d, "skills/onboarding-orchestration/SKILL.md",
+                   SKILL_BASELINED.replace("baseline: memory/onboarding-baseline.md",
+                                           "baseline: demo/memory/onboarding-baseline.md"))
+            _write(d, "skills/onboarding-orchestration/owner-card.md", CARD_OK)
+            _write(d, "demo/memory/onboarding-baseline.md", MEM_OK)
+            self.assertTrue(any(f.level == "ERROR" and "baseline" in f.message.lower()
+                                for f in validate.check_owner_cards(d)))
+
+    def test_own_instance_baseline_still_resolves(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write_instance(d)
+            self.assertEqual([f for f in validate.check_owner_cards(d)
+                              if f.level == "ERROR"], [])
+
+    def test_nested_instance_baseline_still_resolves(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write_instance(d, "demo/")
+            self.assertEqual([f for f in validate.check_owner_cards(d)
+                              if f.level == "ERROR"], [])
+
+    def test_memory_instance_base_picks_the_last_memory_component(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "memory", "company", "memory", "x.md")
+            self.assertEqual(
+                os.path.realpath(validate._memory_instance_base(d, p)),
+                os.path.realpath(os.path.join(d, "memory", "company")))
+
+    def test_memory_instance_base_at_root(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "memory", "x.md")
+            self.assertEqual(os.path.realpath(validate._memory_instance_base(d, p)),
+                             os.path.realpath(d))
+
+
 class TestInstanceRootsSymlinkMarkers(unittest.TestCase):
     # Codex review: a dangling `skills` symlink stopped marking an instance,
     # silently dropping the pre-existing "must not be a symlink" ERROR.

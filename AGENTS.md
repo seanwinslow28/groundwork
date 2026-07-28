@@ -30,12 +30,18 @@ non-automation verdict, and the validator gates every layer of it.
   action-class hook set, and the append-only changelog.
 - `memory/` — the org-memory record schema with three captured baselines and an index.
 - `proposals/` — the consent-gate convention for agent-proposed changes.
+- `demo/` — the pre-installed example company (**Umbercress**). Its canon declares the
+  fictional world and doubles as the validator's identifier allowlist. The company's
+  ontologies, skills, governance, and the 15-minute walkthrough are still being filled
+  in — `demo/README.md` says what is there today.
 
 **Not built yet — do not describe these as working:**
 
 - `interview/` — the generator that would interview a company and write its OS.
   Phase 3. It does not exist.
-- `demo/` — the synthetic company and the 15-minute walkthrough. Phase 2.3.
+- `demo/` walkthrough — the synthetic company's content and the 15-minute 3-query
+  script. The directory exists and its canon is in place; the walkthrough is not
+  usable yet.
 - `delivery/` — the provisioning guide. Phase 4.
 - `your-company/` — generated content lives in a **separate private repo**, not here.
 
