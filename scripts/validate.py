@@ -2421,6 +2421,117 @@ def _check_changelog_instance(inst, root, ignore=()):
     return findings
 
 
+# Namespaces reserved for documentation and fiction — safe anywhere.
+RESERVED_TLDS = (".example", ".test", ".invalid", ".localhost")
+RESERVED_DOMAINS = ("example.com", "example.net", "example.org")
+# RFC 5737 TEST-NET-1/2/3.
+TESTNET_PREFIXES = ("192.0.2.", "198.51.100.", "203.0.113.")
+# A curated set of real public suffixes. Bare hostnames are only recognized when
+# they end in one of these, which is what keeps 'canon.md', 'validate.py', and
+# 'config.json' from reading as domains. High-signal, not exhaustive — the same
+# posture as the secrets floor (#16).
+PUBLIC_TLDS = ("com", "net", "org", "io", "co", "ai", "dev", "app", "cloud",
+               "xyz", "me", "us", "uk", "ca", "de", "fr", "jp", "in", "tech",
+               "info", "biz", "sh", "gg", "so", "to")
+
+_EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,})")
+_URL_HOST = re.compile(r"https?://(?:[^/@\s]*@)?([A-Za-z0-9.-]+)")
+_BARE_DOMAIN = re.compile(
+    r"(?<![A-Za-z0-9@._-])((?:[A-Za-z0-9-]+\.)+(?:%s))(?![A-Za-z0-9-])"
+    % "|".join(PUBLIC_TLDS))
+_PHONE = re.compile(r"(?<!\d)(?:\+?1[-. ]?)?\(?([2-9]\d{2})\)?[-. ]?(\d{3})[-. ]?(\d{4})(?!\d)")
+# The lookahead tolerates a sentence-final period ('… at 8.8.8.8.') while
+# still refusing to carve four octets out of a longer dotted chain (1.2.3.4.5).
+_IPV4 = re.compile(r"(?<![\d.])((?:\d{1,3}\.){3}\d{1,3})(?!\.?\d)")
+
+
+def _domain_allowed(host, allowed):
+    """A host passes when it is, or is a subdomain of, a declared or reserved
+    domain. Suffix matching is component-wise on purpose: 'notumbercress.com'
+    ends with 'umbercress.com' as a string but is a different domain."""
+    host = host.strip().rstrip(".").lower()
+    if not host:
+        return True
+    if host.endswith(RESERVED_TLDS):
+        return True
+    for d in tuple(allowed) + RESERVED_DOMAINS:
+        d = d.strip().lower().rstrip(".")
+        if d and (host == d or host.endswith("." + d)):
+            return True
+    return False
+
+
+def check_synthetic_identifiers(root, ignore=()):
+    """#16, scoped to demo/ and ERROR: every structured identifier in demo
+    content must trace to the demo canon or to a namespace reserved for fiction.
+    Deliberately NOT applied to your-company/, whose identifiers are real by
+    design — a WARN there would be cry-wolf noise that teaches adopters to
+    ignore the validator.
+
+    This verifies the structured surface only. A real company or person named in
+    free prose looks exactly like a fictional one, and no check can tell them
+    apart; that layer rests on the canon plus maintainer review, and is recorded
+    as a Known Limitation."""
+    findings = []
+    demo_files = [p for p in iter_files(root, ignore)
+                  if "demo" in os.path.relpath(p, root).replace(os.sep, "/").split("/")[:-1]]
+    if not demo_files:
+        return findings
+
+    canon_path = os.path.join(root, "demo", "canon.md")
+    if not os.path.isfile(canon_path):
+        return [Finding("ERROR", os.path.join("demo", "canon.md"), None,
+                        "demo content is present but there is no canon to verify it "
+                        "against — every identifier under demo/ must trace to the "
+                        "declared fictional world (#16)")]
+    data, fm = _load_frontmatter(canon_path, os.path.join("demo", "canon.md"))
+    findings += fm
+    if data is None:
+        return findings
+    allowed = []
+    for key in ("domains", "external_domains"):
+        v = data.get(key)
+        if _blank(v):
+            continue
+        allowed += [x for x in (v if isinstance(v, list) else [v])
+                    if isinstance(x, str) and x.strip()]
+    prefix = data.get("phone_range")
+    phone_prefix = prefix.strip() if isinstance(prefix, str) and prefix.strip() else "555-01"
+
+    for abspath in sorted(demo_files):
+        rel = os.path.relpath(abspath, root)
+        text, rd = _read_utf8(abspath, rel)
+        if text is None:
+            findings += rd
+            continue
+        for lineno, line in enumerate(text.split("\n"), 1):
+            hosts = set(_EMAIL.findall(line)) | set(_URL_HOST.findall(line)) \
+                | {m.group(1) for m in _BARE_DOMAIN.finditer(line)}
+            for host in sorted(hosts):
+                if not _domain_allowed(host, allowed):
+                    findings.append(Finding(
+                        "ERROR", rel, lineno,
+                        "identifier %r is not in the demo canon or a reserved-for-"
+                        "fiction namespace (#16)" % host))
+            for exch, mid, last in _PHONE.findall(line):
+                number = "%s-%s-%s" % (exch, mid, last)
+                if not ("%s-%s" % (mid, last)).startswith(phone_prefix):
+                    findings.append(Finding(
+                        "ERROR", rel, lineno,
+                        "phone number %r is outside the %sxx range reserved for "
+                        "fiction (#16)" % (number, phone_prefix)))
+            for ip in _IPV4.findall(line):
+                octets = ip.split(".")
+                if any(not o.isdigit() or int(o) > 255 for o in octets):
+                    continue  # not an address; a version string or similar
+                if not ip.startswith(TESTNET_PREFIXES):
+                    findings.append(Finding(
+                        "ERROR", rel, lineno,
+                        "IP address %r is not in a TEST-NET range reserved for "
+                        "documentation (#16)" % ip))
+    return findings
+
+
 def _governed_class(rel):
     """Classify a path (relative to a governed root) into #17's routing domain:
     'rule' (any constitution file), 'skill-md' (a package's own SKILL.md),
@@ -2542,6 +2653,7 @@ def validate(root):
     findings += check_symlinked_dirs(root)
     findings += check_proposals(root, ignore)
     findings += check_changelog(root, ignore)
+    findings += check_synthetic_identifiers(root, ignore)
     findings += check_agents_chain(root, ignore)
     findings += check_always_loaded_budget(root)
     findings += check_root_files(root)
