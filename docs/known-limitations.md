@@ -228,3 +228,25 @@ Honest limits of the current build. This file grows as the product does (brief �
   file check can see them. The two engine tests cover what can be mechanized: that the
   documented examples validate, and that the question skeleton can fill every required
   field.
+
+## Generation (#10)
+
+- **Nothing checks that a generation was faithful.** `validate.py <company-repo>` proves
+  the generated records are *well formed* — every required field present, every reference
+  resolving, every owner matching its ontology. It cannot prove they say what the
+  interview confirmed. A generator that transcribes the wrong owner into a card produces
+  a repo that passes cleanly. The defences are the exact-match drift checks (a card's
+  owner must equal its ontology's `accountable_owner`), the five `(human-only)` fields a
+  generator may not invent, and the confirmed layers staying in the repo so a person can
+  read the source next to the output.
+- **`demo/` is the reference shape but is not literally liftable.** Four links in
+  `demo/` point at engine paths (`../AGENTS.md`, `../docs/known-limitations.md`,
+  `../../governance/README.md`, `../../skills/work-package-spec.md`) and would not
+  resolve in a standalone company repo. They are correct where they are — the demo
+  teaches by pointing at the convention it instantiates — and a test pins the set so a
+  fifth is a decision rather than drift. A generated company repo links only inside
+  itself.
+- **A company repo is not standalone-validatable.** By design (#10) the schemas and the
+  validator live in the engine clone, so checking a company OS requires both checkouts.
+  The maintainer already holds both; an adopter who has only the company repo cannot
+  check it.

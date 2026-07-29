@@ -29,12 +29,11 @@ non-automation verdict, and the validator gates every layer of it.
 - `governance/` — the constitution rule schema with one compiled rule, the
   action-class hook set, and the append-only changelog.
 - `memory/` — the org-memory record schema with three captured baselines and an index.
-- `interview/` — the interview's **state format** (#9: a fixed `00-manifest.md`, one
-  frozen file per confirmed layer, one dirty `_working.md`), the **consultant protocol**
-  (§4: define-the-role-first, one question at a time, evidence-based reading, checkpoint
-  approvals), and the **question skeleton** — the intent-engineering 9 sections mapped
-  onto the fields each answer fills. A test holds the skeleton to the schema in both
-  directions, so a required field nobody asks about fails the build.
+- `interview/` — the interview end to end, as documents: the **state format** (#9), the
+  **consultant protocol** (§4), the **question skeleton** mapped onto the fields each
+  answer fills, and the **generation protocol** with the company-repo manifest (#10). A
+  person can run all four with an agent today and get a company repo the validator
+  passes; a test builds one and proves it.
 - `proposals/` — the consent-gate convention for agent-proposed changes.
 - `demo/` — the pre-installed example company (**Umbercress**, ~20 people), complete:
   canon, eight executive views, seven deep records, org memory, four work packages,
@@ -45,10 +44,6 @@ non-automation verdict, and the validator gates every layer of it.
 
 **Not built yet — do not describe these as working:**
 
-- `interview/` — the **generator**. The protocol and the questions exist and a person can
-  run the interview by hand with an agent; turning the confirmed layers into
-  `ontologies/`, `skills/`, and `governance/` is Slice 3.3. **Nothing generates a company
-  OS today.**
 - `delivery/` — the provisioning guide. Phase 4.
 - `your-company/` — generated content lives in a **separate private repo**, not here.
 
@@ -61,7 +56,7 @@ non-automation verdict, and the validator gates every layer of it.
 | `skills/` | Work packages: `skills/<name>/SKILL.md` + `owner-card.md`. |
 | `governance/` | `constitution/` (typed rules), `hooks/` (the action-class gate), `changelog.md`. |
 | `memory/` | Org-memory records, one per file, with an index. |
-| `interview/` | The state format (#9), the consultant protocol (§4), and the question skeleton. The generator is not built. |
+| `interview/` | The state format (#9), the consultant protocol (§4), the question skeleton, and the generation protocol (#10). |
 | `proposals/` | Pending improvement proposals. Empty by design — proposals are transient. |
 | `scripts/validate.py` | The validator. Run it before you claim anything is done. |
 | `MIGRATIONS.md` | The version-pin contract and the pull promise. |
@@ -96,25 +91,29 @@ To understand the shape before writing anything, read one worked example end to 
 `skills/onboarding-orchestration/SKILL.md` → its `owner-card.md` →
 `memory/onboarding-baseline.md` → `governance/constitution/`.
 
-## The interview (generator not built — Phase 3)
+## The interview
 
-The intended entry point is an interview: you point your agent at this repo, it asks
-your company what work each function actually does — what deserves more human time,
+The entry point is an interview: you point your agent at this repo, it asks your
+company what work each function actually does — what deserves more human time,
 what should be automated, and under what rules — and generates your operating system
 from that map into a separate private repository.
 
-**The generator does not exist yet.** What exists is everything up to it: the state
-format (`interview/README.md`), the protocol (`interview/protocol.md`), and the question
-skeleton (`interview/questions.md`), with `demo/interview/` as a worked example. A person
-can run this interview by hand today and get a checked, resumable record. Turning that
-record into a company OS is Slice 3.3 — anything describing that step as working is wrong.
+**It is documents, not a program.** There is no `generate.py` — the confirmed layers are
+prose, and the thing that turns them into records is an agent following
+`interview/generate.md`, with the question skeleton naming the destination field for
+every answer. What makes that trustworthy is the gate at the end:
+`python3 scripts/validate.py ../<company>-os` runs the whole schema against what was
+generated, and this repo's own test suite builds a company repo and proves it passes.
 
 ## Two repos
 
 The public groundwork clone is the **engine** — pull-only, never edited by an adopter.
 A company's OS lives in a **separate private repo** carrying content plus a
-`groundwork.pin`. The validator runs from the engine clone against that repo.
-Upstream improvements arrive by `git pull` on the engine; content is never re-copied.
+`groundwork.pin`; the validator, the schemas, and the runnable action-class gate stay in
+the engine clone and run *against* that repo. Upstream improvements arrive by `git pull`
+on the engine — **content is never re-copied**, which is why a generated company repo
+carries `governance/review-gate.md` (prose, and its own) rather than a copy of the hook
+set that would go stale silently.
 
 ## Conventions that bind
 
