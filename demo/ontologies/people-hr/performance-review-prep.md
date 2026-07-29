@@ -41,7 +41,7 @@ constitution, where it can actually be enforced.
 ## Accountability
 
 Which business process runs differently: review prep stops being one person assembling
-twenty evidence packs by hand and becomes an agent that gathers and organizes, with the
+nineteen evidence packs by hand and becomes an agent that gathers and organizes, with the
 assessment itself untouched and explicitly out of bounds.
 
 Who is accountable for proving it improved: **Ruth Okafor**, measured against a

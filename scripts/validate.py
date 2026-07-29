@@ -1963,6 +1963,13 @@ def _check_interview_dir(d, root, ignore=()):
     oq = data.get("open_question")
     oq = oq.strip() if isinstance(oq, str) else ""
     question_open = bool(oq) and oq.lower() != "none"
+    if status == "complete" and question_open:
+        # Codex review (3.1): completion must not suppress the contradiction —
+        # a finished interview owes no answers.
+        findings.append(Finding(
+            "ERROR", rel_man, None,
+            "a completed interview has no open question (%s) — set "
+            "open_question: none when setting status: complete" % oq))
 
     # --- the layer list: a restricted grammar, not a permissive reader ---
     raw_layers = data.get("layers")
@@ -2064,11 +2071,20 @@ def _check_interview_dir(d, root, ignore=()):
                                         "provisional fact based on?)"))
             woq = wdata.get("open_question")
             woq = woq.strip() if isinstance(woq, str) else ""
+            working_question = bool(woq) and woq.lower() != "none"
             if question_open and woq != oq:
                 findings.append(Finding(
                     "ERROR", rel_work, None,
                     "_working.md names open question %r but the manifest names "
                     "%r — a half-committed turn" % (woq, oq)))
+            elif not question_open and working_question:
+                # Codex review (3.1): drift in the other direction — a question
+                # the manifest never points at is one a resuming agent never
+                # re-asks.
+                findings.append(Finding(
+                    "ERROR", rel_work, None,
+                    "_working.md names open question %r but the manifest names "
+                    "none — a half-committed turn" % woq))
     elif question_open and status != "complete":
         findings.append(Finding(
             "ERROR", rel_man, None,

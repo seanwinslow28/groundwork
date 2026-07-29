@@ -5651,6 +5651,27 @@ class TestInterviewState(unittest.TestCase):
             self.assertTrue(any(f.level == "ERROR" and "half-committed" in f.message
                                 for f in findings))
 
+    def test_working_question_while_manifest_says_none_errors(self):
+        # Codex review (Slice 3.1): drift in the OTHER direction — a hidden
+        # question the manifest never points at is as half-committed as a
+        # mismatched one.
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d, manifest=IV_MANIFEST_OK.replace(
+                "open_question: q-story-bottleneck", "open_question: none"))
+            findings = validate.check_interview_state(d)
+            self.assertTrue(any(f.level == "ERROR" and "half-committed" in f.message
+                                for f in findings))
+
+    def test_complete_with_open_question_errors(self):
+        # Codex review (Slice 3.1): status: complete must not suppress the
+        # open-question contradiction — a finished interview owes no answers.
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d, manifest=IV_MANIFEST_OK.replace(
+                "status: in-progress", "status: complete"), working=None)
+            findings = validate.check_interview_state(d)
+            self.assertTrue(any(f.level == "ERROR" and "open question" in f.message
+                                and "complete" in f.message for f in findings))
+
     def test_working_without_source_warns_not_errors(self):
         with tempfile.TemporaryDirectory() as d:
             _iv_state(d, working=IV_WORKING_OK.replace(

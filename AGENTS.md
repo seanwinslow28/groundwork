@@ -82,8 +82,8 @@ Check governed changes against a base revision:
 python3 scripts/validate.py . --diff main
 ```
 
-This adds the stateful modes: org-memory immutability, and the blast-radius tripwire
-that requires an escalating change to carry a matching proposal.
+This adds the stateful modes: org-memory immutability, frozen interview layers, and the
+blast-radius tripwire that requires an escalating change to carry a matching proposal.
 
 To see what this is for rather than how it is built, run the demo's three-query
 walkthrough — fifteen minutes, no credentials, ending on a governance rule refusing an
