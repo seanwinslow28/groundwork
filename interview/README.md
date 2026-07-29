@@ -4,10 +4,11 @@ An interview is a conversation that has to survive being interrupted — by a me
 a week, by switching from one agent harness to another. This directory documents the
 shape that state takes so it survives all three.
 
-**What is here today is the format and its checks.** The consultant protocol that runs
-the interview, the question skeleton it asks from, and the generator that turns confirmed
-answers into a company OS are **not built** — Slices 3.2 and 3.3. Pointing an agent at
-this repository does not yet run an interview.
+**What is here today: this format and its checks, the consultant protocol
+([protocol.md](protocol.md)), and the question skeleton ([questions.md](questions.md)).**
+The generator that turns confirmed answers into a company OS is **not built** — Slice
+3.3. A person can run the interview by hand with an agent and get a checked, resumable
+record; nothing generates a company OS from it yet.
 
 ## Where the state lives
 
@@ -33,21 +34,21 @@ confirmed is *structure*: it is a numbered file, it is listed in the manifest, i
 
 ### `00-manifest.md`
 
-```markdown
+```markdown 00-manifest.md
 ---
-company: <the company being interviewed>
-role: <one line: the role the agent was given and the human agreed to>
-phase: <what is being interviewed right now>
-status: in-progress | complete
-open_question: <the id of the question awaiting an answer, or `none`>
-last_checkpoint: <ISO date of the most recent approved layer>
+company: Nettleford Supply
+role: asks what the work is before proposing anything, and says not worth automating out loud
+phase: customer success, activity by activity
+status: in-progress
+open_question: q-renewal-brief-owner
+last_checkpoint: 2026-07-28
 layers:
-  - 01-role-and-scope.md
   - 02-customer-success.md
 ---
-# Interview manifest — <company>
+# Interview manifest — Nettleford Supply
 
-<prose: where this stands and what happens next>
+Customer success is mapped and frozen. One question is open: who owns the renewal
+brief when the account manager is away. Product is next.
 ```
 
 A resuming agent reads this file **first**, and only then the layers it needs. That is
@@ -63,16 +64,17 @@ when it chose this shape, and this is the check that pays it.
 
 ### A confirmed layer — `NN-slug.md`
 
-```markdown
+```markdown 02-customer-success.md
 ---
 provenance: confirmed
-confirmed_by: <the person who approved it at the checkpoint>
-confirmed_at: <ISO date>
-source: <the interview turn, handbook, calendar export, or repo read behind it>
+confirmed_by: Mara Voss
+confirmed_at: 2026-07-28
+source: interview turns 9 through 14, plus the Q2 renewal log read with permission
 ---
-# Layer N — <what it covers>
+# Layer 2 — customer success
 
-<the confirmed facts>
+Renewal prep is the one acted-on activity: Motion automate, run from the CRM as the
+source of truth. Health-check calls stay human — Direction up, and Mara said why.
 ```
 
 **Frozen at its checkpoint.** Once committed, a layer file never changes — not the
@@ -87,19 +89,20 @@ without a source is an ERROR.
 
 ### The turn in flight — `_working.md`
 
-```markdown
+```markdown _working.md
 ---
-provenance: inferred | observed
-source: <where this came from>
-open_question: <the id, matching the manifest>
+provenance: observed
+source: the Q2 renewal log, read with permission
+open_question: q-renewal-brief-owner
 ---
-# In flight — <what is being asked about>
+# In flight — renewal prep, ownership
 
-<the provisional facts>
+Fifteen of twenty-six Q2 renewals had a written brief, median eight days out. The log
+names no owner for the brief when the account manager is away.
 
 ## Open question
 
-<the question waiting on a human>
+Who owns the renewal brief when the account manager is out — a person, not a role?
 ```
 
 `provenance` here can never be `confirmed`. A working file that calls itself confirmed is
@@ -117,7 +120,10 @@ because people report the rules they wish they had.
 One layer, one checkpoint, one commit:
 
 1. **Ask.** The open question goes in `_working.md` along with whatever the agent has
-   provisionally gathered. The manifest's `open_question` names it. Nothing is committed.
+   provisionally gathered. The manifest's `open_question` names it. Nothing is committed
+   — with one exception: when nobody can answer, the halt rule
+   ([protocol.md](protocol.md)) commits `_working.md` and the manifest together, so the
+   open question survives the interruption it just caused.
 2. **Answer.** The human answers. The agent updates `_working.md`. Still nothing is
    committed — a fact is not confirmed because an agent heard it.
 3. **Checkpoint.** The agent states back what it believes is now settled and asks for
