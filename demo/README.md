@@ -39,6 +39,6 @@ it is also the allowlist every identifier here is checked against.
 ## What this is not
 
 Not a template to copy. The intended path for a real company OS is generation by the
-interview into its own private repository (see [AGENTS.md](../AGENTS.md), "Two
-repos") — and that interview is Phase 3, not built yet. This directory is a worked
-example to read, nothing more.
+interview into its own private repository (see [AGENTS.md](../AGENTS.md), "Two repos") —
+a process you can run by hand today with an agent, following `interview/`. This directory
+is a worked example to read, nothing more.
