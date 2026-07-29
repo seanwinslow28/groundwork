@@ -6080,7 +6080,10 @@ class TestDemoIsLiftable(unittest.TestCase):
     # are matched loosely, because a false catch here fails toward a human
     # look while a miss fails silent (Codex r2). Code is stripped first with
     # the validator's own scanner, so a refdef-shaped EXAMPLE in a fence is
-    # not an escape (Codex r3).
+    # not an escape (Codex r3). That scanner's documented over-stripping bias
+    # is inherited: a live link bracketed by backslash-escaped backticks reads
+    # as a code span and is missed (docs/known-limitations.md, Codex r4) —
+    # accepted, because demo/ is repo-controlled, maintainer-reviewed prose.
     _REFDEF = re.compile(r"^[>\s*+\-\d.)]*\[[^\]]+\]:\s*<?([^\s>]+)", re.M)
 
     @classmethod
