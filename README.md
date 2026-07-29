@@ -2,11 +2,137 @@
 
 > The groundwork your company runs on.
 
-An open-source, harness-agnostic Company OS. **The idea:** you point your coding agent at this repo and it interviews your company about the work each function actually does — what should get **more** human time, what should get **automated away**, and under **what rules** — then generates your operating system from that map: folder-per-function ontologies, skills with named owners, a compiled constitution, and organizational memory that learns under governance instead of rewriting itself. *(In active build — see [Status](#status-building-v1) for what's real today.)*
+An open-source, harness-agnostic **Company OS**. It is files, not an engine: markdown
+conventions plus one zero-dependency validator, so any coding agent that reads a
+repository can read this one. You point your agent here, it interviews your company about
+the work each function actually does — what deserves **more** human time, what should be
+**automated away**, and under **what rules** — and generates your operating system from
+that map into a separate private repository: folder-per-function ontologies, skills with
+named owners, a compiled constitution, and organizational memory that learns under
+governance instead of rewriting itself.
 
-## Status: building V1
+## Not technical? Point your agent at this repo
 
-The design is fully charted — all 19 [wayfinder decisions](https://github.com/seanwinslow28/groundwork/issues/1) are resolved and recorded (see [CONTEXT.md](CONTEXT.md)). Build is underway; capabilities are described here only as they become real.
+One person who can use git. That is the whole technical requirement, and it is a real
+requirement — everyone else receives skills and proposes changes in conversation.
+
+1. **Clone this repository and open it in your coding agent** — Claude Code, Codex,
+   Cursor, or Gemini CLI. Each loads [`AGENTS.md`](AGENTS.md) by its own convention:
+   Claude Code through `CLAUDE.md`, Gemini CLI through `GEMINI.md`, Codex and Cursor
+   natively. All four pointers are committed here, and `scripts/validate.py` checks that
+   they still point at the same file.
+2. **Say this:** *"Read AGENTS.md, then walk me through `demo/walkthrough.md`."* Fifteen
+   minutes, three questions, no credentials.
+3. **Then say this:** *"Interview me by following `interview/`, and generate our OS into a
+   new private repository."* The agent asks one question at a time, and where an answer
+   can only come from a person it stops instead of guessing.
+
+Nothing to install, no server, no signup. The one command anyone runs is
+`python3 scripts/validate.py`.
+
+## See it work first — fifteen minutes, no credentials
+
+[`demo/walkthrough.md`](demo/walkthrough.md) is a pre-installed fictional twenty-person
+company. Three questions, in order:
+
+1. **A decision lookup.** Why engineering moved to asynchronous standups, who decided it,
+   and what it replaced. The answer has a name and a date on it, the reasoning includes
+   what was given up, and the superseded decision is still readable rather than deleted.
+2. **A cross-function synthesis.** Which renewals are at risk because of unbuilt product
+   work, and how much contract value is exposed. Nobody wrote that answer down — it lives
+   across two functions' records, and the ontology is what makes them addressable
+   together.
+3. **A skill, and a refusal.** Ask for a performance-review evidence pack and you get a
+   description of one. Then ask the agent to write the assessment itself, and it refuses —
+   naming the rule, the owner, the appeal path, and what it *can* do instead — then points
+   at the pending proposal somebody filed the last time this happened.
+
+**What the walkthrough is honest about, and so is this page.** That refusal is
+instruction-strength, not a runtime block: no hook enforces it, and the demo says so at
+the exact moment overstating it would be most tempting. The company is fictional and
+nothing is connected, so no skill there can actually run. Agents do not reliably
+auto-select a skill from a description, so you may have to point at the file. And these
+are three questions asked of a language model — the walkthrough tells you what a good
+answer contains, not a transcript to match.
+
+## The interview, and what it writes
+
+**It is documents, not a program.** There is no `generate.py`. [`interview/`](interview/)
+holds four things an agent follows: a resumable state format where "confirmed" is git
+structure rather than a label an agent can edit, the consultant protocol (define the role
+first, one question at a time, no generation until understanding is complete), a
+nine-section question skeleton in which every question names the field its answer fills,
+and the generation protocol with the manifest of what a company repo contains.
+
+Five fields the generator refuses to invent: the owner, the backup owner, the forbidden
+actions, and the two death conditions. An invented owner is an accountability structure
+the named person discovers when something goes wrong.
+
+Your OS lands in a **separate private repository**. This clone stays a pull-only engine;
+nothing organizational is ever written into it, upstream improvements arrive by
+`git pull` here, and your content is never re-copied — see [`AGENTS.md`](AGENTS.md) ("Two
+repos") and [`MIGRATIONS.md`](MIGRATIONS.md) for the version-pin contract that makes
+pulling safe.
+
+The generator is a protocol rather than a script because its input is prose written by a
+person and an agent in conversation, and a parser for that has an unbounded supply of
+ways to be wrong. What makes it trustworthy is the gate at the end — and this repository's
+own test suite builds a company repo from the manifest and proves the gate passes on it.
+
+## Check what you have
+
+```
+python3 scripts/validate.py .
+```
+
+Python 3 standard library only. No dependencies, no `requirements.txt`, and a test that
+fails if a shipped script ever imports one. Exit 0 means no ERRORs; WARNs print and do not
+fail. To check the OS you generated, pass its path instead:
+
+```
+python3 scripts/validate.py ../acme-os
+python3 scripts/validate.py ../acme-os --diff main
+```
+
+The first run checks structure and referential integrity, the two ontology tiers, every
+Owner's Card against its ontology's owner and source of truth, every constitution rule
+against the safety invariant that no rule may end in automation, every memory record's
+provenance and supersession chain, a high-signal secrets floor, and the always-loaded
+context budget. The second adds the stateful rules: organizational memory is
+append-and-supersede rather than editable, confirmed interview layers are frozen, and a
+change to a rule or a high-risk skill must carry a matching pending proposal or the gate
+ERRORs.
+
+**What it does not prove.** The secrets floor is high-signal, not exhaustive. Nothing
+checks prose — the validator can confirm every required field is answered and cannot tell
+you the answer is true. [`docs/known-limitations.md`](docs/known-limitations.md) is the
+full list, written to be read before you rely on a check rather than after.
+
+## Getting it in front of people
+
+[`delivery/`](delivery/) is the provisioning guide: the repo-local symlink layer that
+gives your generated skills a path each harness reads, the organization plugin paths for
+people who never touch git, and how to install the runnable action-class gate — with the
+re-copy obligation that comes with it. Nothing in groundwork zips, uploads, or syncs
+anything; these are steps a maintainer runs, and every external fact in the guide carries
+the date it was verified, because all of these surfaces move.
+
+## Status
+
+V1 is nearly complete, and this is the ledger.
+
+**Working today:** the schema as files with `scripts/validate.py` gating every layer of
+it; eight function ontologies plus worked deep records on both governance tracks,
+including one recording a deliberate decision *not* to automate; work packages with
+Owner's Cards; a typed constitution on a five-rung enforcement ladder, with one runnable
+exemplar and prose degradation everywhere else; organizational memory with provenance and
+supersession; the consent gate and its blast-radius tripwire; the interview and generation
+protocols; the complete `demo/` company and its walkthrough; and the provisioning guide.
+
+**Not here yet:** the `LICENSE` file, a security-and-privacy section, and a versioned
+roadmap. [`CONTEXT.md`](CONTEXT.md) is the glossary of all nineteen resolved design
+decisions; [`AGENTS.md`](AGENTS.md) carries the current built / not-built list and is
+always the more current of the two.
 
 ## How groundwork compares
 
@@ -27,7 +153,14 @@ The wider landscape (dswh/company-os, Workflowsio, gbrain, beevibe, the commodit
 
 ## License
 
-Apache-2.0 — chosen for its patent grant (enterprise-counsel comfort). Content generated into `your-company/` is the adopter's own and is **not** covered by this license (an explicit README/NOTICE carve-out will ship with the generator). The `LICENSE` file lands with the first release artifacts.
+Apache-2.0 — chosen for its patent grant (enterprise-counsel comfort). The `LICENSE` file
+lands with the first release artifacts.
+
+**Your content is yours.** The operating system the interview generates is the adopter's
+own work and is **not** covered by groundwork's license. That is not only a statement
+here: [`interview/generate.md`](interview/generate.md) instructs the generator to write
+the same carve-out into the company repository's own root instruction file, so the
+repository holding your content is the one that says whose it is.
 
 ## Prior art & inspiration
 
