@@ -1879,6 +1879,254 @@ def _check_constitution_instance(inst, root, ignore=()):
     return findings
 
 
+INTERVIEW_MANIFEST = "00-manifest.md"
+INTERVIEW_WORKING = "_working.md"
+INTERVIEW_STATUSES = ("in-progress", "complete")
+# The agent's own, unconfirmed. #7's vocabulary, not a parallel one.
+INTERVIEW_PROVISIONAL = ("observed", "inferred")
+MANIFEST_REQUIRED = ("company", "role", "phase", "status",
+                     "open_question", "last_checkpoint")
+# A layer is NN-slug.md with NN from 01: '00' is reserved for the manifest, so
+# the manifest can never be mistaken for a layer of itself.
+_LAYER_FILE = re.compile(r"(0[1-9]|[1-9][0-9])-[a-z0-9]+(?:-[a-z0-9]+)*\.md\Z")
+
+
+def _interview_dirs(root, ignore=()):
+    """Every directory holding interview state — one carrying a 00-manifest.md.
+
+    Discovery is by CONTENT, never by directory name. The engine's own
+    interview/ ships the format spec and no manifest, and a company repo that
+    has not started an interview has no state to check; a name-based rule would
+    scan the first as if it were state and nag the second. Same doctrine as #8's
+    governance/worksheets/ (silence decided by location) and #5's untouched
+    worksheet (silence decided by absence)."""
+    dirs = set()
+    for abspath in iter_files(root, ignore):
+        if os.path.basename(abspath) == INTERVIEW_MANIFEST:
+            dirs.add(os.path.dirname(abspath))
+    return sorted(dirs)
+
+
+def check_interview_state(root, ignore=()):
+    """#9's resumable interview state: a fixed manifest pointer, one frozen file
+    per confirmed layer, and a single dirty _working.md.
+
+    Strict exactly where the state backs a resuming agent — a manifest that
+    points at the wrong thing does not fail loudly, it silently re-asks a settled
+    question or skips one that was never settled. Freezing committed layers is
+    the --diff mode (interview_diff_findings)."""
+    findings = []
+    for d in _interview_dirs(root, ignore):
+        findings += _check_interview_dir(d, root, ignore)
+    return findings
+
+
+def _check_interview_dir(d, root, ignore=()):
+    findings = []
+    today = datetime.date.today()
+    rel_dir = os.path.relpath(d, root)
+
+    man_abs = os.path.join(d, INTERVIEW_MANIFEST)
+    rel_man = os.path.relpath(man_abs, root)
+    if os.path.islink(man_abs):
+        return [Finding("ERROR", rel_man, None,
+                        "interview manifest must not be a symlink")]
+    data, fm = _load_frontmatter(man_abs, rel_man)
+    findings += fm
+    if data is None:
+        return findings  # unreadable manifest already ERRORed, fail closed
+
+    for field in MANIFEST_REQUIRED:
+        v = data.get(field)
+        if _blank(v):
+            findings.append(Finding("ERROR", rel_man, None,
+                                    "interview manifest missing '%s'" % field))
+        elif not isinstance(v, str):
+            findings.append(Finding("ERROR", rel_man, None,
+                                    "manifest '%s' must be a single value" % field))
+
+    status = data.get("status")
+    status = status.strip() if isinstance(status, str) else None
+    if status is not None and status not in INTERVIEW_STATUSES:
+        findings.append(Finding("ERROR", rel_man, None,
+                                "invalid interview status %r (one of %s)"
+                                % (status, list(INTERVIEW_STATUSES))))
+        status = None
+
+    lc = data.get("last_checkpoint")
+    if isinstance(lc, str) and lc.strip() and _parse_date(lc) is None:
+        findings.append(Finding("WARN", rel_man, None,
+                                "'last_checkpoint' is not an ISO date (YYYY-MM-DD)"))
+
+    # `none` is the explicit no-open-question answer, the same way `repeals: none`
+    # is an explicit no-repeal (#8). It is a value here, not a placeholder.
+    oq = data.get("open_question")
+    oq = oq.strip() if isinstance(oq, str) else ""
+    question_open = bool(oq) and oq.lower() != "none"
+
+    # --- the layer list: a restricted grammar, not a permissive reader ---
+    raw_layers = data.get("layers")
+    declared = []
+    if raw_layers is None or raw_layers == []:
+        declared = []
+    elif not isinstance(raw_layers, list):
+        findings.append(Finding("ERROR", rel_man, None,
+                                "manifest 'layers' must be a list of layer filenames, "
+                                "one per '- ' line — even when there is only one"))
+        raw_layers = []
+    if isinstance(raw_layers, list):
+        for entry in raw_layers:
+            if not isinstance(entry, str) or not entry.strip():
+                findings.append(Finding("ERROR", rel_man, None,
+                                        "manifest 'layers' entry is blank"))
+                continue
+            name = entry.strip()
+            if _LAYER_FILE.fullmatch(name) is None:
+                findings.append(Finding(
+                    "ERROR", rel_man, None,
+                    "manifest 'layers' entry %r is not a layer filename "
+                    "(NN-slug.md, NN from 01; 00 is the manifest)" % name))
+                continue
+            if name in declared:
+                findings.append(Finding("ERROR", rel_man, None,
+                                        "manifest 'layers' lists %r twice" % name))
+                continue
+            declared.append(name)
+
+    numbers = [int(n[:2]) for n in declared]
+    if len(set(numbers)) != len(numbers):
+        findings.append(Finding("ERROR", rel_man, None,
+                                "two layers share a number — the number is the "
+                                "layer's identity"))
+    elif numbers and numbers != sorted(numbers):
+        findings.append(Finding("WARN", rel_man, None,
+                                "layers are not listed in ascending order"))
+    elif numbers and numbers != list(range(1, len(numbers) + 1)):
+        findings.append(Finding("WARN", rel_man, None,
+                                "layer numbering has a gap (a layer was removed?)"))
+
+    # --- both directions of the drift check (#9's one accepted cost) ---
+    try:
+        on_disk = sorted(n for n in os.listdir(d)
+                         if _LAYER_FILE.fullmatch(n) and not _ignored(n, ignore))
+    except OSError as e:
+        return findings + [Finding("ERROR", rel_dir, None,
+                                   "cannot list interview state directory — "
+                                   "fail closed: %s" % e)]
+    for name in declared:
+        if name not in on_disk:
+            findings.append(Finding(
+                "ERROR", rel_man, None,
+                "manifest lists a layer that does not exist: %s — a resuming "
+                "agent would look for an answer that was never captured" % name))
+    for name in on_disk:
+        if name not in declared:
+            findings.append(Finding(
+                "ERROR", os.path.join(rel_dir, name), None,
+                "layer file is not listed in the manifest — a resuming agent "
+                "will never read it"))
+
+    for name in on_disk:
+        findings += _check_interview_layer(os.path.join(d, name), root, today)
+
+    # --- the turn in flight ---
+    work_abs = os.path.join(d, INTERVIEW_WORKING)
+    rel_work = os.path.join(rel_dir, INTERVIEW_WORKING)
+    work_exists = os.path.lexists(work_abs) and not _ignored(INTERVIEW_WORKING, ignore)
+    if work_exists and os.path.islink(work_abs):
+        findings.append(Finding("ERROR", rel_work, None,
+                                "_working.md must not be a symlink"))
+    elif work_exists:
+        if status == "complete":
+            findings.append(Finding(
+                "ERROR", rel_work, None,
+                "a completed interview has no turn in flight — promote or delete "
+                "_working.md before setting status: complete"))
+        wdata, wfm = _load_frontmatter(work_abs, rel_work)
+        findings += wfm
+        if wdata is not None:
+            prov = wdata.get("provenance")
+            prov = prov.strip() if isinstance(prov, str) else None
+            if prov == "confirmed":
+                findings.append(Finding(
+                    "ERROR", rel_work, None,
+                    "_working.md cannot be 'confirmed' — the way to confirm a "
+                    "fact is to promote the file to a numbered layer, not to "
+                    "relabel it (#9)"))
+            elif prov not in INTERVIEW_PROVISIONAL:
+                findings.append(Finding(
+                    "ERROR", rel_work, None,
+                    "_working.md provenance must be one of %s"
+                    % list(INTERVIEW_PROVISIONAL)))
+            if _blank(wdata.get("source")):
+                findings.append(Finding("WARN", rel_work, None,
+                                        "_working.md has no 'source' (what is this "
+                                        "provisional fact based on?)"))
+            woq = wdata.get("open_question")
+            woq = woq.strip() if isinstance(woq, str) else ""
+            if question_open and woq != oq:
+                findings.append(Finding(
+                    "ERROR", rel_work, None,
+                    "_working.md names open question %r but the manifest names "
+                    "%r — a half-committed turn" % (woq, oq)))
+    elif question_open and status != "complete":
+        findings.append(Finding(
+            "ERROR", rel_man, None,
+            "manifest names an open question (%s) but there is no _working.md — "
+            "the question a human still owes an answer to lives nowhere" % oq))
+    return findings
+
+
+def _check_interview_layer(abspath, root, today):
+    """A confirmed layer: #7's provenance vocabulary, plus the checkpoint's
+    accountable half. A layer with no named approver is the agent-honored label
+    the whole shape exists to replace."""
+    rel = os.path.relpath(abspath, root)
+    if os.path.islink(abspath):
+        return [Finding("ERROR", rel, None, "interview layer must not be a symlink")]
+    text, rd = _read_utf8(abspath, rel)
+    if text is None:
+        return rd
+    findings = list(rd)
+    data, body, fm = _frontmatter_and_body(text, rel)
+    findings += fm
+
+    prov = data.get("provenance")
+    prov = prov.strip() if isinstance(prov, str) else None
+    if prov != "confirmed":
+        findings.append(Finding(
+            "ERROR", rel, None,
+            "a numbered layer is a confirmed layer: provenance must be "
+            "'confirmed' (got %r) — provisional facts live in _working.md" % prov))
+
+    for field in ("confirmed_by", "confirmed_at", "source"):
+        v = data.get(field)
+        if _blank(v):
+            findings.append(Finding("ERROR", rel, None,
+                                    "confirmed layer missing '%s'" % field))
+        elif not isinstance(v, str):
+            findings.append(Finding("ERROR", rel, None,
+                                    "'%s' must be a single value" % field))
+
+    ca = data.get("confirmed_at")
+    if isinstance(ca, str) and ca.strip():
+        d = _parse_date(ca)
+        if d is None:
+            findings.append(Finding("WARN", rel, None,
+                                    "'confirmed_at' is not an ISO date (YYYY-MM-DD)"))
+        elif d > today:
+            findings.append(Finding("WARN", rel, None,
+                                    "'confirmed_at' is in the future"))
+
+    rendered = _HTML_COMMENT.sub("", body)
+    if _H1.search(rendered) is None or not any(
+            _substantive_line(ln) for ln in rendered.split("\n")):
+        findings.append(Finding("ERROR", rel, None,
+                                "confirmed layer has no content (H1 title + body) — "
+                                "an empty checkpoint records nothing"))
+    return findings
+
+
 def _hook_command_target(command, root):
     """Best-effort: pull the script path out of a hook command string.
     Splits with shell quoting rules (the shipped snippet quotes the path so
@@ -2714,6 +2962,7 @@ def validate(root):
     findings += check_agents_chain(root, ignore)
     findings += check_always_loaded_budget(root)
     findings += check_root_files(root)
+    findings += check_interview_state(root, ignore)
     return findings
 
 
