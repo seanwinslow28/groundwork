@@ -209,3 +209,22 @@ Honest limits of the current build. This file grows as the product does (brief �
   A real adopter may keep or clean theirs; #10 guarantees only that interview state is
   never *distributed* to employees, which is a different question from whether it is
   retained. Nothing in the validator requires an `interview/` directory to exist.
+
+## The interview (#9, §4)
+
+- **The schema has no field for "what must not degrade".** The question skeleton asks the
+  Goodhart question — *how could an agent hit this standard in a way you would hate?* —
+  because the intent-engineering 9-section spec makes health metrics a first-class
+  section. groundwork has `success_standard` (what good looks like, against a captured
+  baseline) and `known_failure_modes` (what has gone wrong), but no field for the thing
+  that must not get worse while the standard is met. The answer is recorded in prose on
+  the Owner's Card and the ontology record instead. Adding a field is a `SCHEMA_VERSION`
+  bump now that `demo/` carries a pin, so it is named here as the **first candidate for a
+  v2 schema change** rather than spending the first migration on one field.
+- **Nothing checks interview prose.** `check_interview_state` validates the *shape* of
+  what an interview captured, not whether the interview was any good — whether the role
+  was defined first, whether questions came one at a time, whether a confirmed fact was
+  actually confirmed by the person named. Those are properties of a conversation, and no
+  file check can see them. The two engine tests cover what can be mechanized: that the
+  documented examples validate, and that the question skeleton can fill every required
+  field.

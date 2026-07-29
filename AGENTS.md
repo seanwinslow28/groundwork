@@ -29,10 +29,12 @@ non-automation verdict, and the validator gates every layer of it.
 - `governance/` — the constitution rule schema with one compiled rule, the
   action-class hook set, and the append-only changelog.
 - `memory/` — the org-memory record schema with three captured baselines and an index.
-- `interview/` — the **state format** an interview writes: a fixed `00-manifest.md`, one
-  frozen file per confirmed layer, one dirty `_working.md`, and the promote-and-commit
-  protocol (#9). `check_interview_state` enforces the manifest-vs-files drift and
-  `--diff` freezes committed layers, so "confirmed" is git structure rather than a label.
+- `interview/` — the interview's **state format** (#9: a fixed `00-manifest.md`, one
+  frozen file per confirmed layer, one dirty `_working.md`), the **consultant protocol**
+  (§4: define-the-role-first, one question at a time, evidence-based reading, checkpoint
+  approvals), and the **question skeleton** — the intent-engineering 9 sections mapped
+  onto the fields each answer fills. A test holds the skeleton to the schema in both
+  directions, so a required field nobody asks about fails the build.
 - `proposals/` — the consent-gate convention for agent-proposed changes.
 - `demo/` — the pre-installed example company (**Umbercress**, ~20 people), complete:
   canon, eight executive views, seven deep records, org memory, four work packages,
@@ -43,10 +45,10 @@ non-automation verdict, and the validator gates every layer of it.
 
 **Not built yet — do not describe these as working:**
 
-- `interview/` — the **interview itself**. The state format is built (above); the
-  consultant protocol, the question skeleton, and the generator that writes a company OS
-  are Slices 3.2 and 3.3. **Pointing your agent at this repo does not yet run an
-  interview.**
+- `interview/` — the **generator**. The protocol and the questions exist and a person can
+  run the interview by hand with an agent; turning the confirmed layers into
+  `ontologies/`, `skills/`, and `governance/` is Slice 3.3. **Nothing generates a company
+  OS today.**
 - `delivery/` — the provisioning guide. Phase 4.
 - `your-company/` — generated content lives in a **separate private repo**, not here.
 
@@ -59,7 +61,7 @@ non-automation verdict, and the validator gates every layer of it.
 | `skills/` | Work packages: `skills/<name>/SKILL.md` + `owner-card.md`. |
 | `governance/` | `constitution/` (typed rules), `hooks/` (the action-class gate), `changelog.md`. |
 | `memory/` | Org-memory records, one per file, with an index. |
-| `interview/` | The resumable interview-state format (#9). The interview itself is not built. |
+| `interview/` | The state format (#9), the consultant protocol (§4), and the question skeleton. The generator is not built. |
 | `proposals/` | Pending improvement proposals. Empty by design — proposals are transient. |
 | `scripts/validate.py` | The validator. Run it before you claim anything is done. |
 | `MIGRATIONS.md` | The version-pin contract and the pull promise. |
@@ -101,9 +103,11 @@ your company what work each function actually does — what deserves more human 
 what should be automated, and under what rules — and generates your operating system
 from that map into a separate private repository.
 
-**That generator does not exist yet.** What exists is the *state format* it will write
-into — `interview/README.md` — proven against a worked example in `demo/interview/`.
-Anything describing the interview as runnable is wrong.
+**The generator does not exist yet.** What exists is everything up to it: the state
+format (`interview/README.md`), the protocol (`interview/protocol.md`), and the question
+skeleton (`interview/questions.md`), with `demo/interview/` as a worked example. A person
+can run this interview by hand today and get a checked, resumable record. Turning that
+record into a company OS is Slice 3.3 — anything describing that step as working is wrong.
 
 ## Two repos
 
