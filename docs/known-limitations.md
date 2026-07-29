@@ -250,3 +250,29 @@ Honest limits of the current build. This file grows as the product does (brief �
   validator live in the engine clone, so checking a company OS requires both checkouts.
   The maintainer already holds both; an adopter who has only the company repo cannot
   check it.
+
+## Provisioning (`delivery/`)
+
+- **Provisioning is manual, and the surfaces move.** Nothing in groundwork zips, uploads,
+  or syncs anything: `delivery/README.md` is steps a maintainer runs. The reason it is
+  written rather than scripted is that every surface it describes has changed at least
+  once during groundwork's own build — the hook output contract, `AGENTS.override.md`
+  precedence, and the org-plugin distribution model all moved. A script would encode a
+  snapshot and fail silently when the snapshot expired; a dated document fails visibly.
+- **A generated company repo's skills are invisible until provisioning runs.** The
+  generator writes work packages to `skills/<name>/`, and no harness reads that path.
+  `check_company_root` WARNs once when a pinned repo has skills and no
+  `.claude/skills/` or `.agents/skills/` entry, but a WARN does not fail the gate — an
+  adopter can ship an OS nothing loads.
+- **Organization distribution is Team/Enterprise only, and Cowork-gated** (verified
+  2026-07-29). Plugin marketplaces require Cowork and Skills to be enabled for the
+  organization, and only Owners and Primary Owners can manage them. There is no
+  organization push surface for Codex, Cursor, or Gemini CLI at all — for those
+  harnesses, provisioning means the person has the repository checked out.
+- **A plugin is copied in isolation, so packaging the wrong directory is a privacy
+  failure, not a build failure** (verified 2026-07-29). #10's guarantee that interview
+  state and org memory are never distributed holds only when the plugin `source` is a
+  subdirectory. Point it at the repository root and the company's own interview
+  transcript ships to every employee who installs it. `delivery/README.md` states this
+  as a hard rule; no check can enforce it, because the manifest lives in a dot-directory
+  the validator never scans.

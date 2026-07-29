@@ -6260,6 +6260,35 @@ earned by acting, not by planning to act.
                   "w", encoding="utf-8") as fh:
             fh.write(self.CURSOR)
 
+    def _provision(self, repo):
+        """Section 1 of delivery/README.md, executed. Both symlinks point straight
+        at skills/<name>; the guide says so and says it is the untested hop."""
+        os.makedirs(os.path.join(repo, ".agents", "skills"))
+        os.makedirs(os.path.join(repo, ".claude", "skills"))
+        names = sorted(n for n in os.listdir(os.path.join(repo, "skills"))
+                       if os.path.isdir(os.path.join(repo, "skills", n)))
+        self.assertGreater(len(names), 0, "no skills to provision — fixture is empty")
+        for n in names:
+            for d in (".agents", ".claude"):
+                os.symlink(os.path.join("..", "..", "skills", n),
+                           os.path.join(repo, d, "skills", n))
+        return names
+
+    def test_provisioned_repo_still_validates_and_links_resolve(self):
+        with tempfile.TemporaryDirectory() as d:
+            repo = os.path.join(d, "acme-os")
+            self._materialize(repo)
+            names = self._provision(repo)
+            # every provisioned path must resolve to a real SKILL.md
+            for n in names:
+                for base in (".agents", ".claude"):
+                    p = os.path.join(repo, base, "skills", n, "SKILL.md")
+                    self.assertTrue(os.path.isfile(p),
+                                    "%s/skills/%s does not resolve to a SKILL.md" % (base, n))
+            errors = [f for f in validate.validate(repo) if f.level == "ERROR"]
+            self.assertEqual([(f.path, f.message) for f in errors], [],
+                             "the provisioning layer breaks the gate")
+
     def test_company_repo_validates_as_its_own_root(self):
         with tempfile.TemporaryDirectory() as d:
             repo = os.path.join(d, "acme-os")
@@ -6368,6 +6397,75 @@ class TestCompanyRoot(unittest.TestCase):
             self.assertTrue(any(f.level == "WARN" and "no root AGENTS.md" in f.message
                                 for f in findings),
                             "check_company_root is not wired into validate()")
+
+    # -- the second finding: skills nothing can load (delivery/README.md §1) --
+
+    def _pinned_with_skills(self, d, *skills):
+        _write(d, "groundwork.pin", PIN_OK)
+        _write(d, "AGENTS.md", "# a company OS\n")
+        for name in skills:
+            _write(d, "skills/%s/SKILL.md" % name, "# a skill\n")
+
+    def test_pinned_skills_with_no_harness_path_warn_once_not_per_skill(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._pinned_with_skills(d, "renewal-prep", "feature-request-triage")
+            findings = validate.check_company_root(d)
+            self.assertEqual(len(findings), 1,
+                             "one WARN per repo, not one per skill")
+            self.assertEqual(findings[0].level, "WARN")
+            self.assertIn("no harness-visible path", findings[0].message)
+            self.assertIn("2 skill package(s)", findings[0].message)
+            self.assertIn("delivery/README.md", findings[0].message)
+
+    def test_pinned_skills_with_agents_skills_entry_is_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._pinned_with_skills(d, "renewal-prep")
+            os.makedirs(os.path.join(d, ".agents", "skills", "renewal-prep"))
+            self.assertEqual(validate.check_company_root(d), [])
+
+    def test_pinned_skills_with_claude_skills_entry_is_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._pinned_with_skills(d, "renewal-prep")
+            os.makedirs(os.path.join(d, ".claude", "skills", "renewal-prep"))
+            self.assertEqual(validate.check_company_root(d), [])
+
+    def test_pinned_root_with_no_skills_dir_is_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "groundwork.pin", PIN_OK)
+            _write(d, "AGENTS.md", "# a company OS\n")
+            self.assertEqual(validate.check_company_root(d), [])
+
+    def test_unpinned_root_with_skills_is_silent(self):
+        # The engine case: skills/ exists here, and no root pin means no claim.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "skills/renewal-prep/SKILL.md", "# a skill\n")
+            self.assertEqual(validate.check_company_root(d), [])
+
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0,
+                     "root ignores directory permission bits")
+    def test_unlistable_dot_directory_does_not_false_warn(self):
+        # An unreadable .agents/skills cannot prove the skills are invisible;
+        # asserting "no harness-visible path" anyway is the false positive
+        # this check fails away from (Codex 4.1 r1 finding 2).
+        with tempfile.TemporaryDirectory() as d:
+            self._pinned_with_skills(d, "renewal-prep")
+            locked = os.path.join(d, ".agents", "skills")
+            os.makedirs(locked)
+            os.chmod(locked, 0)
+            try:
+                self.assertEqual(validate.check_company_root(d), [])
+            finally:
+                os.chmod(locked, 0o755)
+
+    def test_empty_dot_directories_do_not_count_as_visible(self):
+        # mkdir -p with no symlinks yet is not provisioning.
+        with tempfile.TemporaryDirectory() as d:
+            self._pinned_with_skills(d, "renewal-prep")
+            os.makedirs(os.path.join(d, ".agents", "skills"))
+            os.makedirs(os.path.join(d, ".claude", "skills"))
+            findings = validate.check_company_root(d)
+            self.assertEqual(len(findings), 1)
+            self.assertIn("no harness-visible path", findings[0].message)
 
 
 if __name__ == "__main__":

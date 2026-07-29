@@ -41,11 +41,15 @@ non-automation verdict, and the validator gates every layer of it.
   15-minute three-query walkthrough. It carries a `groundwork.pin`, so it is a
   **governed root** — changes to its skills and rules run the #18 consent gate exactly
   as a company repo's would.
+- `delivery/` — the provisioning guide: the repo-local symlink layer that makes generated
+  skills loadable in all four harnesses, the organization plugin upload and GitHub-synced
+  marketplace paths, and how to install the runnable action-class gate with the re-copy
+  obligation that comes with it. Every external fact carries the date it was verified.
 
 **Not built yet — do not describe these as working:**
 
-- `delivery/` — the provisioning guide. Phase 4.
 - `your-company/` — generated content lives in a **separate private repo**, not here.
+- The README's capability claims (Tier 2). Phase 4.2.
 
 ## The map
 
@@ -57,6 +61,7 @@ non-automation verdict, and the validator gates every layer of it.
 | `governance/` | `constitution/` (typed rules), `hooks/` (the action-class gate), `changelog.md`. |
 | `memory/` | Org-memory records, one per file, with an index. |
 | `interview/` | The state format (#9), the consultant protocol (§4), the question skeleton, and the generation protocol (#10). |
+| `delivery/` | The provisioning guide: making a generated OS loadable, and distributing it. |
 | `proposals/` | Pending improvement proposals. Empty by design — proposals are transient. |
 | `scripts/validate.py` | The validator. Run it before you claim anything is done. |
 | `MIGRATIONS.md` | The version-pin contract and the pull promise. |

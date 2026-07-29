@@ -2327,25 +2327,65 @@ def check_version_pin(root):
 
 
 def check_company_root(root):
-    """A root carrying a #21 groundwork.pin IS a company repo (#10), and a
-    company repo with no root instruction file gives an agent no route in.
+    """What a company repo owes, checked only when the validated root carries a
+    #21 groundwork.pin — which is exactly the statement 'this is a company repo'
+    (#10). Two findings, both WARN:
 
-    Everything else in §6's root set is already chained off AGENTS.md's
-    presence by check_root_files, which is deliberately 'silent when there is
-    no AGENTS.md' — it checks a claim you make, not one you failed to make.
-    That leaves exactly one gap: absence at the entry point. WARN, not ERROR,
-    because a stateless validator cannot tell a half-generated repo from a
-    deliberately minimal one, and because turning a documented
-    silent-on-absence posture into a gate failure would break validating the
-    engine's own demo/ as a root."""
+    1. No root AGENTS.md: an agent has no route into the OS. Everything else in
+       §6's root set is already chained off AGENTS.md's presence by
+       check_root_files, which is deliberately silent when it is absent — it
+       checks a claim you make, not one you failed to make.
+    2. Skills under skills/ with no harness-visible path: NO harness reads plain
+       skills/. Claude Code reads .claude/skills/ and Codex/Cursor/Gemini read
+       .agents/skills/ (verified 2026-07-18; the Claude Code symlink is
+       load-bearing, not optional). A generated OS whose skills load nowhere is
+       the worst silent first-run failure available — the adopter concludes
+       groundwork does not work — so it gets one line pointing at delivery/.
+
+    WARN and not ERROR because a stateless validator cannot tell a
+    half-provisioned repo from a deliberately unprovisioned one, and ONE line
+    rather than one per skill because four cry-wolf findings on a demo nobody is
+    provisioning is how a validator teaches people to ignore it."""
     if not os.path.isfile(os.path.join(root, "groundwork.pin")):
         return []
-    if os.path.isfile(os.path.join(root, "AGENTS.md")):
-        return []
-    return [Finding("WARN", "AGENTS.md", None,
-                    "this repo carries a groundwork.pin but has no root AGENTS.md — "
-                    "a company OS with no root instruction file gives an agent no "
-                    "route into it (§6)")]
+    findings = []
+    if not os.path.isfile(os.path.join(root, "AGENTS.md")):
+        findings.append(Finding(
+            "WARN", "AGENTS.md", None,
+            "this repo carries a groundwork.pin but has no root AGENTS.md — "
+            "a company OS with no root instruction file gives an agent no "
+            "route into it (§6)"))
+
+    sdir = os.path.join(root, "skills")
+    if os.path.isdir(sdir) and not os.path.islink(sdir):
+        try:
+            packages = [n for n in sorted(os.listdir(sdir))
+                        if os.path.isdir(os.path.join(sdir, n))]
+        except OSError:
+            packages = []
+        # Opened BY PATH on purpose: iter_files skips every dot-directory, so a
+        # walker-based version would measure nothing and pass (the corpus-void
+        # trap D2 Move 2 hit with .claude/rules).
+        visible = False
+        for rel in ((".claude", "skills"), (".agents", "skills")):
+            d = os.path.join(root, *rel)
+            try:
+                if os.path.isdir(d) and any(os.listdir(d)):
+                    visible = True
+            except OSError:
+                # A directory that exists but cannot be listed cannot prove the
+                # skills are invisible. Treat it as visible: the WARN asserts a
+                # fact, and asserting one the validator could not inspect is the
+                # false positive this check must fail away from (Codex 4.1 r1).
+                visible = True
+        if packages and not visible:
+            findings.append(Finding(
+                "WARN", "skills", None,
+                "%d skill package(s) under skills/ and no harness-visible path — "
+                "no harness reads skills/ directly (Claude Code reads "
+                ".claude/skills/, Codex/Cursor/Gemini read .agents/skills/); see "
+                "delivery/README.md" % len(packages)))
+    return findings
 
 
 def check_symlinked_dirs(root):
