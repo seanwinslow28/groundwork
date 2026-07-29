@@ -6075,8 +6075,11 @@ class TestDemoIsLiftable(unittest.TestCase):
     _LINK = re.compile(r"\]\(([^)\s#]+)")
     # A reference-style definition ([label]: target) escapes just as well as an
     # inline link and check_links would not flag it (the target resolves — in
-    # the ENGINE), so the tripwire scans both forms.
-    _REFDEF = re.compile(r"^ {0,3}\[[^\]]+\]:\s*(\S+)", re.M)
+    # the ENGINE), so the tripwire scans both forms. The pattern deliberately
+    # over-approximates: blockquote/list nesting and angle-bracket destinations
+    # are matched loosely, because a false catch here fails toward a human
+    # look while a miss fails silent (Codex r2).
+    _REFDEF = re.compile(r"^[>\s*+\-\d.]*\[[^\]]+\]:\s*<?([^\s>]+)", re.M)
 
     @classmethod
     def escapes(cls):
@@ -6179,36 +6182,57 @@ This is an instruction, not runtime enforcement. The runnable gate stays in the
 groundwork engine; installing it here is a maintainer act.
 """
 
+    MANIFEST_BODY = """# Interview manifest — Umbercress
+
+The interview is complete: five layers confirmed, committed, and generated from.
+Sales, engineering, and legal have executive views and nothing deeper — depth is
+earned by acting, not by planning to act.
+"""
+
+    def _unlink(self, dest, rel, target):
+        """Rewrite [text](target) links in the copied file `rel` to plain text."""
+        p = os.path.join(dest, rel)
+        with open(p, encoding="utf-8") as fh:
+            text = fh.read()
+        new = re.sub(r"\[([^\]]+)\]\(" + re.escape(target) + r"\)", r"\1", text)
+        self.assertNotEqual(new, text,
+                            "no link to %s to neutralize in %s" % (target, rel))
+        with open(p, "w", encoding="utf-8") as fh:
+            fh.write(new)
+
     def _materialize(self, dest):
         shutil.copytree(str(REPO / "demo"), dest)
         # generate.md's precondition 1: generation runs from a COMPLETE interview.
         # demo/ models a later moment — a second-pass turn in flight — so the
-        # fixture promotes the copy to the post-generation shape.
+        # fixture promotes the copy to the post-generation shape: the fields AND
+        # the body, so the manifest does not narrate an open turn while its
+        # status says complete (Codex r2).
         man = os.path.join(dest, "interview", "00-manifest.md")
-        text = open(man, encoding="utf-8").read()
-        new = text.replace("status: in-progress", "status: complete", 1)
-        self.assertNotEqual(new, text, "manifest has no in-progress status to promote")
-        text = new
-        new = re.sub(r"open_question: \S+", "open_question: none", text, count=1)
-        self.assertNotEqual(new, text, "manifest has no open question to close")
-        text = new
-        # the prose link to the in-flight file would dangle once it is removed
-        new = text.replace("[_working.md](_working.md)", "`_working.md`")
-        self.assertNotEqual(new, text, "manifest has no _working.md link to retire")
+        with open(man, encoding="utf-8") as fh:
+            text = fh.read()
+        head, sep, body = text.partition("\n---\n")
+        self.assertTrue(sep and body, "manifest has no frontmatter to preserve")
+        new = head.replace("status: in-progress", "status: complete", 1)
+        self.assertNotEqual(new, head, "manifest has no in-progress status to promote")
+        head = new
+        new = re.sub(r"open_question: \S+", "open_question: none", head, count=1)
+        self.assertNotEqual(new, head, "manifest has no open question to close")
         with open(man, "w", encoding="utf-8") as fh:
-            fh.write(new)
+            fh.write(new + sep + self.MANIFEST_BODY)
         os.remove(os.path.join(dest, "interview", "_working.md"))
+        # generate.md: proposals/ is empty at generation. The pending proposal is
+        # demo/'s lived-in story, not generated shape — remove it from the copy,
+        # along with the two links that point at it.
+        os.remove(os.path.join(dest, "proposals", "refusal-names-next-step.md"))
+        self._unlink(dest, "README.md", "proposals/refusal-names-next-step.md")
+        self._unlink(dest, "walkthrough.md", "proposals/refusal-names-next-step.md")
         # The four teaching links point at engine paths that do not exist in a
         # company repo. Neutralize them to plain text — the same transform the
         # generation protocol tells a generator not to need in the first place.
         replaced = 0
         for rel, target in TestDemoIsLiftable.KNOWN_ESCAPES:
-            p = os.path.join(dest, rel.split("/", 1)[1])
-            text = open(p, encoding="utf-8").read()
-            new = re.sub(r"\[([^\]]+)\]\(" + re.escape(target) + r"\)", r"\1", text)
-            self.assertNotEqual(new, text, "no link to neutralize in %s" % rel)
+            self._unlink(dest, rel.split("/", 1)[1], target)
             replaced += 1
-            open(p, "w", encoding="utf-8").write(new)
         self.assertEqual(replaced, 4)
         with open(os.path.join(dest, "governance", "review-gate.md"),
                   "w", encoding="utf-8") as fh:

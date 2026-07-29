@@ -7,8 +7,10 @@ state the answers live in. This is how that state becomes an operating system.
 **You are the generator.** There is no script. The confirmed layers are prose written by
 a person and an agent in conversation, and the honest reader for prose is a reader — the
 question skeleton already names the destination field for every answer, so this is
-transcription and formatting, not interpretation. Where an answer is missing, you stop;
-you do not fill it in.
+transcription and formatting, not interpretation. A missing answer is never filled in:
+an incomplete interview stops generation entirely (precondition 1), and a gap inside a
+complete one means the artifact that needed it does not ship and the generation report
+says so (the ordering rules below name each case).
 
 ## Before you write anything
 
