@@ -6260,6 +6260,35 @@ earned by acting, not by planning to act.
                   "w", encoding="utf-8") as fh:
             fh.write(self.CURSOR)
 
+    def _provision(self, repo):
+        """Section 1 of delivery/README.md, executed. Both symlinks point straight
+        at skills/<name>; the guide says so and says it is the untested hop."""
+        os.makedirs(os.path.join(repo, ".agents", "skills"))
+        os.makedirs(os.path.join(repo, ".claude", "skills"))
+        names = sorted(n for n in os.listdir(os.path.join(repo, "skills"))
+                       if os.path.isdir(os.path.join(repo, "skills", n)))
+        self.assertGreater(len(names), 0, "no skills to provision — fixture is empty")
+        for n in names:
+            for d in (".agents", ".claude"):
+                os.symlink(os.path.join("..", "..", "skills", n),
+                           os.path.join(repo, d, "skills", n))
+        return names
+
+    def test_provisioned_repo_still_validates_and_links_resolve(self):
+        with tempfile.TemporaryDirectory() as d:
+            repo = os.path.join(d, "acme-os")
+            self._materialize(repo)
+            names = self._provision(repo)
+            # every provisioned path must resolve to a real SKILL.md
+            for n in names:
+                for base in (".agents", ".claude"):
+                    p = os.path.join(repo, base, "skills", n, "SKILL.md")
+                    self.assertTrue(os.path.isfile(p),
+                                    "%s/skills/%s does not resolve to a SKILL.md" % (base, n))
+            errors = [f for f in validate.validate(repo) if f.level == "ERROR"]
+            self.assertEqual([(f.path, f.message) for f in errors], [],
+                             "the provisioning layer breaks the gate")
+
     def test_company_repo_validates_as_its_own_root(self):
         with tempfile.TemporaryDirectory() as d:
             repo = os.path.join(d, "acme-os")
