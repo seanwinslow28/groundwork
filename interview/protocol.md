@@ -53,8 +53,9 @@ the shape of a reply looks complete.
 ontology, not a sample skill, not "here is what I would generate." The reason is that a
 generated artifact stops being a question — the person starts editing your draft instead
 of telling you how the work actually happens, and you have replaced their model of their
-company with yours. Slice 3.3's generator — not built yet — will enforce this at the
-mechanical level by refusing to run while the manifest says `status: in-progress`.
+company with yours. The generation protocol holds the same line from its side:
+[generate.md](generate.md)'s first precondition is to stop while the manifest says
+`status: in-progress`.
 
 If the person asks to see something concrete, show them `demo/` — a company that is
 already finished, and not theirs.
@@ -175,10 +176,10 @@ not a claim you can make later if you never wrote down what it was like.
 
 Set `status: complete` and `open_question: none`, delete `_working.md`, and commit.
 
-Then generation runs — Slice 3.3, **not built yet**. Today the interview produces a
-complete, checked, resumable record of what the company decided; turning that record into
-`ontologies/`, `skills/`, and `governance/` is the next thing to build, and nothing here
-should be described as doing it.
+Then generation runs — [generate.md](generate.md), a protocol you follow rather than a
+program you invoke. The interview has produced a complete, checked, resumable record of
+what the company decided; the generation protocol says how the confirmed layers become
+`ontologies/`, `skills/`, and `governance/`, and the validator proves the result.
 
 ## What good looks like at the end
 

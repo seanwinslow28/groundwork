@@ -5,6 +5,7 @@ import io
 import os
 import pathlib
 import re
+import shutil
 import sys
 import tempfile
 import unittest
@@ -6049,6 +6050,324 @@ class TestQuestionSkeletonCoverage(unittest.TestCase):
                          "the schema requires fields no question asks for: %s — either "
                          "add the question or add it to NOT_ASKED with a reason"
                          % sorted(missing))
+
+
+class TestDemoIsLiftable(unittest.TestCase):
+    """demo/ is the shape the generator writes a company repo in, so a link that
+    climbs out of demo/ is a link that would not resolve in a real one.
+
+    Four such links exist today and are correct where they are — the demo teaches
+    by pointing at the convention it instantiates. This test pins the set. A
+    fifth makes the reference target less liftable, and that should be a decision
+    somebody makes, not a thing that happens.
+
+    The pinned unit is the (file, target) pair: a second copy of a known link in
+    the same file is the same escape, not a new one — the invariant is which
+    engine paths the demo references, and from where."""
+
+    KNOWN_ESCAPES = {
+        ("demo/README.md", "../AGENTS.md"),
+        ("demo/canon.md", "../docs/known-limitations.md"),
+        ("demo/governance/README.md", "../../governance/README.md"),
+        ("demo/skills/README.md", "../../skills/work-package-spec.md"),
+    }
+
+    _LINK = re.compile(r"\]\(([^)\s#]+)")
+    # A reference-style definition ([label]: target) escapes just as well as an
+    # inline link and check_links would not flag it (the target resolves — in
+    # the ENGINE), so the tripwire scans both forms. The pattern deliberately
+    # over-approximates: blockquote/list nesting and angle-bracket destinations
+    # are matched loosely, because a false catch here fails toward a human
+    # look while a miss fails silent (Codex r2). Code is stripped first with
+    # the validator's own scanner, so a refdef-shaped EXAMPLE in a fence is
+    # not an escape (Codex r3). That scanner's documented over-stripping bias
+    # is inherited: a live link bracketed by backslash-escaped backticks reads
+    # as a code span and is missed (docs/known-limitations.md, Codex r4) —
+    # accepted, because demo/ is repo-controlled, maintainer-reviewed prose.
+    _REFDEF = re.compile(r"^[>\s*+\-\d.)]*\[[^\]]+\]:\s*<?([^\s>]+)", re.M)
+
+    @classmethod
+    def escapes(cls):
+        found = set()
+        demo = REPO / "demo"
+        demo_real = os.path.realpath(str(demo))
+        for dirpath, dirnames, filenames in os.walk(demo):
+            dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+            for fn in filenames:
+                if not fn.endswith(".md"):
+                    continue
+                p = os.path.join(dirpath, fn)
+                with open(p, encoding="utf-8") as fh:
+                    text = validate._strip_code(fh.read())
+                targets = cls._LINK.findall(text) + cls._REFDEF.findall(text)
+                for target in targets:
+                    if target.startswith(("http:", "https:", "mailto:")):
+                        continue
+                    target = target.split("#", 1)[0]
+                    if not target:
+                        continue
+                    # realpath, not normpath: a symlink inside demo/ must not
+                    # smuggle a lexically-inside path to an engine file.
+                    resolved = os.path.realpath(os.path.join(dirpath, target))
+                    if os.path.commonpath([resolved, demo_real]) != demo_real:
+                        found.add((os.path.relpath(p, REPO).replace(os.sep, "/"),
+                                   target))
+        return found
+
+    def test_escaping_links_are_exactly_the_known_four(self):
+        found = self.escapes()
+        # Anti-hollow: a walker that finds nothing "passes" a subset check.
+        self.assertGreater(len(found), 0, "the link scan found nothing at all")
+        self.assertEqual(found, self.KNOWN_ESCAPES,
+                         "demo/'s engine-pointing links changed. New ones make the "
+                         "reference target less liftable; removed ones should be "
+                         "dropped from KNOWN_ESCAPES.")
+
+
+class TestGeneratedCompanyRepo(unittest.TestCase):
+    """The adopter's required path, proven: a company repo in the shape
+    interview/generate.md specifies passes the gate as its OWN root.
+
+    Nothing else exercises validate(root) with root != this engine, so the four
+    root-only checks — check_root_files, check_hooks, check_agents_chain,
+    check_always_loaded_budget — have never run against company-shaped content.
+    This is where a manifest that specifies something the validator rejects
+    surfaces, in this repo's CI rather than in an adopter's afternoon."""
+
+    AGENTS = """# Acme Logistics — company OS
+
+This repository is the operating system for this company: what each function does,
+which work is agent-run, who owns each agent, and the rules that bind them.
+
+## Where things are
+
+| What | Where |
+|---|---|
+| What each function does | `ontologies/` |
+| The agents, and who owns each | `skills/` |
+| The rules, and their appeals | `governance/constitution/` |
+| What the company remembers | `memory/` |
+| Proposed changes awaiting a human | `proposals/` |
+| How this OS was decided | `interview/` |
+
+## The functions
+
+Every function's activity map is `ontologies/<function>/_executive-view.md`; an
+acted-on activity carries a deep record beside it. The views hold the detail — this
+file only routes.
+
+## The skill roster
+
+| Skill | Owner | Action class |
+|---|---|---|
+| `feature-request-triage` | Dana Whitfield | reversible-write |
+| `onboarding-orchestration` | Ruth Okafor | external-side-effect |
+| `performance-review-prep` | Ruth Okafor | reversible-write |
+| `renewal-prep` | Marcus Bell | reversible-write |
+
+## Proposing a change
+
+An agent may propose a change to a skill or a rule by writing a file in `proposals/`.
+Only the maintainer lands one. The rules that bind every agent, including the review
+gate on high-risk actions, are in `governance/`.
+"""
+
+    CURSOR = """---
+alwaysApply: true
+---
+Read AGENTS.md for how this company OS is organized.
+"""
+
+    REVIEW_GATE = """# Review gate — high-risk actions
+
+You may **propose** a high-risk action — spend, delete, external-send — but you may
+not **perform** one. Stop, say what you would do in one line, name the owner on the
+relevant Owner's Card, and wait for that person's explicit approval in the session.
+
+This is an instruction, not runtime enforcement. The runnable gate stays in the
+groundwork engine; installing it here is a maintainer act.
+"""
+
+    MANIFEST_BODY = """# Interview manifest — Umbercress
+
+The interview is complete: five layers confirmed, committed, and generated from.
+Sales, engineering, and legal have executive views and nothing deeper — depth is
+earned by acting, not by planning to act.
+"""
+
+    def _unlink(self, dest, rel, target):
+        """Rewrite [text](target) links in the copied file `rel` to plain text."""
+        p = os.path.join(dest, rel)
+        with open(p, encoding="utf-8") as fh:
+            text = fh.read()
+        new = re.sub(r"\[([^\]]+)\]\(" + re.escape(target) + r"\)", r"\1", text)
+        self.assertNotEqual(new, text,
+                            "no link to %s to neutralize in %s" % (target, rel))
+        with open(p, "w", encoding="utf-8") as fh:
+            fh.write(new)
+
+    def _materialize(self, dest):
+        shutil.copytree(str(REPO / "demo"), dest)
+        # generate.md's precondition 1: generation runs from a COMPLETE interview.
+        # demo/ models a later moment — a second-pass turn in flight — so the
+        # fixture promotes the copy to the post-generation shape: the fields AND
+        # the body, so the manifest does not narrate an open turn while its
+        # status says complete (Codex r2).
+        man = os.path.join(dest, "interview", "00-manifest.md")
+        with open(man, encoding="utf-8") as fh:
+            text = fh.read()
+        head, sep, body = text.partition("\n---\n")
+        self.assertTrue(sep and body, "manifest has no frontmatter to preserve")
+        new = head.replace("status: in-progress", "status: complete", 1)
+        self.assertNotEqual(new, head, "manifest has no in-progress status to promote")
+        head = new
+        new = re.sub(r"open_question: \S+", "open_question: none", head, count=1)
+        self.assertNotEqual(new, head, "manifest has no open question to close")
+        with open(man, "w", encoding="utf-8") as fh:
+            fh.write(new + sep + self.MANIFEST_BODY)
+        os.remove(os.path.join(dest, "interview", "_working.md"))
+        # generate.md: proposals/ is empty at generation. The pending proposal is
+        # demo/'s lived-in story, not generated shape.
+        os.remove(os.path.join(dest, "proposals", "refusal-names-next-step.md"))
+        # The four teaching links point at engine paths that do not exist in a
+        # company repo. Neutralize them to plain text — the same transform the
+        # generation protocol tells a generator not to need in the first place.
+        replaced = 0
+        for rel, target in TestDemoIsLiftable.KNOWN_ESCAPES:
+            self._unlink(dest, rel.split("/", 1)[1], target)
+            replaced += 1
+        self.assertEqual(replaced, 4)
+        # generate.md's manifest lists no README.md, walkthrough.md, canon.md,
+        # or per-directory narration READMEs. Those files are the demo's
+        # narrative voice, and any sentence of it can contradict a generated
+        # repo (Codex r3: the removed proposal was still narrated as pending).
+        # The fixture keeps the demo's content and drops its narration —
+        # removed AFTER the escape transform above, which must run against the
+        # real files. Nothing that survives links to any of these five.
+        for narration in ("README.md", "walkthrough.md", "canon.md",
+                          os.path.join("governance", "README.md"),
+                          os.path.join("skills", "README.md")):
+            os.remove(os.path.join(dest, narration))
+        with open(os.path.join(dest, "governance", "review-gate.md"),
+                  "w", encoding="utf-8") as fh:
+            fh.write(self.REVIEW_GATE)
+        with open(os.path.join(dest, "AGENTS.md"), "w", encoding="utf-8") as fh:
+            fh.write(self.AGENTS)
+        with open(os.path.join(dest, "CLAUDE.md"), "w", encoding="utf-8") as fh:
+            fh.write("@AGENTS.md\n")
+        os.makedirs(os.path.join(dest, ".cursor", "rules"))
+        with open(os.path.join(dest, ".cursor", "rules", "company.mdc"),
+                  "w", encoding="utf-8") as fh:
+            fh.write(self.CURSOR)
+
+    def test_company_repo_validates_as_its_own_root(self):
+        with tempfile.TemporaryDirectory() as d:
+            repo = os.path.join(d, "acme-os")
+            self._materialize(repo)
+            findings = validate.validate(repo)
+            errors = [f for f in findings if f.level == "ERROR"]
+            self.assertEqual(
+                [(f.path, f.message) for f in errors], [],
+                "a company repo built to the generate.md manifest does not pass "
+                "the gate as its own root")
+
+    def test_the_root_only_checks_actually_ran(self):
+        """Zero ERRORs from a check that never looked is indistinguishable from
+        zero ERRORs from a clean repo. Break each root-only check's surface in
+        turn and demand its specific ERROR, proving all four are live on this
+        root."""
+
+        def bad_claude(repo):
+            with open(os.path.join(repo, "CLAUDE.md"), "w", encoding="utf-8") as fh:
+                fh.write("# not an import\n")
+
+        def oversized_agents(repo):
+            # > 32 KiB chain, still < the ~200 KB always-loaded ERROR floor
+            with open(os.path.join(repo, "AGENTS.md"), "a", encoding="utf-8") as fh:
+                fh.write("x" * 40_000)
+
+        def bloated_agents(repo):
+            # ~250 KB -> ~62.5K est. tokens, over the 50K always-loaded ERROR
+            with open(os.path.join(repo, "AGENTS.md"), "a", encoding="utf-8") as fh:
+                fh.write("x" * 250_000)
+
+        def empty_hooks(repo):
+            # a hook set with nothing to install is a named-but-unwired guard
+            os.makedirs(os.path.join(repo, "governance", "hooks"))
+
+        probes = [
+            ("check_root_files", bad_claude, "does not import AGENTS.md"),
+            ("check_agents_chain", oversized_agents, "project_doc_max_bytes"),
+            ("check_always_loaded_budget", bloated_agents, "context budget"),
+            ("check_hooks", empty_hooks, "no settings.snippet.json"),
+        ]
+        for name, break_it, expect in probes:
+            with tempfile.TemporaryDirectory() as d:
+                repo = os.path.join(d, "acme-os")
+                self._materialize(repo)
+                break_it(repo)
+                msgs = [f.message for f in validate.validate(repo)
+                        if f.level == "ERROR"]
+                self.assertTrue(any(expect in m for m in msgs),
+                                "%s did not run against this root" % name)
+
+    def test_pin_travels_with_the_repo(self):
+        with tempfile.TemporaryDirectory() as d:
+            repo = os.path.join(d, "acme-os")
+            self._materialize(repo)
+            self.assertTrue(os.path.isfile(os.path.join(repo, "groundwork.pin")))
+            self.assertEqual(validate.check_version_pin(repo), [],
+                             "skew 0 must be silent on a company root")
+
+
+class TestCompanyRoot(unittest.TestCase):
+    """check_company_root: a root pin with no root AGENTS.md is a WARN — the
+    one silent-on-absence gap left open at the entry point. Root pin ONLY:
+    a nested pin (the engine's demo/) must never trip it."""
+
+    def test_pinned_root_without_agents_md_warns_once(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "groundwork.pin", PIN_OK)
+            findings = validate.check_company_root(d)
+            self.assertEqual(len(findings), 1)
+            self.assertEqual(findings[0].level, "WARN")
+            self.assertIn("no root AGENTS.md", findings[0].message)
+            self.assertFalse(any(f.level == "ERROR" for f in findings))
+
+    def test_pinned_root_with_agents_md_is_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "groundwork.pin", PIN_OK)
+            _write(d, "AGENTS.md", "# a company OS\n")
+            self.assertEqual(validate.check_company_root(d), [])
+
+    def test_unpinned_root_is_silent_even_without_agents_md(self):
+        # The engine case: no pin means no company-repo claim to check.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/README.md", "# content, no pin\n")
+            self.assertEqual(validate.check_company_root(d), [])
+
+    def test_nested_pin_does_not_trip_the_root_check(self):
+        # The scoping bug class: the engine root has demo/groundwork.pin.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/groundwork.pin", PIN_OK)
+            self.assertEqual(validate.check_company_root(d), [])
+
+    def test_pin_as_directory_does_not_crash(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "groundwork.pin"))
+            self.assertEqual(validate.check_company_root(d), [])
+
+    def test_engine_root_is_silent(self):
+        # The 7-WARN invariant's trigger: this repo carries no root pin.
+        self.assertEqual(validate.check_company_root(str(REPO)), [])
+
+    def test_validate_wires_company_root(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "groundwork.pin", PIN_OK)
+            findings = validate.validate(d)
+            self.assertTrue(any(f.level == "WARN" and "no root AGENTS.md" in f.message
+                                for f in findings),
+                            "check_company_root is not wired into validate()")
 
 
 if __name__ == "__main__":
