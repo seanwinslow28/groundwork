@@ -78,8 +78,19 @@ Honest limits of the current build. This file grows as the product does (brief Â
 - **The always-loaded set is a model of four harnesses, not a measurement of one.** It
   covers the root `AGENTS.md`, `CLAUDE.md` and its imports, unscoped `.claude/rules/`,
   always-apply `.cursor/rules/`, and skill descriptions capped at Claude Code's 1,536-char
-  listing truncation. Harnesses differ in what else they preload (MCP tool names, system
-  prompts); those are outside the repo and outside this check.
+  listing truncation. The root `GEMINI.md` pointer is **not** separately counted: it is a
+  one-line import of `AGENTS.md`, which is already in the total, so Gemini CLI's real
+  always-loaded surface is the measured figure plus twelve bytes. Harnesses also differ in
+  what else they preload (MCP tool names, system prompts); those are outside the repo and
+  outside this check.
+- **Three of the four root files are pointers, and only one of them is an ERROR.** A
+  missing or drifted `CLAUDE.md` is an ERROR because two root files that each look
+  canonical are two sources of truth. A missing `GEMINI.md` or `.cursor/rules/*.mdc`
+  pointer is a WARN, so a repository can ship with one harness's users getting no
+  instructions at all and still pass the gate. Verified 2026-07-29: Claude Code reads
+  `CLAUDE.md` and Gemini CLI reads `GEMINI.md`; neither reads `AGENTS.md`, and Gemini
+  loads `AGENTS.md` only if `context.fileName` is configured â€” a setting no repository
+  can supply for its readers.
 - **Skill bodies are deliberately excluded.** A `SKILL.md` body loads only when the skill
   is invoked, so its size is not part of the always-loaded budget. Before this slice these
   thresholds were applied per-file to every file in the repository, which produced false
@@ -276,3 +287,10 @@ Honest limits of the current build. This file grows as the product does (brief Â
   transcript ships to every employee who installs it. `delivery/README.md` states this
   as a hard rule; no check can enforce it, because the manifest lives in a dot-directory
   the validator never scans.
+- **The symlink shape the guide prints is one hop away from the shape that was tested.**
+  The head-to-head A/B (2026-07-18) pointed `.claude/skills/<name>` at a real skill
+  directory under `.agents/skills/`; a generated company repo keeps its work packages at
+  `skills/<name>/`, because `iter_files` skips dot-directories and skills living under a
+  dot-directory would be invisible to the validator. So some extra hop is unavoidable and
+  the guide names the untested one, with the `/doctor` check and the tested fallback next
+  to it. Nothing in this repository can test another harness's discovery.

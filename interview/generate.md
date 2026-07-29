@@ -139,6 +139,12 @@ either (verified 2026-07-29). `.cursor/rules/company.mdc` carries `alwaysApply: 
 references `AGENTS.md`. Codex and Cursor read `AGENTS.md` natively, so they need no
 pointer.
 
+**One more line in `AGENTS.md`, and it is a legal one.** State that the contents of this
+repository are the company's own work, generated with groundwork and not covered by
+groundwork's Apache-2.0 license. groundwork's own README says this; the promise is only
+worth something if the repository holding the content says it too, which is why it is
+written here rather than assumed.
+
 **7. `interview/` stays.** The confirmed layers are the record of why this OS says what
 it says, and the substrate a re-interview would merge against. Keep them.
 
@@ -177,4 +183,4 @@ and a company running last quarter's gate while believing it runs the engine's i
 off than one that knows it has a review gate.
 
 Installing the runnable gate is a deliberate maintainer act with a re-copy obligation
-attached — the provisioning guide covers it (`delivery/`, not built yet).
+attached — the provisioning guide covers it (`delivery/`).

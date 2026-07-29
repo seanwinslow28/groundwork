@@ -5,15 +5,18 @@ engine: markdown conventions plus one zero-dependency validator. Any coding agen
 reads a repository can read this one.
 
 This file is the canonical instruction surface for agents working in or with this
-repository. `CLAUDE.md` is a one-line import of it; `.cursor/rules/groundwork.mdc`
-points here too. Edit **this** file — the others are pointers.
+repository. `CLAUDE.md`, `GEMINI.md`, and `.cursor/rules/groundwork.mdc` are pointers at
+it — Claude Code reads `CLAUDE.md` and Gemini CLI reads `GEMINI.md`, neither of them
+reads this file, and Codex and Cursor read it natively. Edit **this** file; the validator
+checks that the pointers still resolve here.
 
 ## Status — what is real today
 
-The design is fully charted (19 resolved decisions; see `CONTEXT.md`). Phase 1 is
-complete and Phase 2.2 extends it: the schema exists as files, three functions are
-worked end to end across both governance tracks, one function records a deliberate
-non-automation verdict, and the validator gates every layer of it.
+The design is fully charted (19 resolved decisions; see `CONTEXT.md`). Phases 1 through 3
+are complete and Phase 4 is closing it out: the schema exists as files, three functions
+are worked end to end across both governance tracks, one function records a deliberate
+non-automation verdict, the interview and its generator exist as documents, `demo/` is a
+complete governed company, and the validator gates every layer of it.
 
 **Built and working:**
 
@@ -41,15 +44,19 @@ non-automation verdict, and the validator gates every layer of it.
   15-minute three-query walkthrough. It carries a `groundwork.pin`, so it is a
   **governed root** — changes to its skills and rules run the #18 consent gate exactly
   as a company repo's would.
-- `delivery/` — the provisioning guide: the repo-local symlink layer that makes generated
-  skills loadable in all four harnesses, the organization plugin upload and GitHub-synced
-  marketplace paths, and how to install the runnable action-class gate with the re-copy
-  obligation that comes with it. Every external fact carries the date it was verified.
+- `delivery/` — the provisioning guide: the repo-local symlink layer that gives generated
+  skills a harness-visible path in all four harnesses, the organization plugin upload and
+  GitHub-synced marketplace paths, and how to install the runnable action-class gate with
+  the re-copy obligation that comes with it. Every external fact carries the date it was
+  verified, and the guide says which symlink shape was tested head-to-head and which was
+  not.
 
 **Not built yet — do not describe these as working:**
 
-- `your-company/` — generated content lives in a **separate private repo**, not here.
-- The README's capability claims (Tier 2). Phase 4.2.
+- `your-company/` — a generated company OS lives in a **separate private repo**, never
+  here. There is no directory to look at; `demo/` is what a generated repo looks like.
+- The `LICENSE` file, the security-and-privacy section, and the versioned roadmap.
+  Phase 4.3.
 
 ## The map
 
