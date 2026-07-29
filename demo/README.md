@@ -1,43 +1,35 @@
 # demo — the pre-installed example company
 
-A fictional company OS, being filled in slice by slice. When it is complete you will
-be able to read it without configuring anything, inspect the shape a company OS takes
-before generating your own, and watch the validator run against real content. Today it
-holds the canon, the company's ontologies, its org memory, its four work packages, and
-its constitution.
+A complete fictional company OS. Read it without configuring anything, see the shape a
+company OS takes before generating your own, and watch the validator run against real
+content.
 
-Read [canon.md](canon.md) first: it declares the fictional world, and it is also the
-allowlist the validator checks every identifier in this directory against.
+**Start with [the 15-minute walkthrough](walkthrough.md)** — three questions, asked of
+an agent pointed at this repository, ending with a governance rule refusing an
+instruction. Read [canon.md](canon.md) first if you want the fictional world up front;
+it is also the allowlist every identifier here is checked against.
 
-## What is here now
+## What is here
 
+- [`walkthrough.md`](walkthrough.md) — the three-query script. Fifteen minutes, no
+  credentials.
 - `canon.md` — the fictional world and the identifier allowlist.
-- [`ontologies/`](ontologies/README.md) — all eight functions' executive views, deep
-  records for renewal preparation, feature-request triage, onboarding orchestration,
-  and performance-review prep, and finance's three recorded decisions *not* to
+- [`ontologies/`](ontologies/README.md) — all eight functions' executive views, four
+  automation-path deep records, and finance's three recorded decisions *not* to
   automate.
-- `memory/` — the company's org memory: why engineering moved to asynchronous standups
-  (and the superseded decision it replaced), two at-risk renewals and what they are
-  blocked on, and the four captured baselines.
-- [`skills/`](skills/README.md) — the four work packages, each a `SKILL.md` plus an
-  Owner's Card naming a real person, citing the baseline captured before it was
-  provisioned.
-- [`governance/`](governance/README.md) — three rules on three rungs, including the one
-  that puts writing a performance assessment out of an agent's reach and says plainly
-  that no hook enforces it, and
-  [one runnable rule](governance/reminders/meeting-challenger/) you can pipe JSON into
-  today.
-
-## What is coming
-
-- The 15-minute walkthrough script, the version pin that puts this directory under the
-  same governance the validator applies to a real company repo, and one live pending
-  proposal.
-
-The walkthrough is not usable yet: there is no script to follow, and the three queries
-it will run are not written. Everything above is content you can read and check —
-`python3 scripts/validate.py .` from the repository root validates this directory as
-its own instance — not a demo you can run.
+- `memory/` — why engineering moved to asynchronous standups (and the superseded
+  decision it replaced), two at-risk renewals and what they are blocked on, and the four
+  captured baselines.
+- [`skills/`](skills/README.md) — four work packages, each a `SKILL.md` plus an Owner's
+  Card naming a real person, citing the baseline captured before it was provisioned.
+- [`governance/`](governance/README.md) — three rules on three rungs, plus
+  [one runnable rule](governance/reminders/meeting-challenger/) you can pipe
+  JSON into today.
+- [`proposals/`](proposals/refusal-names-next-step.md) — one pending proposal, waiting
+  on a human. It is what an agent produces when a rule tells it no.
+- `groundwork.pin` — what makes this directory a **governed** instance rather than
+  example content: the validator's `--diff` mode holds every change here to the same
+  consent gate a real company repo gets.
 
 ## What this is not
 
