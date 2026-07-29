@@ -45,7 +45,9 @@ stop ([ontology record](../../ontologies/people-hr/performance-review-prep.md)).
   reaches the employee, and a wrong pack is corrected by regenerating it before the
   conversation. The care in this activity lives in its *scope*, not in its action class
   — which is why the boundary is written into the card's forbidden actions and into a
-  constitution rule, where it can be enforced rather than merely intended.
+  constitution rule, where it is visible to a reviewer and appealable by a manager
+  rather than left to whichever agent happens to be running. Neither is a runtime
+  block; the pack the manager reads is what actually catches a bad one.
 - Giving this skill a path to the employee, or the ability to write into the review
   record itself, would make it track 2 and would need the card rewritten first.
 
@@ -59,6 +61,7 @@ stop ([ontology record](../../ontologies/people-hr/performance-review-prep.md)).
 ## Portability check
 
 *If I had to move this skill tomorrow, what would break?* The HR information system,
-goal-tracker, and peer-feedback connectors; the governed baseline record; the review
-workspace write location; the manager confirmation gate named in the Owner's Card; and
-the constitution rule that keeps the assessment itself out of scope.
+goal-tracker, peer-feedback, and manager-running-notes connectors; the governed
+baseline record; the review workspace write location; the manager confirmation gate
+named in the Owner's Card; and the constitution rule that keeps the assessment itself
+out of scope.

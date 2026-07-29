@@ -14,11 +14,13 @@ granted.
 
 Every one of the four decision values would have been wrong here. `deny` is rung 4.
 `allow` grants authority the rule was never given. `ask` turns a nudge into a gate.
-`defer` reads like "use the normal flow" but is not: it is the headless signal that a
-call was blocked without user input, it behaves as `ask` interactively, and
-`additionalContext` is ignored alongside it — so it would both prompt the human and
-drop the agent's half of the reminder. Emitting no decision is the only shape that
-changes what people KNOW without touching what they MAY DO.
+`defer` reads like "use the normal flow" and is not that: it is a headless/non-
+interactive signal about a call that did not get user input, its interactive behaviour
+is not what a reminder wants, and it is not a reliable carrier for `additionalContext`.
+Check the current hooks reference before reaching for it — this file deliberately does
+not restate semantics it cannot cite. Emitting no decision needs no such caveat: an
+absent key cannot be interpreted, which is why it is the right shape for a rule whose
+whole job is to change what people KNOW without touching what they MAY DO.
 
 IT FIRES ON SHAPE, NEVER ON CONTENT. It does not try to decide whether an invite
 "already names a decision" — that would be a guess about text nobody controls, with an

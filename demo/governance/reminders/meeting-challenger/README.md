@@ -34,7 +34,13 @@ copy this:
 | `deny` | That is rung 4. This rule was never granted the authority to stop a meeting. |
 | `allow` | Auto-approves a call the company never said could skip its permission flow. |
 | `ask` | Turns a nudge into a gate — rung inflation, and how a company ends up with machinery nobody agreed to. |
-| `defer` | Reads like "use the normal flow" but is not. It is the headless signal that a call was blocked without user input; interactively it behaves as `ask` and prompts anyway, and `additionalContext` is ignored alongside it — so it would gate the human *and* drop the agent's half of the reminder. |
+| `defer` | Reads like "use the normal flow" and is not that. It is a headless/non-interactive signal about a call that did not get user input, and it is not a dependable carrier for `additionalContext`. |
+
+`defer` is the trap worth naming, because its name is the reason you would pick it.
+Read the current Claude Code hooks reference for exactly what it does today rather than
+trusting this table on that point — the honest thing a worked example can say is that a
+reminder should not depend on it. Omitting the key has no such ambiguity: there is
+nothing for the harness to interpret.
 
 The reminder goes out twice on purpose: `additionalContext` is read by the agent, and
 the top-level `systemMessage` is shown to the person and not to the agent. Two readers,
@@ -116,10 +122,11 @@ cross-harness runtime parity is a named later graduation, not something V1 claim
   recurring meeting, and stay completely silent otherwise.
 - **Does:** leave the permission outcome exactly as it found it — no decision is
   returned, so nothing is approved, denied, or escalated by this hook.
-- **Does:** read every string anywhere in the tool input, nested objects and lists
-  included, because a calendar tool may bury the title and the recurrence rule inside
-  an `event` object and a reminder that silently misses is worse than one that fires
-  too often.
+- **Does:** read every string in the tool input down to a bounded nesting depth (six
+  levels), objects and lists included, because a calendar tool may bury the title and
+  the recurrence rule inside an `event` object and a reminder that silently misses is
+  worse than one that fires too often. The bound is there because the payload comes
+  from a tool this hook does not control.
 - **Does not:** judge whether an invite already names a decision. It fires on *shape*,
   never on content — guessing at the meaning of text nobody controls has an unbounded
   supply of ways to be wrong, and a reminder that fires on a well-formed invite is

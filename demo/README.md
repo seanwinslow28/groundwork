@@ -23,7 +23,8 @@ allowlist the validator checks every identifier in this directory against.
   Owner's Card naming a real person, citing the baseline captured before it was
   provisioned.
 - [`governance/`](governance/README.md) — three rules on three rungs, including the one
-  that stops an agent from writing a performance assessment, and
+  that puts writing a performance assessment out of an agent's reach and says plainly
+  that no hook enforces it, and
   [one runnable rule](governance/reminders/meeting-challenger/) you can pipe JSON into
   today.
 
