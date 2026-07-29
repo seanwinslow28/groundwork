@@ -16,5 +16,10 @@ Start with the rule everybody resents.
 5. **Decide the machinery.** Trigger, evidence, action, owner, appeal — and which
    rung of the ladder it sits on.
 
+**Who runs this.** The interview does, once the functions are mapped — see
+[the constitution pass](../../interview/questions.md) for these five questions with the
+field each answer fills, and [the protocol](../../interview/protocol.md) for when in the
+interview they get asked.
+
 If the ritual is repealed, its **surviving job must be reassigned to a named owner
 before the repeal ships** (orphan-prohibition).
