@@ -5742,5 +5742,168 @@ class TestInterviewState(unittest.TestCase):
                                 for f in findings))
 
 
+class TestInterviewDiff(unittest.TestCase):
+    def _repo(self, d):
+        _git(d, "init", "-q")
+        _git(d, "config", "user.email", "t@t.t")
+        _git(d, "config", "user.name", "t")
+        _iv_state(d)
+        _git(d, "add", "-A")
+        _git(d, "commit", "-qm", "base")
+
+    def test_unchanged_layers_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            self.assertEqual(validate.interview_diff_findings(d, "HEAD"), [])
+
+    def test_edited_body_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "interview/01-role-and-scope.md",
+                   IV_LAYER_OK.replace("The confirmed facts of the layer.",
+                                       "The rewritten facts of the layer."))
+            findings = validate.interview_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "frozen at its checkpoint" in f.message
+                                and "01-role-and-scope.md" in f.path for f in findings))
+
+    def test_edited_frontmatter_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "interview/01-role-and-scope.md",
+                   IV_LAYER_OK.replace("confirmed_by: Priya Raman",
+                                       "confirmed_by: Somebody Else"))
+            findings = validate.interview_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "frozen" in f.message
+                                for f in findings))
+
+    def test_whitespace_only_change_is_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "interview/01-role-and-scope.md", IV_LAYER_OK + "\n\n")
+            self.assertEqual(validate.interview_diff_findings(d, "HEAD"), [])
+
+    def test_crlf_base_blob_is_clean(self):
+        # A CRLF blob at base vs an LF working read is not an edit.
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _iv_state(d)
+            _write(d, "interview/01-role-and-scope.md",
+                   IV_LAYER_OK.replace("\n", "\r\n"))
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "crlf")
+            _write(d, "interview/01-role-and-scope.md", IV_LAYER_OK)
+            self.assertEqual(validate.interview_diff_findings(d, "HEAD"), [])
+
+    def test_deleted_layer_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            os.remove(os.path.join(d, "interview", "01-role-and-scope.md"))
+            findings = validate.interview_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "deleted" in f.message
+                                for f in findings))
+
+    def test_new_layer_is_fine(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "interview/03-people-hr.md",
+                   IV_LAYER_OK.replace("# Layer 1 — The role, and what is in scope",
+                                       "# Layer 3 — People"))
+            findings = validate.interview_diff_findings(d, "HEAD")
+            self.assertEqual([f for f in findings if "03-people-hr.md" in f.path], [])
+
+    def test_manifest_edit_is_fine(self):
+        # The manifest is the pointer: it is rewritten every turn.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "interview/00-manifest.md",
+                   IV_MANIFEST_OK.replace("phase: marketing", "phase: sales"))
+            self.assertEqual(validate.interview_diff_findings(d, "HEAD"), [])
+
+    def test_working_edit_is_fine(self):
+        # _working.md is provisional: it is dirty by design.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "interview/_working.md",
+                   IV_WORKING_OK + "\nA provisional note added this turn.\n")
+            self.assertEqual(validate.interview_diff_findings(d, "HEAD"), [])
+
+    def test_deleting_manifest_does_not_unfreeze_layers(self):
+        # The dir was state AT BASE — removing the manifest in the same diff
+        # must not exempt the layers beneath it.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            os.remove(os.path.join(d, "interview", "00-manifest.md"))
+            _write(d, "interview/01-role-and-scope.md",
+                   IV_LAYER_OK.replace("The confirmed facts of the layer.",
+                                       "The rewritten facts of the layer."))
+            findings = validate.interview_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "frozen" in f.message
+                                for f in findings))
+
+    def test_unknown_base_ref_errors_without_crash(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            findings = validate.interview_diff_findings(d, "no-such-ref")
+            self.assertTrue(any(f.level == "ERROR" and "base ref" in f.message
+                                for f in findings))
+
+    def test_symlinked_layer_fails_closed(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            layer = os.path.join(d, "interview", "01-role-and-scope.md")
+            os.rename(layer, os.path.join(d, "copy.md"))
+            os.symlink(os.path.join(d, "copy.md"), layer)
+            findings = validate.interview_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "symlink" in f.message
+                                for f in findings))
+
+    def test_non_utf8_base_blob_fails_closed(self):
+        # An unreadable base version is never "unchanged".
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _iv_state(d)
+            _write_bytes(d, "interview/01-role-and-scope.md", b"\xff\xfe")
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "base")
+            _write(d, "interview/01-role-and-scope.md", IV_LAYER_OK)
+            findings = validate.interview_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "cannot verify" in f.message
+                                for f in findings))
+
+    def test_outside_a_repo_errors_without_crash(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d)
+            findings = validate.interview_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "git repository" in f.message
+                                for f in findings))
+
+    def test_unknown_ref_prints_one_context_error_through_main(self):
+        # Three diff passes resolve the git context independently; the `seen`
+        # accumulator must collapse the identical fatal ERROR to ONE line.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = validate.main(["validate.py", d, "--diff", "no-such-ref"])
+            self.assertEqual(code, 1)
+            self.assertEqual(out.getvalue().count("base ref not found"), 1)
+
+    def test_frozen_layer_edit_fails_main_gate(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "interview/01-role-and-scope.md",
+                   IV_LAYER_OK.replace("The confirmed facts of the layer.",
+                                       "The rewritten facts of the layer."))
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = validate.main(["validate.py", d, "--diff", "HEAD"])
+            self.assertEqual(code, 1)
+            self.assertIn("frozen at its checkpoint", out.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

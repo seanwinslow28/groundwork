@@ -3123,6 +3123,77 @@ def memory_diff_findings(root, base):
     return findings
 
 
+def interview_diff_findings(root, base):
+    """#9's frozen-layer guard: a confirmed layer is immutable once committed, so
+    'confirmed' is git structure rather than a label an agent can rewrite.
+
+    Driven by the BASE file list (the 1.4b lesson: a working-tree walk lets
+    .gitignore or a skip exempt a committed file). A directory counts as
+    interview state when it carried a 00-manifest.md AT BASE — deleting the
+    manifest in the same diff must not un-freeze the layers under it. The
+    manifest and _working.md are excluded on purpose: they change every turn."""
+    ctx, ctx_findings = _git_diff_context(root, base)
+    if ctx is None:
+        return ctx_findings
+    toplevel, scope = ctx["toplevel"], ctx["scope"]
+    findings = []
+    listdir_cache = {}
+
+    state_dirs = set()
+    for bf in ctx["base_files"]:
+        if scope != "." and not bf.startswith(scope + "/"):
+            continue
+        if os.path.basename(bf) == INTERVIEW_MANIFEST:
+            state_dirs.add(os.path.dirname(bf))
+
+    for bf in ctx["base_files"]:
+        if scope != "." and not bf.startswith(scope + "/"):
+            continue
+        if os.path.dirname(bf) not in state_dirs:
+            continue
+        if _LAYER_FILE.fullmatch(os.path.basename(bf)) is None:
+            continue
+        rel = bf if scope == "." else bf[len(scope) + 1:]
+        if _diff_in_workbench_skips(rel):
+            continue
+        parts = bf.split("/")
+        abspath = os.path.join(toplevel, *parts)
+        status = _committed_path_status(toplevel, parts, listdir_cache)
+        if status == "symlink":
+            findings.append(Finding("ERROR", bf, None,
+                                    "confirmed layer is or sits behind a symlink "
+                                    "(cannot verify it is frozen)"))
+            continue
+        if status == "unreadable":
+            findings.append(Finding("ERROR", bf, None,
+                                    "cannot verify this layer is frozen: a directory "
+                                    "on its path is unreadable — fail closed"))
+            continue
+        if status == "missing":
+            findings.append(Finding("ERROR", bf, None,
+                                    "confirmed layer deleted — a checkpoint a person "
+                                    "approved is a record, not a draft (#9)"))
+            continue
+        old = _git_show(toplevel, base, bf)
+        if old is None:
+            findings.append(Finding("ERROR", bf, None,
+                                    "cannot verify this layer is frozen: its base "
+                                    "version is unreadable or not valid UTF-8"))
+            continue
+        new, rd = _read_utf8(abspath, rel)
+        if new is None:
+            findings += rd
+            continue
+        def _norm(t):
+            return t.replace("\r\n", "\n").replace("\r", "\n").strip()
+        if _norm(old) != _norm(new):
+            findings.append(Finding(
+                "ERROR", rel, None,
+                "confirmed layer edited — a layer is frozen at its checkpoint "
+                "commit; record the correction in the next layer instead (#9)"))
+    return findings
+
+
 def _has_symlink_component(root, rel):
     """True when any component of root/rel is a symlink. A symlinked rule, skill,
     or ancestor directory cannot be classified honestly (it can point one place
@@ -3466,15 +3537,18 @@ def main(argv):
     root = args[0] if args else "."
     findings = validate(root)
     if diff_base is not None:
-        mem = memory_diff_findings(root, diff_base)
-        findings += mem
-        # Both diff modes resolve the git context independently, so a fatal
+        # Every diff pass resolves the git context independently, so a fatal
         # context ERROR (bad ref, not a repo) arrives identically from each —
-        # print it once. Dedupe against the memory pass ONLY (Codex r2): a
-        # stateless finding that legitimately recurs in the blast pass must
-        # not be swallowed.
-        mem_set = set(mem)
-        findings += [f for f in blast_radius_diff_findings(root, diff_base) if f not in mem_set]
+        # print it once. Each pass dedupes against the passes BEFORE it, never
+        # against the stateless findings (Codex r2 of 1.5d-ii): a stateless
+        # finding that legitimately recurs in a diff pass must not be swallowed.
+        seen = set()
+        for diff_pass in (memory_diff_findings,
+                          blast_radius_diff_findings,
+                          interview_diff_findings):
+            fresh = [f for f in diff_pass(root, diff_base) if f not in seen]
+            seen.update(fresh)
+            findings += fresh
     errors = [f for f in findings if f.level == "ERROR"]
     warns = [f for f in findings if f.level == "WARN"]
     for f in findings:
