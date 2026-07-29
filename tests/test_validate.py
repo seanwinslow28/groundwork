@@ -5369,5 +5369,562 @@ class TestInstanceRootsSymlinkMarkers(unittest.TestCase):
             self.assertEqual(validate._instance_roots(d, ("skills",)), [])
 
 
+IV_MANIFEST_OK = """---
+company: Umbercress
+role: An organizational analyst mapping the work before proposing automation
+phase: marketing
+status: in-progress
+open_question: q-story-bottleneck
+last_checkpoint: 2026-06-15
+layers:
+  - 01-role-and-scope.md
+  - 02-customer-success.md
+---
+# Interview manifest — Umbercress
+
+Two layers confirmed, one turn in flight.
+"""
+
+IV_LAYER_OK = """---
+provenance: confirmed
+confirmed_by: Priya Raman
+confirmed_at: 2026-05-11
+source: Opening interview session 2026-05-04
+---
+# Layer 1 — The role, and what is in scope
+
+The confirmed facts of the layer.
+"""
+
+IV_WORKING_OK = """---
+provenance: observed
+source: Marketing session 2026-06-22
+open_question: q-story-bottleneck
+---
+# In flight — Marketing
+
+Provisional facts nobody has approved.
+
+## Open question
+
+`q-story-bottleneck` — the question waiting on a human.
+"""
+
+
+def _iv_state(d, sub="interview", manifest=IV_MANIFEST_OK, working=IV_WORKING_OK):
+    """A complete, correct interview-state directory: manifest, two confirmed
+    layers, one turn in flight."""
+    _write(d, "%s/00-manifest.md" % sub, manifest)
+    _write(d, "%s/01-role-and-scope.md" % sub, IV_LAYER_OK)
+    _write(d, "%s/02-customer-success.md" % sub,
+           IV_LAYER_OK.replace("# Layer 1 — The role, and what is in scope",
+                               "# Layer 2 — Customer success"))
+    if working is not None:
+        _write(d, "%s/_working.md" % sub, working)
+
+
+class TestInterviewState(unittest.TestCase):
+    def test_happy_path_zero_findings(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d)
+            self.assertEqual(validate.check_interview_state(d), [])
+
+    def test_no_manifest_is_silent(self):
+        # Discovery is by CONTENT: markdown files with no 00-manifest.md are
+        # documentation (the engine's own interview/), never state.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "interview/README.md", "# The format spec\n\nProse.\n")
+            _write(d, "interview/01-role-and-scope.md", IV_LAYER_OK)
+            self.assertEqual(validate.check_interview_state(d), [])
+
+    def test_each_missing_manifest_field_errors(self):
+        for field in ("company", "role", "phase", "status",
+                      "open_question", "last_checkpoint"):
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as d:
+                broken = "\n".join(ln for ln in IV_MANIFEST_OK.split("\n")
+                                   if not ln.startswith(field + ":"))
+                _iv_state(d, manifest=broken)
+                self.assertTrue(any(f.level == "ERROR" and "'%s'" % field in f.message
+                                    for f in validate.check_interview_state(d)))
+
+    def test_bare_key_errors_not_crashes(self):
+        # 'role:' with no value parses as [] — blank, not a crash.
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d, manifest=IV_MANIFEST_OK.replace(
+                "role: An organizational analyst mapping the work before proposing automation",
+                "role:"))
+            self.assertTrue(any(f.level == "ERROR" and "'role'" in f.message
+                                for f in validate.check_interview_state(d)))
+
+    def test_bad_status_errors_naming_legal_values(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d, manifest=IV_MANIFEST_OK.replace(
+                "status: in-progress", "status: paused"))
+            findings = validate.check_interview_state(d)
+            self.assertTrue(any(f.level == "ERROR" and "in-progress" in f.message
+                                and "complete" in f.message for f in findings))
+
+    def test_scalar_layers_errors_naming_required_shape(self):
+        # Restricted grammar: a scalar is NOT read as a one-element list.
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d, manifest=IV_MANIFEST_OK.replace(
+                "layers:\n  - 01-role-and-scope.md\n  - 02-customer-success.md",
+                "layers: 01-role-and-scope.md"))
+            findings = validate.check_interview_state(d)
+            self.assertTrue(any(f.level == "ERROR" and "must be a list" in f.message
+                                for f in findings))
+
+    def test_listed_but_missing_layer_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d)
+            os.remove(os.path.join(d, "interview", "02-customer-success.md"))
+            findings = validate.check_interview_state(d)
+            self.assertTrue(any(f.level == "ERROR" and "does not exist" in f.message
+                                and "02-customer-success.md" in f.message
+                                for f in findings))
+
+    def test_present_but_unlisted_layer_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d)
+            _write(d, "interview/03-people-hr.md",
+                   IV_LAYER_OK.replace("# Layer 1 — The role, and what is in scope",
+                                       "# Layer 3 — People"))
+            findings = validate.check_interview_state(d)
+            self.assertTrue(any(f.level == "ERROR" and "not listed in the manifest" in f.message
+                                and "03-people-hr.md" in f.path for f in findings))
+
+    def test_duplicate_layer_entry_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d, manifest=IV_MANIFEST_OK.replace(
+                "  - 02-customer-success.md",
+                "  - 02-customer-success.md\n  - 02-customer-success.md"))
+            findings = validate.check_interview_state(d)
+            self.assertTrue(any(f.level == "ERROR" and "twice" in f.message
+                                for f in findings))
+
+    def test_shared_number_distinct_slugs_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d, manifest=IV_MANIFEST_OK.replace(
+                "  - 02-customer-success.md",
+                "  - 02-customer-success.md\n  - 02-people-hr.md"))
+            _write(d, "interview/02-people-hr.md",
+                   IV_LAYER_OK.replace("# Layer 1 — The role, and what is in scope",
+                                       "# Layer 2b — People"))
+            findings = validate.check_interview_state(d)
+            self.assertTrue(any(f.level == "ERROR" and "share a number" in f.message
+                                for f in findings))
+
+    def test_gap_in_numbering_warns_not_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d, manifest=IV_MANIFEST_OK.replace(
+                "  - 02-customer-success.md", "  - 03-customer-success.md"))
+            os.rename(os.path.join(d, "interview", "02-customer-success.md"),
+                      os.path.join(d, "interview", "03-customer-success.md"))
+            findings = validate.check_interview_state(d)
+            gap = [f for f in findings if "gap" in f.message]
+            self.assertTrue(gap and all(f.level == "WARN" for f in gap))
+            self.assertEqual([f for f in findings if f.level == "ERROR"], [])
+
+    def test_wrong_order_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d, manifest=IV_MANIFEST_OK.replace(
+                "layers:\n  - 01-role-and-scope.md\n  - 02-customer-success.md",
+                "layers:\n  - 02-customer-success.md\n  - 01-role-and-scope.md"))
+            findings = validate.check_interview_state(d)
+            self.assertTrue(any(f.level == "WARN" and "ascending" in f.message
+                                for f in findings))
+
+    def test_bad_layer_filename_errors_naming_shape(self):
+        for name in ("00-manifest.md", "1-role.md", "role-and-scope.md",
+                     "01-Role.md", "../evil.md"):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as d:
+                _iv_state(d, manifest=IV_MANIFEST_OK.replace(
+                    "  - 02-customer-success.md", "  - %s" % name))
+                findings = validate.check_interview_state(d)
+                self.assertTrue(any(f.level == "ERROR" and "NN-slug.md" in f.message
+                                    for f in findings))
+
+    def test_manifest_never_treated_as_layer(self):
+        # 00 is reserved: the manifest itself must not be scanned as a layer or
+        # reported as present-but-unlisted.
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d)
+            findings = validate.check_interview_state(d)
+            self.assertEqual([f for f in findings if "00-manifest.md" in f.path], [])
+
+    def test_layer_provenance_not_confirmed_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d)
+            _write(d, "interview/01-role-and-scope.md",
+                   IV_LAYER_OK.replace("provenance: confirmed", "provenance: inferred"))
+            findings = validate.check_interview_state(d)
+            self.assertTrue(any(f.level == "ERROR" and "provenance" in f.message
+                                and "01-role-and-scope.md" in f.path for f in findings))
+
+    def test_layer_missing_spine_fields_error(self):
+        for field in ("confirmed_by", "confirmed_at", "source"):
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as d:
+                _iv_state(d)
+                broken = "\n".join(ln for ln in IV_LAYER_OK.split("\n")
+                                   if not ln.startswith(field + ":"))
+                _write(d, "interview/01-role-and-scope.md", broken)
+                self.assertTrue(any(f.level == "ERROR" and "'%s'" % field in f.message
+                                    for f in validate.check_interview_state(d)))
+
+    def test_layer_with_no_body_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d)
+            _write(d, "interview/01-role-and-scope.md",
+                   IV_LAYER_OK.replace(
+                       "# Layer 1 — The role, and what is in scope\n\n"
+                       "The confirmed facts of the layer.\n",
+                       "# Layer 1 — The role, and what is in scope\n"))
+            findings = validate.check_interview_state(d)
+            self.assertTrue(any(f.level == "ERROR" and "no content" in f.message
+                                for f in findings))
+
+    def test_confirmed_at_unparseable_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d)
+            _write(d, "interview/01-role-and-scope.md",
+                   IV_LAYER_OK.replace("confirmed_at: 2026-05-11",
+                                       "confirmed_at: last Tuesday"))
+            findings = validate.check_interview_state(d)
+            self.assertTrue(any(f.level == "WARN" and "ISO date" in f.message
+                                and "01-role-and-scope.md" in f.path for f in findings))
+
+    def test_confirmed_at_in_future_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d)
+            _write(d, "interview/01-role-and-scope.md",
+                   IV_LAYER_OK.replace("confirmed_at: 2026-05-11",
+                                       "confirmed_at: 2099-01-01"))
+            findings = validate.check_interview_state(d)
+            self.assertTrue(any(f.level == "WARN" and "future" in f.message
+                                for f in findings))
+
+    def test_working_claiming_confirmed_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d, working=IV_WORKING_OK.replace(
+                "provenance: observed", "provenance: confirmed"))
+            findings = validate.check_interview_state(d)
+            self.assertTrue(any(f.level == "ERROR" and "promote" in f.message
+                                and "_working.md" in f.path for f in findings))
+
+    def test_working_invalid_provenance_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d, working=IV_WORKING_OK.replace(
+                "provenance: observed", "provenance: banana"))
+            findings = validate.check_interview_state(d)
+            self.assertTrue(any(f.level == "ERROR" and "provenance" in f.message
+                                and "_working.md" in f.path for f in findings))
+
+    def test_working_present_while_complete_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d, manifest=IV_MANIFEST_OK
+                      .replace("status: in-progress", "status: complete")
+                      .replace("open_question: q-story-bottleneck",
+                               "open_question: none"))
+            findings = validate.check_interview_state(d)
+            self.assertTrue(any(f.level == "ERROR" and "complete" in f.message
+                                and "_working.md" in f.path for f in findings))
+
+    def test_working_missing_while_question_open_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d, working=None)
+            findings = validate.check_interview_state(d)
+            self.assertTrue(any(f.level == "ERROR" and "no _working.md" in f.message
+                                for f in findings))
+
+    def test_no_open_question_and_no_working_is_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d, manifest=IV_MANIFEST_OK.replace(
+                "open_question: q-story-bottleneck", "open_question: none"),
+                working=None)
+            self.assertEqual(validate.check_interview_state(d), [])
+
+    def test_question_drift_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d, working=IV_WORKING_OK.replace(
+                "open_question: q-story-bottleneck", "open_question: q-other"))
+            findings = validate.check_interview_state(d)
+            self.assertTrue(any(f.level == "ERROR" and "half-committed" in f.message
+                                for f in findings))
+
+    def test_working_question_while_manifest_says_none_errors(self):
+        # Codex review (Slice 3.1): drift in the OTHER direction — a hidden
+        # question the manifest never points at is as half-committed as a
+        # mismatched one.
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d, manifest=IV_MANIFEST_OK.replace(
+                "open_question: q-story-bottleneck", "open_question: none"))
+            findings = validate.check_interview_state(d)
+            self.assertTrue(any(f.level == "ERROR" and "half-committed" in f.message
+                                for f in findings))
+
+    def test_complete_with_open_question_errors(self):
+        # Codex review (Slice 3.1): status: complete must not suppress the
+        # open-question contradiction — a finished interview owes no answers.
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d, manifest=IV_MANIFEST_OK.replace(
+                "status: in-progress", "status: complete"), working=None)
+            findings = validate.check_interview_state(d)
+            self.assertTrue(any(f.level == "ERROR" and "open question" in f.message
+                                and "complete" in f.message for f in findings))
+
+    def test_working_without_source_warns_not_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d, working=IV_WORKING_OK.replace(
+                "source: Marketing session 2026-06-22\n", ""))
+            findings = validate.check_interview_state(d)
+            src = [f for f in findings if "source" in f.message]
+            self.assertTrue(src and all(f.level == "WARN" for f in src))
+            self.assertEqual([f for f in findings if f.level == "ERROR"], [])
+
+    def test_symlinked_manifest_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d)
+            target = _write(d, "elsewhere.md", IV_MANIFEST_OK)
+            man = os.path.join(d, "interview", "00-manifest.md")
+            os.remove(man)
+            os.symlink(target, man)
+            findings = validate.check_interview_state(d)
+            self.assertTrue(any(f.level == "ERROR" and "symlink" in f.message
+                                and "00-manifest.md" in f.path for f in findings))
+
+    def test_symlinked_layer_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d)
+            target = _write(d, "elsewhere.md", IV_LAYER_OK)
+            layer = os.path.join(d, "interview", "01-role-and-scope.md")
+            os.remove(layer)
+            os.symlink(target, layer)
+            findings = validate.check_interview_state(d)
+            self.assertTrue(any(f.level == "ERROR" and "symlink" in f.message
+                                and "01-role-and-scope.md" in f.path for f in findings))
+
+    def test_symlinked_working_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d)
+            target = _write(d, "elsewhere.md", IV_WORKING_OK)
+            work = os.path.join(d, "interview", "_working.md")
+            os.remove(work)
+            os.symlink(target, work)
+            findings = validate.check_interview_state(d)
+            self.assertTrue(any(f.level == "ERROR" and "symlink" in f.message
+                                and "_working.md" in f.path for f in findings))
+
+    def test_non_utf8_manifest_fails_closed_without_crashing(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d)
+            _write_bytes(d, "interview/00-manifest.md", b"\xff\xfe")
+            findings = validate.check_interview_state(d)
+            self.assertTrue(any(f.level == "ERROR" for f in findings))
+
+    def test_non_utf8_layer_fails_closed_without_crashing(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d)
+            _write_bytes(d, "interview/01-role-and-scope.md", b"\xff\xfe")
+            findings = validate.check_interview_state(d)
+            self.assertTrue(any(f.level == "ERROR"
+                                and "01-role-and-scope.md" in f.path
+                                for f in findings))
+
+    def test_gitignored_state_dir_not_scanned(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d, sub="scratch")
+            _write(d, "scratch/03-unlisted.md", IV_LAYER_OK)  # would ERROR if scanned
+            self.assertEqual(validate.check_interview_state(d, ("scratch",)), [])
+
+    def test_two_state_dirs_both_checked(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d, sub="teams/a/interview")
+            _iv_state(d, sub="teams/b/interview")
+            _write(d, "teams/a/interview/03-unlisted.md",
+                   IV_LAYER_OK.replace("# Layer 1 — The role, and what is in scope",
+                                       "# Layer 3 — Extra"))
+            _write(d, "teams/b/interview/03-unlisted.md",
+                   IV_LAYER_OK.replace("# Layer 1 — The role, and what is in scope",
+                                       "# Layer 3 — Extra"))
+            findings = validate.check_interview_state(d)
+            hit_dirs = {f.path.split(os.sep)[1] for f in findings
+                        if "not listed" in f.message}
+            self.assertEqual(hit_dirs, {"a", "b"})
+
+    def test_wired_into_validate(self):
+        # The check must run from validate(), not only when called directly.
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d)
+            _write(d, "interview/03-unlisted.md",
+                   IV_LAYER_OK.replace("# Layer 1 — The role, and what is in scope",
+                                       "# Layer 3 — Extra"))
+            findings = validate.validate(d)
+            self.assertTrue(any(f.level == "ERROR" and "not listed" in f.message
+                                for f in findings))
+
+
+class TestInterviewDiff(unittest.TestCase):
+    def _repo(self, d):
+        _git(d, "init", "-q")
+        _git(d, "config", "user.email", "t@t.t")
+        _git(d, "config", "user.name", "t")
+        _iv_state(d)
+        _git(d, "add", "-A")
+        _git(d, "commit", "-qm", "base")
+
+    def test_unchanged_layers_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            self.assertEqual(validate.interview_diff_findings(d, "HEAD"), [])
+
+    def test_edited_body_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "interview/01-role-and-scope.md",
+                   IV_LAYER_OK.replace("The confirmed facts of the layer.",
+                                       "The rewritten facts of the layer."))
+            findings = validate.interview_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "frozen at its checkpoint" in f.message
+                                and "01-role-and-scope.md" in f.path for f in findings))
+
+    def test_edited_frontmatter_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "interview/01-role-and-scope.md",
+                   IV_LAYER_OK.replace("confirmed_by: Priya Raman",
+                                       "confirmed_by: Somebody Else"))
+            findings = validate.interview_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "frozen" in f.message
+                                for f in findings))
+
+    def test_whitespace_only_change_is_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "interview/01-role-and-scope.md", IV_LAYER_OK + "\n\n")
+            self.assertEqual(validate.interview_diff_findings(d, "HEAD"), [])
+
+    def test_crlf_base_blob_is_clean(self):
+        # A CRLF blob at base vs an LF working read is not an edit.
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _iv_state(d)
+            _write(d, "interview/01-role-and-scope.md",
+                   IV_LAYER_OK.replace("\n", "\r\n"))
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "crlf")
+            _write(d, "interview/01-role-and-scope.md", IV_LAYER_OK)
+            self.assertEqual(validate.interview_diff_findings(d, "HEAD"), [])
+
+    def test_deleted_layer_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            os.remove(os.path.join(d, "interview", "01-role-and-scope.md"))
+            findings = validate.interview_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "deleted" in f.message
+                                for f in findings))
+
+    def test_new_layer_is_fine(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "interview/03-people-hr.md",
+                   IV_LAYER_OK.replace("# Layer 1 — The role, and what is in scope",
+                                       "# Layer 3 — People"))
+            findings = validate.interview_diff_findings(d, "HEAD")
+            self.assertEqual([f for f in findings if "03-people-hr.md" in f.path], [])
+
+    def test_manifest_edit_is_fine(self):
+        # The manifest is the pointer: it is rewritten every turn.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "interview/00-manifest.md",
+                   IV_MANIFEST_OK.replace("phase: marketing", "phase: sales"))
+            self.assertEqual(validate.interview_diff_findings(d, "HEAD"), [])
+
+    def test_working_edit_is_fine(self):
+        # _working.md is provisional: it is dirty by design.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "interview/_working.md",
+                   IV_WORKING_OK + "\nA provisional note added this turn.\n")
+            self.assertEqual(validate.interview_diff_findings(d, "HEAD"), [])
+
+    def test_deleting_manifest_does_not_unfreeze_layers(self):
+        # The dir was state AT BASE — removing the manifest in the same diff
+        # must not exempt the layers beneath it.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            os.remove(os.path.join(d, "interview", "00-manifest.md"))
+            _write(d, "interview/01-role-and-scope.md",
+                   IV_LAYER_OK.replace("The confirmed facts of the layer.",
+                                       "The rewritten facts of the layer."))
+            findings = validate.interview_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "frozen" in f.message
+                                for f in findings))
+
+    def test_unknown_base_ref_errors_without_crash(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            findings = validate.interview_diff_findings(d, "no-such-ref")
+            self.assertTrue(any(f.level == "ERROR" and "base ref" in f.message
+                                for f in findings))
+
+    def test_symlinked_layer_fails_closed(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            layer = os.path.join(d, "interview", "01-role-and-scope.md")
+            os.rename(layer, os.path.join(d, "copy.md"))
+            os.symlink(os.path.join(d, "copy.md"), layer)
+            findings = validate.interview_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "symlink" in f.message
+                                for f in findings))
+
+    def test_non_utf8_base_blob_fails_closed(self):
+        # An unreadable base version is never "unchanged".
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _iv_state(d)
+            _write_bytes(d, "interview/01-role-and-scope.md", b"\xff\xfe")
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "base")
+            _write(d, "interview/01-role-and-scope.md", IV_LAYER_OK)
+            findings = validate.interview_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "cannot verify" in f.message
+                                for f in findings))
+
+    def test_outside_a_repo_errors_without_crash(self):
+        with tempfile.TemporaryDirectory() as d:
+            _iv_state(d)
+            findings = validate.interview_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "git repository" in f.message
+                                for f in findings))
+
+    def test_unknown_ref_prints_one_context_error_through_main(self):
+        # Three diff passes resolve the git context independently; the `seen`
+        # accumulator must collapse the identical fatal ERROR to ONE line.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = validate.main(["validate.py", d, "--diff", "no-such-ref"])
+            self.assertEqual(code, 1)
+            self.assertEqual(out.getvalue().count("base ref not found"), 1)
+
+    def test_frozen_layer_edit_fails_main_gate(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "interview/01-role-and-scope.md",
+                   IV_LAYER_OK.replace("The confirmed facts of the layer.",
+                                       "The rewritten facts of the layer."))
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = validate.main(["validate.py", d, "--diff", "HEAD"])
+            self.assertEqual(code, 1)
+            self.assertIn("frozen at its checkpoint", out.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -203,3 +203,9 @@ Honest limits of the current build. This file grows as the product does (brief Â
   belongs in engine artifacts), but it means the demo models a company OS that links
   nothing outward, which a real one would not. A generated `your-company/` is not
   scoped by this check at all and links whatever it needs.
+- **The demo retains its interview state; that is a disposition, not a rule.**
+  `demo/interview/` keeps the confirmed layers the demo's ontology was generated from,
+  because that record is the provenance a future re-interview would merge against (#9).
+  A real adopter may keep or clean theirs; #10 guarantees only that interview state is
+  never *distributed* to employees, which is a different question from whether it is
+  retained. Nothing in the validator requires an `interview/` directory to exist.
