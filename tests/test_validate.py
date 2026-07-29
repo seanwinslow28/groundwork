@@ -4,6 +4,7 @@ import datetime
 import io
 import os
 import pathlib
+import re
 import sys
 import tempfile
 import unittest
@@ -5924,6 +5925,118 @@ class TestInterviewDiff(unittest.TestCase):
                 code = validate.main(["validate.py", d, "--diff", "HEAD"])
             self.assertEqual(code, 1)
             self.assertIn("frozen at its checkpoint", out.getvalue())
+
+
+class TestInterviewDocExamples(unittest.TestCase):
+    """The state-format doc ships example files. Nothing checked them, so they
+    could drift from the schema silently — and the first person to notice would
+    be an adopter copying an example that fails the gate. Extract them and run
+    the real check."""
+
+    # Blocks are labelled in the doc by the filename they demonstrate, in the
+    # fence info string: ```markdown 00-manifest.md
+    _BLOCK = re.compile(
+        r"^```[a-z]*[ \t]+(00-manifest\.md|_working\.md|[0-9]{2}-[a-z-]+\.md)[ \t]*\n"
+        r"(.*?)^```[ \t]*$",
+        re.S | re.M)
+
+    def test_readme_examples_validate(self):
+        doc = (REPO / "interview" / "README.md").read_text()
+        blocks = dict((m.group(1), m.group(2)) for m in self._BLOCK.finditer(doc))
+        # Anti-hollow: an empty extraction validates an empty directory and passes.
+        self.assertIn("00-manifest.md", blocks,
+                      "no labelled manifest example found in interview/README.md — "
+                      "the extractor found nothing, so this test proves nothing")
+        self.assertGreaterEqual(len(blocks), 3, "expected manifest + layer + working")
+        with tempfile.TemporaryDirectory() as d:
+            state = os.path.join(d, "interview")
+            os.makedirs(state)
+            for name, body in blocks.items():
+                with open(os.path.join(state, name), "w", encoding="utf-8") as fh:
+                    fh.write(body)
+            findings = validate.check_interview_state(d)
+        self.assertEqual([f for f in findings if f.level == "ERROR"], [],
+                         "the documented example does not satisfy the check it documents")
+
+
+class TestQuestionSkeletonCoverage(unittest.TestCase):
+    """The interview must be able to fill every field the validator requires. A
+    schema field nobody asks about is a record the generator cannot complete;
+    a question naming a field that does not exist is a question whose answer
+    lands nowhere. Both directions are silent failures without this test.
+
+    #5's 'all eight Gate fields must be answered, and there is no waiver' is
+    enforced at the validator end. This is the same rule at the interview end."""
+
+    # Fields the generator draws from what it already captured rather than
+    # asking — #6's drafting split, encoded. Each entry needs a reason.
+    NOT_ASKED = {
+        "card:last_reviewed": "date stamp written at generation",
+        "card:next_review": "date stamp written at generation",
+        "memory:provenance": "set by how the fact was learned, not by asking",
+    }
+
+    # Mirrors check_memory's required spine. Update together — validate.py has
+    # no constant for it (candidate for extraction next time memory changes).
+    MEMORY_SPINE = ("provenance", "owner", "valid_at", "source", "review_by")
+
+    def _fills(self):
+        doc = (REPO / "interview" / "questions.md").read_text()
+        fills, rows = set(), 0
+        for line in doc.split("\n"):
+            cells = validate._canonical_row(line)
+            if cells is None:
+                # A '|' outside a canonical row means the table grammar slipped.
+                self.assertNotIn("|", line,
+                                 "non-canonical table line in questions.md: %r" % line)
+                continue
+            if cells[0] in ("Ask", "") or set(cells[1]) <= set("- "):
+                continue  # header or delimiter
+            rows += 1
+            for f in cells[1].split(","):
+                f = f.strip()
+                if f and f != "—":
+                    fills.add(f)
+        self.assertGreater(rows, 30, "the question table parsed almost nothing")
+        return fills
+
+    def test_every_named_field_exists(self):
+        known = set()
+        for f in validate.SCORE_FIELDS + validate.GATE_FIELDS:
+            known.add("ontology:" + f)
+        for f in ("motion", "work_type", "accountable_owner", "substrate", "shape"):
+            known.add("ontology:" + f)
+        for f in validate.CARD_REQUIRED + validate.CARD_TRACK2 + ["action_class"]:
+            known.add("card:" + f)
+        for f in validate._RULE_OBJECT_FIELDS + ["owner", "rung", "action_class",
+                                                 "sunset", "ritual", "scarcity",
+                                                 "surviving_job", "reassigned_to"]:
+            known.add("rule:" + f)
+        for f in self.MEMORY_SPINE:
+            known.add("memory:" + f)
+        known |= {"exec:activity", "exec:direction"}
+        unknown = self._fills() - known
+        self.assertEqual(unknown, set(),
+                         "questions.md names fields the schema does not have: %s" % sorted(unknown))
+
+    def test_every_required_field_is_asked(self):
+        fills = self._fills()
+        required = set()
+        for f in validate.SCORE_FIELDS + validate.GATE_FIELDS:
+            required.add("ontology:" + f)
+        for f in ("motion", "work_type", "accountable_owner", "substrate", "shape"):
+            required.add("ontology:" + f)
+        for f in validate.CARD_REQUIRED + validate.CARD_TRACK2:
+            required.add("card:" + f)
+        for f in validate._RULE_OBJECT_FIELDS + ["owner", "rung", "sunset"]:
+            required.add("rule:" + f)
+        for f in self.MEMORY_SPINE:
+            required.add("memory:" + f)
+        missing = required - fills - set(self.NOT_ASKED)
+        self.assertEqual(missing, set(),
+                         "the schema requires fields no question asks for: %s — either "
+                         "add the question or add it to NOT_ASKED with a reason"
+                         % sorted(missing))
 
 
 if __name__ == "__main__":
