@@ -6078,8 +6078,10 @@ class TestDemoIsLiftable(unittest.TestCase):
     # the ENGINE), so the tripwire scans both forms. The pattern deliberately
     # over-approximates: blockquote/list nesting and angle-bracket destinations
     # are matched loosely, because a false catch here fails toward a human
-    # look while a miss fails silent (Codex r2).
-    _REFDEF = re.compile(r"^[>\s*+\-\d.]*\[[^\]]+\]:\s*<?([^\s>]+)", re.M)
+    # look while a miss fails silent (Codex r2). Code is stripped first with
+    # the validator's own scanner, so a refdef-shaped EXAMPLE in a fence is
+    # not an escape (Codex r3).
+    _REFDEF = re.compile(r"^[>\s*+\-\d.)]*\[[^\]]+\]:\s*<?([^\s>]+)", re.M)
 
     @classmethod
     def escapes(cls):
@@ -6092,7 +6094,8 @@ class TestDemoIsLiftable(unittest.TestCase):
                 if not fn.endswith(".md"):
                     continue
                 p = os.path.join(dirpath, fn)
-                text = open(p, encoding="utf-8").read()
+                with open(p, encoding="utf-8") as fh:
+                    text = validate._strip_code(fh.read())
                 targets = cls._LINK.findall(text) + cls._REFDEF.findall(text)
                 for target in targets:
                     if target.startswith(("http:", "https:", "mailto:")):
@@ -6221,11 +6224,8 @@ earned by acting, not by planning to act.
             fh.write(new + sep + self.MANIFEST_BODY)
         os.remove(os.path.join(dest, "interview", "_working.md"))
         # generate.md: proposals/ is empty at generation. The pending proposal is
-        # demo/'s lived-in story, not generated shape — remove it from the copy,
-        # along with the two links that point at it.
+        # demo/'s lived-in story, not generated shape.
         os.remove(os.path.join(dest, "proposals", "refusal-names-next-step.md"))
-        self._unlink(dest, "README.md", "proposals/refusal-names-next-step.md")
-        self._unlink(dest, "walkthrough.md", "proposals/refusal-names-next-step.md")
         # The four teaching links point at engine paths that do not exist in a
         # company repo. Neutralize them to plain text — the same transform the
         # generation protocol tells a generator not to need in the first place.
@@ -6234,6 +6234,17 @@ earned by acting, not by planning to act.
             self._unlink(dest, rel.split("/", 1)[1], target)
             replaced += 1
         self.assertEqual(replaced, 4)
+        # generate.md's manifest lists no README.md, walkthrough.md, canon.md,
+        # or per-directory narration READMEs. Those files are the demo's
+        # narrative voice, and any sentence of it can contradict a generated
+        # repo (Codex r3: the removed proposal was still narrated as pending).
+        # The fixture keeps the demo's content and drops its narration —
+        # removed AFTER the escape transform above, which must run against the
+        # real files. Nothing that survives links to any of these five.
+        for narration in ("README.md", "walkthrough.md", "canon.md",
+                          os.path.join("governance", "README.md"),
+                          os.path.join("skills", "README.md")):
+            os.remove(os.path.join(dest, narration))
         with open(os.path.join(dest, "governance", "review-gate.md"),
                   "w", encoding="utf-8") as fh:
             fh.write(self.REVIEW_GATE)
