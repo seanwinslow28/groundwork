@@ -35,7 +35,7 @@ deliberately shallow elsewhere.
 | Email domain | `umbercress.example` | `.example` is reserved for documentation (RFC 6761) **and** declared here |
 | Phone numbers | `555-01xx` | The North American range reserved for fiction |
 | IP addresses | `192.0.2.x`, `198.51.100.x`, `203.0.113.x` | TEST-NET-1/2/3, reserved for documentation (RFC 5737) |
-| External domains | none | The demo links to nothing real. Adding one is a deliberate edit to this table and to `external_domains` above |
+| External domains | none | The demo links to nothing real. `external_domains` in this file's frontmatter is the declared escape hatch, and it is empty **because this company is fiction** — a real company's OS populates it with the vendor and harness domains it genuinely links, and each addition is a visible edit to this table |
 
 ## The people
 

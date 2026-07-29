@@ -58,14 +58,16 @@ anything else ERRORs) while still on v1. Content that a permissive reader once a
 pipes — now fails the gate. Read strictly, that is a breaking change to a content shape,
 and the pull promise above says a same-version pull is always safe.
 
-It was landed at v1 anyway, deliberately, and this is the record of why: **no
-`groundwork.pin` existed yet.** The pin file ships with the first generated company
-repo; until then there is no pinned content in the world for a migration boundary to
-protect, and the `since:` demotion mechanism that would soften such a change is itself
-documented-but-unwired for exactly the same reason. Bumping to v2 here would have spent
-the first migration on a change with zero affected repos and armed the skew gate against
-nothing.
+It was landed at v1 anyway, deliberately, and this is the record of why: **at the time,
+no `groundwork.pin` existed anywhere.** The pin file travels with pinned company
+content; until any existed there was no pinned content in the world for a migration
+boundary to protect, and the `since:` demotion mechanism that would soften such a change
+is itself documented-but-unwired for exactly the same reason. Bumping to v2 then would
+have spent the first migration on a change with zero affected repos and armed the skew
+gate against nothing.
 
-The promise binds from the first real pin onward. A tightening of this kind, landed
-after any company repo carries a `groundwork.pin`, is a v2 change and gets a migration
-note — no matter how small the syntax involved.
+**That window is closed.** The first `groundwork.pin` landed on 2026-07-29, on the
+`demo/` company instance, and the promise binds from it. A tightening of this kind —
+content a permissive reader once accepted that a stricter one now ERRORs — is from here
+on a **v2 change with a migration note**, no matter how small the syntax involved. The
+"no adopters yet" argument was used exactly once, on the record, and is now spent.

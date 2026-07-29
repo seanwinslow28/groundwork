@@ -43,9 +43,9 @@ Honest limits of the current build. This file grows as the product does (brief �
   change lands *as long as the commit bit stays with a human who runs the validator*" — a
   permissions convention, not a cryptographic proof.
 - **The tripwire only governs pinned content.** It fires on files under a directory carrying a
-  `groundwork.pin` (#21) — i.e. generated company content. The groundwork engine repo is
-  pin-less by design, so its own `skills/` and `governance/constitution/` exemplars are not
-  governed by it. Whether groundwork governs its own maintenance with its own consent gate is
+  `groundwork.pin` (#21) — today the hand-authored `demo/` instance, tomorrow generated
+  company content. The groundwork engine repo is pin-less by design, so its own `skills/` and
+  `governance/constitution/` exemplars are not governed by it. Whether groundwork governs its own maintenance with its own consent gate is
   the same open question as the hook set above, not an oversight.
 - **A deleted rule or skill is a WARN, not an ERROR.** Retirement is legitimate (rules carry
   `sunset`, cards carry `retirement_condition`) and it is escalating — but a proposal's
@@ -196,3 +196,10 @@ Honest limits of the current build. This file grows as the product does (brief �
   (`+44 20 7123 4567`) is not extracted and therefore not checked. The same
   false-positive bias applies in the other direction: a 7-digit range written like
   `555-2026` in prose would be flagged as a phone number outside the fiction range.
+- **The demo cannot cite anything real, including documentation.** `demo/canon.md`
+  declares `external_domains` empty, and the identifier check applies to every file
+  under `demo/` — so no file there may carry a vendor, harness, or standards URL, even a
+  correct one. This is deliberate (the demo company is fiction, and engine machinery
+  belongs in engine artifacts), but it means the demo models a company OS that links
+  nothing outward, which a real one would not. A generated `your-company/` is not
+  scoped by this check at all and links whatever it needs.

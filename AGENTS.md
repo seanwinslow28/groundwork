@@ -30,18 +30,17 @@ non-automation verdict, and the validator gates every layer of it.
   action-class hook set, and the append-only changelog.
 - `memory/` — the org-memory record schema with three captured baselines and an index.
 - `proposals/` — the consent-gate convention for agent-proposed changes.
-- `demo/` — the pre-installed example company (**Umbercress**, ~20 people). Its canon
-  declares the fictional world and doubles as the validator's identifier allowlist. Its
-  ontologies, org memory, four work packages, and constitution are complete, including
-  one runnable rung-3 reminder (#8 item 3). The 15-minute walkthrough and the version
-  pin are still to come — `demo/README.md` says what is there today.
+- `demo/` — the pre-installed example company (**Umbercress**, ~20 people), complete:
+  canon, eight executive views, seven deep records, org memory, four work packages,
+  three constitution rules, one runnable rung-3 reminder, one pending proposal, and the
+  15-minute three-query walkthrough. It carries a `groundwork.pin`, so it is a
+  **governed root** — changes to its skills and rules run the #18 consent gate exactly
+  as a company repo's would.
 
 **Not built yet — do not describe these as working:**
 
 - `interview/` — the generator that would interview a company and write its OS.
   Phase 3. It does not exist.
-- `demo/` walkthrough — the 15-minute 3-query script. The company's content is in place;
-  the script that walks you through it is not written, so there is nothing to follow yet.
 - `delivery/` — the provisioning guide. Phase 4.
 - `your-company/` — generated content lives in a **separate private repo**, not here.
 
@@ -78,6 +77,10 @@ python3 scripts/validate.py . --diff main
 
 This adds the stateful modes: org-memory immutability, and the blast-radius tripwire
 that requires an escalating change to carry a matching proposal.
+
+To see what this is for rather than how it is built, run the demo's three-query
+walkthrough — fifteen minutes, no credentials, ending on a governance rule refusing an
+instruction: `demo/walkthrough.md`.
 
 To understand the shape before writing anything, read one worked example end to end:
 `ontologies/people-hr/onboarding-orchestration.md` →
