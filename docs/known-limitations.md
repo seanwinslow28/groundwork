@@ -264,14 +264,15 @@ Honest limits of the current build. This file grows as the product does (brief �
   `check_company_root` WARNs once when a pinned repo has skills and no
   `.claude/skills/` or `.agents/skills/` entry, but a WARN does not fail the gate — an
   adopter can ship an OS nothing loads.
-- **Organization distribution is Team/Enterprise only, and Cowork-gated.** Plugin
-  marketplaces require Cowork and Skills to be enabled for the organization, and only
-  Owners and Primary Owners can manage them. There is no organization push surface for
-  Codex, Cursor, or Gemini CLI at all — for those harnesses, provisioning means the
-  person has the repository checked out.
+- **Organization distribution is Team/Enterprise only, and Cowork-gated** (verified
+  2026-07-29). Plugin marketplaces require Cowork and Skills to be enabled for the
+  organization, and only Owners and Primary Owners can manage them. There is no
+  organization push surface for Codex, Cursor, or Gemini CLI at all — for those
+  harnesses, provisioning means the person has the repository checked out.
 - **A plugin is copied in isolation, so packaging the wrong directory is a privacy
-  failure, not a build failure.** #10's guarantee that interview state and org memory are
-  never distributed holds only when the plugin `source` is a subdirectory. Point it at
-  the repository root and the company's own interview transcript ships to every employee
-  who installs it. `delivery/README.md` states this as a hard rule; no check can enforce
-  it, because the manifest lives in a dot-directory the validator never scans.
+  failure, not a build failure** (verified 2026-07-29). #10's guarantee that interview
+  state and org memory are never distributed holds only when the plugin `source` is a
+  subdirectory. Point it at the repository root and the company's own interview
+  transcript ships to every employee who installs it. `delivery/README.md` states this
+  as a hard rule; no check can enforce it, because the manifest lives in a dot-directory
+  the validator never scans.

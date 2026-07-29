@@ -6441,6 +6441,22 @@ class TestCompanyRoot(unittest.TestCase):
             _write(d, "skills/renewal-prep/SKILL.md", "# a skill\n")
             self.assertEqual(validate.check_company_root(d), [])
 
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0,
+                     "root ignores directory permission bits")
+    def test_unlistable_dot_directory_does_not_false_warn(self):
+        # An unreadable .agents/skills cannot prove the skills are invisible;
+        # asserting "no harness-visible path" anyway is the false positive
+        # this check fails away from (Codex 4.1 r1 finding 2).
+        with tempfile.TemporaryDirectory() as d:
+            self._pinned_with_skills(d, "renewal-prep")
+            locked = os.path.join(d, ".agents", "skills")
+            os.makedirs(locked)
+            os.chmod(locked, 0)
+            try:
+                self.assertEqual(validate.check_company_root(d), [])
+            finally:
+                os.chmod(locked, 0o755)
+
     def test_empty_dot_directories_do_not_count_as_visible(self):
         # mkdir -p with no symlinks yet is not provisioning.
         with tempfile.TemporaryDirectory() as d:

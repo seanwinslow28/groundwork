@@ -187,8 +187,9 @@ Then connect the repository at Organization settings → Plugins and sync it.
   repository root.
 
 **Why this is the governance gate and the delivery gate at once (#18/#10):** merging a
-change into the company repo is simultaneously the maintainer's consent act and the event
-that ships it. There is no second approval step to forget, and no way to distribute
+change into the company repo is the maintainer's consent act, and — with automatic
+syncing enabled — also the event that ships it; without it, shipping waits on the Update
+click. Either way there is no second *approval* step to forget, and no way to distribute
 something that never went through a pull request.
 
 ---

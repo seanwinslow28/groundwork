@@ -2373,7 +2373,11 @@ def check_company_root(root):
                 if os.path.isdir(d) and any(os.listdir(d)):
                     visible = True
             except OSError:
-                pass
+                # A directory that exists but cannot be listed cannot prove the
+                # skills are invisible. Treat it as visible: the WARN asserts a
+                # fact, and asserting one the validator could not inspect is the
+                # false positive this check must fail away from (Codex 4.1 r1).
+                visible = True
         if packages and not visible:
             findings.append(Finding(
                 "WARN", "skills", None,
