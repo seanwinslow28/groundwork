@@ -2326,6 +2326,28 @@ def check_version_pin(root):
     return findings
 
 
+def check_company_root(root):
+    """A root carrying a #21 groundwork.pin IS a company repo (#10), and a
+    company repo with no root instruction file gives an agent no route in.
+
+    Everything else in §6's root set is already chained off AGENTS.md's
+    presence by check_root_files, which is deliberately 'silent when there is
+    no AGENTS.md' — it checks a claim you make, not one you failed to make.
+    That leaves exactly one gap: absence at the entry point. WARN, not ERROR,
+    because a stateless validator cannot tell a half-generated repo from a
+    deliberately minimal one, and because turning a documented
+    silent-on-absence posture into a gate failure would break validating the
+    engine's own demo/ as a root."""
+    if not os.path.isfile(os.path.join(root, "groundwork.pin")):
+        return []
+    if os.path.isfile(os.path.join(root, "AGENTS.md")):
+        return []
+    return [Finding("WARN", "AGENTS.md", None,
+                    "this repo carries a groundwork.pin but has no root AGENTS.md — "
+                    "a company OS with no root instruction file gives an agent no "
+                    "route into it (§6)")]
+
+
 def check_symlinked_dirs(root):
     """Make the stateless walker's skip of symlinked directories LOUD. os.walk does
     not descend into symlinked dirs, so their contents would go unchecked silently."""
@@ -2979,6 +3001,7 @@ def validate(root):
     findings += check_always_loaded_budget(root)
     findings += check_root_files(root)
     findings += check_interview_state(root, ignore)
+    findings += check_company_root(root)
     return findings
 
 

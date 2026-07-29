@@ -6195,5 +6195,55 @@ Read AGENTS.md for how this company OS is organized.
                              "skew 0 must be silent on a company root")
 
 
+class TestCompanyRoot(unittest.TestCase):
+    """check_company_root: a root pin with no root AGENTS.md is a WARN — the
+    one silent-on-absence gap left open at the entry point. Root pin ONLY:
+    a nested pin (the engine's demo/) must never trip it."""
+
+    def test_pinned_root_without_agents_md_warns_once(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "groundwork.pin", PIN_OK)
+            findings = validate.check_company_root(d)
+            self.assertEqual(len(findings), 1)
+            self.assertEqual(findings[0].level, "WARN")
+            self.assertIn("no root AGENTS.md", findings[0].message)
+            self.assertFalse(any(f.level == "ERROR" for f in findings))
+
+    def test_pinned_root_with_agents_md_is_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "groundwork.pin", PIN_OK)
+            _write(d, "AGENTS.md", "# a company OS\n")
+            self.assertEqual(validate.check_company_root(d), [])
+
+    def test_unpinned_root_is_silent_even_without_agents_md(self):
+        # The engine case: no pin means no company-repo claim to check.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "ontologies/README.md", "# content, no pin\n")
+            self.assertEqual(validate.check_company_root(d), [])
+
+    def test_nested_pin_does_not_trip_the_root_check(self):
+        # The scoping bug class: the engine root has demo/groundwork.pin.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "demo/groundwork.pin", PIN_OK)
+            self.assertEqual(validate.check_company_root(d), [])
+
+    def test_pin_as_directory_does_not_crash(self):
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "groundwork.pin"))
+            self.assertEqual(validate.check_company_root(d), [])
+
+    def test_engine_root_is_silent(self):
+        # The 7-WARN invariant's trigger: this repo carries no root pin.
+        self.assertEqual(validate.check_company_root(str(REPO)), [])
+
+    def test_validate_wires_company_root(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "groundwork.pin", PIN_OK)
+            findings = validate.validate(d)
+            self.assertTrue(any(f.level == "WARN" and "no root AGENTS.md" in f.message
+                                for f in findings),
+                            "check_company_root is not wired into validate()")
+
+
 if __name__ == "__main__":
     unittest.main()
