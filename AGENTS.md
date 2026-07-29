@@ -96,7 +96,7 @@ To understand the shape before writing anything, read one worked example end to 
 `skills/onboarding-orchestration/SKILL.md` → its `owner-card.md` →
 `memory/onboarding-baseline.md` → `governance/constitution/`.
 
-## The interview (not built — Phase 3)
+## The interview (generator not built — Phase 3)
 
 The intended entry point is an interview: you point your agent at this repo, it asks
 your company what work each function actually does — what deserves more human time,

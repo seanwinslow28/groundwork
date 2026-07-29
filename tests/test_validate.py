@@ -5936,13 +5936,18 @@ class TestInterviewDocExamples(unittest.TestCase):
     # Blocks are labelled in the doc by the filename they demonstrate, in the
     # fence info string: ```markdown 00-manifest.md
     _BLOCK = re.compile(
-        r"^```[a-z]*[ \t]+(00-manifest\.md|_working\.md|[0-9]{2}-[a-z-]+\.md)[ \t]*\n"
+        r"^```[a-z]*[ \t]+(00-manifest\.md|_working\.md|[0-9]{2}-[a-z0-9-]+\.md)[ \t]*\n"
         r"(.*?)^```[ \t]*$",
         re.S | re.M)
 
     def test_readme_examples_validate(self):
         doc = (REPO / "interview" / "README.md").read_text()
-        blocks = dict((m.group(1), m.group(2)) for m in self._BLOCK.finditer(doc))
+        matches = list(self._BLOCK.finditer(doc))
+        blocks = dict((m.group(1), m.group(2)) for m in matches)
+        # Two examples for one filename would silently collapse into the dict,
+        # leaving the earlier one untested (Codex review of slice 3.2).
+        self.assertEqual(len(matches), len(blocks),
+                         "duplicate labelled example fences in interview/README.md")
         # Anti-hollow: an empty extraction validates an empty directory and passes.
         self.assertIn("00-manifest.md", blocks,
                       "no labelled manifest example found in interview/README.md — "
@@ -6010,7 +6015,8 @@ class TestQuestionSkeletonCoverage(unittest.TestCase):
             known.add("card:" + f)
         for f in validate._RULE_OBJECT_FIELDS + ["owner", "rung", "action_class",
                                                  "sunset", "ritual", "scarcity",
-                                                 "surviving_job", "reassigned_to"]:
+                                                 "surviving_job", "reassigned_to",
+                                                 "repeals"]:
             known.add("rule:" + f)
         for f in self.MEMORY_SPINE:
             known.add("memory:" + f)
@@ -6026,12 +6032,18 @@ class TestQuestionSkeletonCoverage(unittest.TestCase):
             required.add("ontology:" + f)
         for f in ("motion", "work_type", "accountable_owner", "substrate", "shape"):
             required.add("ontology:" + f)
-        for f in validate.CARD_REQUIRED + validate.CARD_TRACK2:
+        # action_class is ERROR-required on a card and is the rule's safety
+        # spine (no-rung-six); the exec pair is what the executive tier IS.
+        # Omitting them here made the required direction quietly narrower than
+        # the validator (Codex review of slice 3.2).
+        for f in validate.CARD_REQUIRED + validate.CARD_TRACK2 + ["action_class"]:
             required.add("card:" + f)
-        for f in validate._RULE_OBJECT_FIELDS + ["owner", "rung", "sunset"]:
+        for f in validate._RULE_OBJECT_FIELDS + ["owner", "rung", "sunset",
+                                                 "action_class"]:
             required.add("rule:" + f)
         for f in self.MEMORY_SPINE:
             required.add("memory:" + f)
+        required |= {"exec:activity", "exec:direction"}
         missing = required - fills - set(self.NOT_ASKED)
         self.assertEqual(missing, set(),
                          "the schema requires fields no question asks for: %s — either "

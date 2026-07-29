@@ -4,10 +4,11 @@ An interview is a conversation that has to survive being interrupted — by a me
 a week, by switching from one agent harness to another. This directory documents the
 shape that state takes so it survives all three.
 
-**What is here today is the format and its checks.** The consultant protocol that runs
-the interview, the question skeleton it asks from, and the generator that turns confirmed
-answers into a company OS are **not built** — Slices 3.2 and 3.3. Pointing an agent at
-this repository does not yet run an interview.
+**What is here today: this format and its checks, the consultant protocol
+([protocol.md](protocol.md)), and the question skeleton ([questions.md](questions.md)).**
+The generator that turns confirmed answers into a company OS is **not built** — Slice
+3.3. A person can run the interview by hand with an agent and get a checked, resumable
+record; nothing generates a company OS from it yet.
 
 ## Where the state lives
 
@@ -119,7 +120,10 @@ because people report the rules they wish they had.
 One layer, one checkpoint, one commit:
 
 1. **Ask.** The open question goes in `_working.md` along with whatever the agent has
-   provisionally gathered. The manifest's `open_question` names it. Nothing is committed.
+   provisionally gathered. The manifest's `open_question` names it. Nothing is committed
+   — with one exception: when nobody can answer, the halt rule
+   ([protocol.md](protocol.md)) commits `_working.md` and the manifest together, so the
+   open question survives the interruption it just caused.
 2. **Answer.** The human answers. The agent updates `_working.md`. Still nothing is
    committed — a fact is not confirmed because an agent heard it.
 3. **Checkpoint.** The agent states back what it believes is now settled and asks for

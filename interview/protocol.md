@@ -4,8 +4,8 @@ This is the procedure. [questions.md](questions.md) is what to ask;
 [README.md](README.md) is the state format the answers are written into. Read all
 three before starting, and read this one again at every checkpoint.
 
-An interview produces a company's operating system. It is not a form, and filling it in
-faster does not make it better — a wrong answer captured confidently is worse than a
+An interview produces the record a company's operating system is generated from. It is
+not a form, and filling it in faster does not make it better — a wrong answer captured confidently is worse than a
 question still open, because everything downstream is generated from it.
 
 ## Before anything: the private repo
@@ -53,8 +53,8 @@ the shape of a reply looks complete.
 ontology, not a sample skill, not "here is what I would generate." The reason is that a
 generated artifact stops being a question — the person starts editing your draft instead
 of telling you how the work actually happens, and you have replaced their model of their
-company with yours. Slice 3.3's generator enforces this at the mechanical level: it
-refuses to run while the manifest says `status: in-progress`.
+company with yours. Slice 3.3's generator — not built yet — will enforce this at the
+mechanical level by refusing to run while the manifest says `status: in-progress`.
 
 If the person asks to see something concrete, show them `demo/` — a company that is
 already finished, and not theirs.
@@ -110,10 +110,13 @@ one thing the checkpoint was for.
 **An unanswerable question halts the interview.** It does not get resolved by inference.
 
 Write the question into `_working.md`, name it in the manifest's `open_question`, commit
-the manifest, and stop. A resuming agent — possibly in a different harness, possibly
+`_working.md` and the manifest together, and stop — a manifest that names an open
+question with no `_working.md` beside it is exactly the drift `check_interview_state`
+rejects, and a working file left uncommitted does not survive the harness switch this
+rule exists for. A resuming agent — possibly in a different harness, possibly
 weeks later — picks it up from there.
 
-This matters most in the places it is most tempting to skip. Four answers **may only
+This matters most in the places it is most tempting to skip. Five answers **may only
 come from a human**, and no amount of reading produces them (#6):
 
 - the **owner** and the **backup owner** of any skill,
@@ -143,7 +146,8 @@ That is the whole executive tier, and most activities never get more than it.
 For the activities they have chosen to act on, work the question skeleton
 ([questions.md](questions.md)) in section order. The Motion verdict is the pivot: only
 `automate` and `build` need Substrate, Shape, and all eight Describability Gate answers.
-`buy`, `hire`, and `wait` stop after the common core — about four answers.
+`buy`, `hire`, and `wait` stop after the common core — the Motion and its five scores,
+the work type (section 1), and the accountable owner (section 7's one-name question).
 
 **A `wait` is a real answer.** Record it, with its reasoning. An ontology that only ever
 records automation verdicts reads as an automation funnel, and in a year somebody will
@@ -182,5 +186,7 @@ should be described as doing it.
 - Every automation-path activity answers all eight Gate questions. A truthful "none" is
   an answer; "N/A" is not, and there is no waiver.
 - At least one activity is recorded as **not** worth automating.
-- At least one rule was **repealed**, with its surviving job reassigned.
+- At least one rule was **repealed** with its surviving job reassigned — or the
+  confirmed layers record why no ritual deserved repeal. An interview that examined
+  nothing is a failure; one that honestly found nothing to repeal is not.
 - Every provisioned skill cites a baseline captured before it was provisioned.

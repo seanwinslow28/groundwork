@@ -14,11 +14,15 @@ goes unasked.
 record, `memory:` the captured baseline. A dash means the answer lands in a record's
 prose rather than a field.
 
-**`(human-only)`** marks the four answers an agent may never supply from context, no
+**`(human-only)`** marks the five answers an agent may never supply from context, no
 matter how obvious they look (#6). The generator refuses to draft them.
 
 Work the sections in order, one question at a time, per acted-on activity. Sections 1
-and 2 also run once per function, for every activity, at the executive tier.
+and 2 also run once per function, for every activity, at the executive tier. A row that
+names two fields is still asked in parts — one question at a time, per the protocol. For
+`buy`, `hire`, and `wait`, stop after the common core — the Motion and its five scores,
+the work type (section 1), and the accountable owner (section 7); every other row is
+automation-path only.
 
 ---
 
@@ -126,7 +130,7 @@ with its destinations attached.
 | Is that scarcity still real, and what job survives if it is not? | rule:surviving_job | The job almost always outlives the ritual. |
 | Rewrite it as a rule a person can verify. | — | The rule record's title and body. No vibes. |
 | Decide the machinery, and where it sits on the ladder. | rule:runtime_check, rule:rung | Trigger, evidence, action, owner, appeal. |
-| If this repeals a ritual, who picks up the surviving job? | rule:reassigned_to | Orphan-prohibition. Named before the repeal ships. |
+| If this repeals a ritual, which one, and who picks up the surviving job? | rule:repeals, rule:reassigned_to | Orphan-prohibition. Named before the repeal ships. |
 | What action class is this rule about? | rule:action_class | Drives the no-rung-six safety invariant. |
 
 ## What the generator fills in without asking
