@@ -196,3 +196,10 @@ Honest limits of the current build. This file grows as the product does (brief Â
   (`+44 20 7123 4567`) is not extracted and therefore not checked. The same
   false-positive bias applies in the other direction: a 7-digit range written like
   `555-2026` in prose would be flagged as a phone number outside the fiction range.
+- **The demo cannot cite anything real, including documentation.** `demo/canon.md`
+  declares `external_domains` empty, and the identifier check applies to every file
+  under `demo/` â€” so no file there may carry a vendor, harness, or standards URL, even a
+  correct one. This is deliberate (the demo company is fiction, and engine machinery
+  belongs in engine artifacts), but it means the demo models a company OS that links
+  nothing outward, which a real one would not. A generated `your-company/` is not
+  scoped by this check at all and links whatever it needs.
