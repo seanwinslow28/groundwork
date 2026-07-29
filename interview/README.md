@@ -5,10 +5,12 @@ a week, by switching from one agent harness to another. This directory documents
 shape that state takes so it survives all three.
 
 **What is here today: this format and its checks, the consultant protocol
-([protocol.md](protocol.md)), and the question skeleton ([questions.md](questions.md)).**
-The generator that turns confirmed answers into a company OS is **not built** — Slice
-3.3. A person can run the interview by hand with an agent and get a checked, resumable
-record; nothing generates a company OS from it yet.
+([protocol.md](protocol.md)), the question skeleton ([questions.md](questions.md)), and
+the generation protocol ([generate.md](generate.md)).** All four are documents, not a
+program — there is no `generate.py`, and generation is an agent following the protocol,
+not a script running. A person can run the interview by hand with an agent, get a
+checked, resumable record, and follow [generate.md](generate.md) to turn the confirmed
+layers into a company repo the validator passes.
 
 ## Where the state lives
 
