@@ -29,6 +29,10 @@ non-automation verdict, and the validator gates every layer of it.
 - `governance/` — the constitution rule schema with one compiled rule, the
   action-class hook set, and the append-only changelog.
 - `memory/` — the org-memory record schema with three captured baselines and an index.
+- `interview/` — the **state format** an interview writes: a fixed `00-manifest.md`, one
+  frozen file per confirmed layer, one dirty `_working.md`, and the promote-and-commit
+  protocol (#9). `check_interview_state` enforces the manifest-vs-files drift and
+  `--diff` freezes committed layers, so "confirmed" is git structure rather than a label.
 - `proposals/` — the consent-gate convention for agent-proposed changes.
 - `demo/` — the pre-installed example company (**Umbercress**, ~20 people), complete:
   canon, eight executive views, seven deep records, org memory, four work packages,
@@ -39,8 +43,10 @@ non-automation verdict, and the validator gates every layer of it.
 
 **Not built yet — do not describe these as working:**
 
-- `interview/` — the generator that would interview a company and write its OS.
-  Phase 3. It does not exist.
+- `interview/` — the **interview itself**. The state format is built (above); the
+  consultant protocol, the question skeleton, and the generator that writes a company OS
+  are Slices 3.2 and 3.3. **Pointing your agent at this repo does not yet run an
+  interview.**
 - `delivery/` — the provisioning guide. Phase 4.
 - `your-company/` — generated content lives in a **separate private repo**, not here.
 
@@ -53,6 +59,7 @@ non-automation verdict, and the validator gates every layer of it.
 | `skills/` | Work packages: `skills/<name>/SKILL.md` + `owner-card.md`. |
 | `governance/` | `constitution/` (typed rules), `hooks/` (the action-class gate), `changelog.md`. |
 | `memory/` | Org-memory records, one per file, with an index. |
+| `interview/` | The resumable interview-state format (#9). The interview itself is not built. |
 | `proposals/` | Pending improvement proposals. Empty by design — proposals are transient. |
 | `scripts/validate.py` | The validator. Run it before you claim anything is done. |
 | `MIGRATIONS.md` | The version-pin contract and the pull promise. |
@@ -94,9 +101,9 @@ your company what work each function actually does — what deserves more human 
 what should be automated, and under what rules — and generates your operating system
 from that map into a separate private repository.
 
-**That generator does not exist yet.** Today this repo is the proven schema, the
-validator, and three worked functions. Anything describing the interview as usable is
-wrong.
+**That generator does not exist yet.** What exists is the *state format* it will write
+into — `interview/README.md` — proven against a worked example in `demo/interview/`.
+Anything describing the interview as runnable is wrong.
 
 ## Two repos
 
