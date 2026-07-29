@@ -59,8 +59,8 @@ pipes — now fails the gate. Read strictly, that is a breaking change to a cont
 and the pull promise above says a same-version pull is always safe.
 
 It was landed at v1 anyway, deliberately, and this is the record of why: **at the time,
-no `groundwork.pin` existed anywhere.** The pin file ships with a generated company
-repo; until one existed there was no pinned content in the world for a migration
+no `groundwork.pin` existed anywhere.** The pin file travels with pinned company
+content; until any existed there was no pinned content in the world for a migration
 boundary to protect, and the `since:` demotion mechanism that would soften such a change
 is itself documented-but-unwired for exactly the same reason. Bumping to v2 then would
 have spent the first migration on a change with zero affected repos and armed the skew

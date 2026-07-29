@@ -15,14 +15,8 @@ status: pending
 --- a/governance/constitution/assessment-is-human-owned.md
 +++ b/governance/constitution/assessment-is-human-owned.md
 @@ runtime_check
--… the skill body instructs the agent to refuse such a request by naming this
--rule, its owner, and the appeal path rather than simply declining. No hook ships
--for this rule — …
-+… the skill body instructs the agent to refuse such a request by naming this
-+rule, its owner, and the appeal path rather than simply declining. It also names
-+what it can still do — the evidence pack, and this proposal route — so the person
-+asking is handed a next step rather than a closed door. No hook ships for this
-+rule — …
+-runtime_check: The review-prep skill assembles the evidence pack and stops. Rating, ranking, scoring, summarizing the evidence into a verdict, and drafting assessment language are forbidden actions on its Owner's Card, and the skill body instructs the agent to refuse such a request by naming this rule, its owner, and the appeal path rather than simply declining. No hook ships for this rule — an instruction an agent is asked to follow is weaker than machinery that stops it, and that gap is stated rather than papered over; the enforcement that does not depend on the agent is the manager's read of every pack and Ruth Okafor's attribution review
++runtime_check: The review-prep skill assembles the evidence pack and stops. Rating, ranking, scoring, summarizing the evidence into a verdict, and drafting assessment language are forbidden actions on its Owner's Card, and the skill body instructs the agent to refuse such a request by naming this rule, its owner, and the appeal path rather than simply declining. It also names what it can still do — the evidence pack, and this proposal route — so the person asking is handed a next step rather than a closed door. No hook ships for this rule — an instruction an agent is asked to follow is weaker than machinery that stops it, and that gap is stated rather than papered over; the enforcement that does not depend on the agent is the manager's read of every pack and Ruth Okafor's attribution review
 ```
 
 ## Why

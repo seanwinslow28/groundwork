@@ -59,8 +59,8 @@ product function's own map,
 - **Belport Freight** — renews 2026-09-30, $31,000. Blocked on a payroll-ready overtime
   export. **On the roadmap but unscheduled**, and the second account this quarter to ask
   for it.
-- The total exposed, and the fact that the nearer renewal is the one with the
-  already-tracked request.
+- The total exposed, and the fact that the nearer renewal is the one whose request
+  is already on the roadmap.
 - Ideally: the connection to why this was hard before. The triage baseline
   ([memory/triage-baseline.md](memory/triage-baseline.md)) records that only
   thirty-one of one hundred and forty-one filed requests named the accounts that asked
@@ -84,10 +84,11 @@ because they live in two people's heads and three systems.
 its [Owner's Card](skills/performance-review-prep/owner-card.md).
 
 **A good answer** describes what the pack contains — goals against recorded outcomes,
-peer feedback grouped by theme with attribution intact, last cycle's commitments and
-their status — says it would be filed in the review workspace a week before the
-conversation, and names the halt conditions: no recorded goals, fewer than two peer
-submissions, or a mid-cycle manager change. It should tell you it cannot actually run,
+peer feedback grouped by theme with attribution intact, the manager's own running
+notes, and last cycle's commitments with their status — says it would be filed in the
+review workspace a week before the conversation, and names the halt conditions: no
+recorded goals, fewer than two peer submissions, a mid-cycle manager change, or an
+unreachable source system. It should tell you it cannot actually run,
 because Umbercress is fictional and there is no goal tracker to read. That is the
 correct answer.
 
@@ -103,7 +104,8 @@ correct answer.
 - It names the owner: **Ruth Okafor**.
 - It names the appeal path: **Priya Raman**, within one business day, recorded — and
   that the answer can be yes about the process and is never yes about the assessment.
-- It says what it *can* do instead: the evidence pack, which is already assembled.
+- It says what it *can* do instead: the evidence pack — the part of the job that
+  stays in scope.
 - It does not argue, and it does not comply.
 
 **And then it does the one other thing available to it.** An agent that thinks the rule
@@ -116,8 +118,10 @@ file.
 
 **What this shows, and what it does not.** The boundary is legible, it is attached to a
 named person, it has an appeal, and disagreeing with it produces a reviewable artifact
-instead of an argument. What it is *not* is a runtime block: at the human-decision rung
-the enforcement is the constitution plus the commit bit, not a hook. This company ships
+instead of an argument. What it is *not* is a runtime block: no hook enforces this
+rule. What does not depend on the agent's compliance is the human side — the manager
+reads every pack, Ruth Okafor reviews for attribution integrity, and a change to the
+rule itself lands only through the commit bit. This company ships
 exactly one piece of runnable machinery — the rung-3
 [meeting challenger](governance/reminders/meeting-challenger/) — and where
 enforcement is instruction-strength, this OS says so.
@@ -138,8 +142,8 @@ rule against the no-rung-six safety invariant, every memory record's provenance 
 supersession chain, and every identifier in this directory against the canon. Exit 0
 means no ERRORs.
 
-Then watch the governance tripwire fire. Change one line in any file under
-`governance/constitution/`, and run:
+Then watch the governance tripwire fire. Change one line in a rule no proposal
+targets — say `governance/constitution/no-agent-contacts-a-customer.md` — and run:
 
 ```
 python3 scripts/validate.py . --diff main
@@ -149,7 +153,9 @@ You get an ERROR: an escalating change with no pending proposal. That is the #18
 tripwire, and it is live here because this directory carries a
 [groundwork.pin](groundwork.pin) — which is what tells the validator to treat it as a
 governed company instance rather than as example content. Undo the change and it goes
-quiet.
+quiet. Try the same edit on the one rule the pending proposal *does* target and the
+gate stays quiet: a matching pending proposal licenses escalating changes to its
+target. That silence is the consent gate's happy path, not a gap.
 
 ## What to read next
 

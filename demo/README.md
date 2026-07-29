@@ -28,8 +28,8 @@ it is also the allowlist every identifier here is checked against.
 - [`proposals/`](proposals/refusal-names-next-step.md) — one pending proposal, waiting
   on a human. It is what an agent produces when a rule tells it no.
 - `groundwork.pin` — what makes this directory a **governed** instance rather than
-  example content: the validator's `--diff` mode holds every change here to the same
-  consent gate a real company repo gets.
+  example content: the validator's `--diff` mode holds changes to its skills and rules
+  to the same consent gate a real company repo gets.
 
 ## What this is not
 
