@@ -5,6 +5,7 @@ import io
 import os
 import pathlib
 import re
+import shutil
 import sys
 import tempfile
 import unittest
@@ -6049,6 +6050,149 @@ class TestQuestionSkeletonCoverage(unittest.TestCase):
                          "the schema requires fields no question asks for: %s — either "
                          "add the question or add it to NOT_ASKED with a reason"
                          % sorted(missing))
+
+
+class TestDemoIsLiftable(unittest.TestCase):
+    """demo/ is the shape the generator writes a company repo in, so a link that
+    climbs out of demo/ is a link that would not resolve in a real one.
+
+    Four such links exist today and are correct where they are — the demo teaches
+    by pointing at the convention it instantiates. This test pins the set. A
+    fifth makes the reference target less liftable, and that should be a decision
+    somebody makes, not a thing that happens."""
+
+    KNOWN_ESCAPES = {
+        ("demo/README.md", "../AGENTS.md"),
+        ("demo/canon.md", "../docs/known-limitations.md"),
+        ("demo/governance/README.md", "../../governance/README.md"),
+        ("demo/skills/README.md", "../../skills/work-package-spec.md"),
+    }
+
+    _LINK = re.compile(r"\]\(([^)\s#]+)")
+
+    @classmethod
+    def escapes(cls):
+        found = set()
+        demo = REPO / "demo"
+        for dirpath, dirnames, filenames in os.walk(demo):
+            dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+            for fn in filenames:
+                if not fn.endswith(".md"):
+                    continue
+                p = os.path.join(dirpath, fn)
+                text = open(p, encoding="utf-8").read()
+                for target in cls._LINK.findall(text):
+                    if target.startswith(("http:", "https:", "mailto:")):
+                        continue
+                    resolved = os.path.normpath(os.path.join(dirpath, target))
+                    if os.path.commonpath([resolved, str(demo)]) != str(demo):
+                        found.add((os.path.relpath(p, REPO).replace(os.sep, "/"),
+                                   target))
+        return found
+
+    def test_escaping_links_are_exactly_the_known_four(self):
+        found = self.escapes()
+        # Anti-hollow: a walker that finds nothing "passes" a subset check.
+        self.assertGreater(len(found), 0, "the link scan found nothing at all")
+        self.assertEqual(found, self.KNOWN_ESCAPES,
+                         "demo/'s engine-pointing links changed. New ones make the "
+                         "reference target less liftable; removed ones should be "
+                         "dropped from KNOWN_ESCAPES.")
+
+
+class TestGeneratedCompanyRepo(unittest.TestCase):
+    """The adopter's required path, proven: a company repo in the shape
+    interview/generate.md specifies passes the gate as its OWN root.
+
+    Nothing else exercises validate(root) with root != this engine, so the four
+    root-only checks — check_root_files, check_hooks, check_agents_chain,
+    check_always_loaded_budget — have never run against company-shaped content.
+    This is where a manifest that specifies something the validator rejects
+    surfaces, in this repo's CI rather than in an adopter's afternoon."""
+
+    AGENTS = """# Acme Logistics — company OS
+
+This repository is the operating system for this company: what each function does,
+which work is agent-run, who owns each agent, and the rules that bind them.
+
+## Where things are
+
+| What | Where |
+|---|---|
+| What each function does | `ontologies/` |
+| The agents, and who owns each | `skills/` |
+| The rules, and their appeals | `governance/constitution/` |
+| What the company remembers | `memory/` |
+| Proposed changes awaiting a human | `proposals/` |
+| How this OS was decided | `interview/` |
+
+## Proposing a change
+
+An agent may propose a change to a skill or a rule by writing a file in `proposals/`.
+Only the maintainer lands one.
+"""
+
+    CURSOR = """---
+alwaysApply: true
+---
+Read AGENTS.md for how this company OS is organized.
+"""
+
+    def _materialize(self, dest):
+        shutil.copytree(str(REPO / "demo"), dest)
+        # The four teaching links point at engine paths that do not exist in a
+        # company repo. Neutralize them to plain text — the same transform the
+        # generation protocol tells a generator not to need in the first place.
+        replaced = 0
+        for rel, target in TestDemoIsLiftable.KNOWN_ESCAPES:
+            p = os.path.join(dest, rel.split("/", 1)[1])
+            text = open(p, encoding="utf-8").read()
+            new = re.sub(r"\[([^\]]+)\]\(" + re.escape(target) + r"\)", r"\1", text)
+            self.assertNotEqual(new, text, "no link to neutralize in %s" % rel)
+            replaced += 1
+            open(p, "w", encoding="utf-8").write(new)
+        self.assertEqual(replaced, 4)
+        with open(os.path.join(dest, "AGENTS.md"), "w", encoding="utf-8") as fh:
+            fh.write(self.AGENTS)
+        with open(os.path.join(dest, "CLAUDE.md"), "w", encoding="utf-8") as fh:
+            fh.write("@AGENTS.md\n")
+        os.makedirs(os.path.join(dest, ".cursor", "rules"))
+        with open(os.path.join(dest, ".cursor", "rules", "company.mdc"),
+                  "w", encoding="utf-8") as fh:
+            fh.write(self.CURSOR)
+
+    def test_company_repo_validates_as_its_own_root(self):
+        with tempfile.TemporaryDirectory() as d:
+            repo = os.path.join(d, "acme-os")
+            self._materialize(repo)
+            findings = validate.validate(repo)
+            errors = [f for f in findings if f.level == "ERROR"]
+            self.assertEqual(
+                [(f.path, f.message) for f in errors], [],
+                "a company repo built to the generate.md manifest does not pass "
+                "the gate as its own root")
+
+    def test_the_root_only_checks_actually_ran(self):
+        """Zero ERRORs from a check that never looked is indistinguishable from
+        zero ERRORs from a clean repo. Break each root file in turn and prove
+        the corresponding root-only check is live on this root."""
+        with tempfile.TemporaryDirectory() as d:
+            repo = os.path.join(d, "acme-os")
+            self._materialize(repo)
+            # CLAUDE.md no longer imports AGENTS.md -> check_root_files ERROR
+            with open(os.path.join(repo, "CLAUDE.md"), "w", encoding="utf-8") as fh:
+                fh.write("# not an import\n")
+            msgs = [f.message for f in validate.validate(repo) if f.level == "ERROR"]
+            self.assertTrue(any("does not import AGENTS.md" in m for m in msgs),
+                            "check_root_files did not run against this root")
+
+    def test_pin_travels_with_the_repo(self):
+        with tempfile.TemporaryDirectory() as d:
+            repo = os.path.join(d, "acme-os")
+            self._materialize(repo)
+            self.assertTrue(os.path.isfile(os.path.join(repo, "groundwork.pin")))
+            self.assertEqual(validate.check_version_pin(repo), [],
+                             "skew 0 must be silent on a company root")
 
 
 if __name__ == "__main__":
