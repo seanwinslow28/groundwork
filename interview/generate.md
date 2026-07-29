@@ -34,6 +34,7 @@ Four preconditions. All four, every time.
 <company>-os/
   AGENTS.md                       the root instruction file — routing, not content
   CLAUDE.md                       one line: @AGENTS.md
+  GEMINI.md                       one line: @./AGENTS.md
   .cursor/rules/company.mdc       alwaysApply pointer to AGENTS.md
   groundwork.pin                  schema_version + generated_by_commit
   ontologies/
@@ -132,8 +133,11 @@ function map, the skill roster with owners and action classes, where memory and 
 live, and how to propose a change. Every session pays for it before anyone types
 anything, so it points and does not explain — the ontology records hold the detail.
 `CLAUDE.md` is exactly `@AGENTS.md` on its own first content line, because Claude Code
-reads `CLAUDE.md` and not `AGENTS.md`. `.cursor/rules/company.mdc` carries
-`alwaysApply: true` and references `AGENTS.md`.
+reads `CLAUDE.md` and not `AGENTS.md`. `GEMINI.md` is `@./AGENTS.md` for the same reason —
+Gemini CLI's default context filename is `GEMINI.md` and it does not read `AGENTS.md`
+either (verified 2026-07-29). `.cursor/rules/company.mdc` carries `alwaysApply: true` and
+references `AGENTS.md`. Codex and Cursor read `AGENTS.md` natively, so they need no
+pointer.
 
 **7. `interview/` stays.** The confirmed layers are the record of why this OS says what
 it says, and the substrate a re-interview would merge against. Keep them.
