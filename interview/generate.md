@@ -44,7 +44,7 @@ Four preconditions. All four, every time.
   governance/
     constitution/<rule>.md        one file per kept rule
     changelog.md                  append-only, header only at generation
-    review-gate.md                the #19 prose enforcement
+    review-gate.md                the #19 review-gate instruction, as prose
   memory/
     _index.md                     live records only
     <record>.md                   the captured baselines, at minimum
@@ -81,10 +81,13 @@ decision, and an ontology holding only automation verdicts reads as an automatio
 
 All eight Gate fields must be *answered*. A truthful "none" is an answer; "N/A" is not,
 and there is no waiver. If a Gate answer is missing from the layers, that activity does
-not get a deep record — it gets a note in the manifest and a question for the next pass.
+not get a deep record — it is named in the generation report as a question for the next
+interview pass.
 
 **3. `memory/` next, because skills depend on it.** Every baseline the interview captured
-becomes a record: `provenance`, `owner`, `valid_at`, `source`. Then `_index.md`, listing
+becomes a record: `provenance`, `owner`, `valid_at`, `source`, and `review_by` — the
+interview asked when the baseline should be re-checked, and a record without that answer
+is drift with a number on it (the validator WARNs). Then `_index.md`, listing
 live records only. A skill cannot provision without a baseline, so these exist before the
 skills that cite them.
 
@@ -106,9 +109,9 @@ way. Copy them; do not retype them.
 
 They are marked `(human-only)` in [questions.md](questions.md). If a layer does not carry
 one, **the skill does not ship** — write it `provisioned: no` and record the missing
-answer. An invented owner is an accountability structure the named person will discover
-when something goes wrong, and an invented forbidden action is a boundary nobody agreed
-to.
+answer in the generation report. An invented owner is an accountability structure the
+named person will discover when something goes wrong, and an invented forbidden action
+is a boundary nobody agreed to.
 
 **5. `governance/constitution/` — one file per kept rule.** Four owned objects (value,
 rule, runtime check, human appeal, each with its owner), a rung, and a sunset date. Two
@@ -117,8 +120,10 @@ with an owner — **there is no rung six** — and a repealed ritual's surviving
 reassigned to a named person before the repeal ships.
 
 Then `changelog.md` with its header and no entries, and `review-gate.md` — the prose form
-of the action-class rule, which is what enforces it on every harness that ignores hooks.
-The runnable Claude Code gate is **not** copied here; see "What stays in the engine".
+of the action-class rule, the instruction every harness that ignores hooks falls back to.
+An instruction is not enforcement: on day one a generated repo has a review gate an agent
+is told to honor, and runtime enforcement only once a maintainer installs the runnable
+gate. That gate is **not** copied here; see "What stays in the engine".
 
 **6. The root files.** `AGENTS.md` is **routing, not content**: what this repo is, the
 function map, the skill roster with owners and action classes, where memory and rules
@@ -149,8 +154,11 @@ which adds the stateful modes: org-memory immutability, frozen interview layers,
 #18 consent gate on every governed change.
 
 **Say what you generated and what you could not.** A list of the activities that got deep
-records, the skills that shipped `provisioned: no` and why, and every question the
-interview left open. A generation report that claims completeness it does not have is the
+records, the skills that shipped `provisioned: no` and why, and every question still
+open — including the ones generation itself surfaced, a missing Gate answer or an
+unanswered human-only field. Answering them is a **new interview turn** under the state
+format ([README.md](README.md)) — a fresh `_working.md` and a later layer — never an edit
+to a frozen one. A generation report that claims completeness it does not have is the
 one output worse than an incomplete repo.
 
 ## What stays in the engine

@@ -6059,7 +6059,11 @@ class TestDemoIsLiftable(unittest.TestCase):
     Four such links exist today and are correct where they are — the demo teaches
     by pointing at the convention it instantiates. This test pins the set. A
     fifth makes the reference target less liftable, and that should be a decision
-    somebody makes, not a thing that happens."""
+    somebody makes, not a thing that happens.
+
+    The pinned unit is the (file, target) pair: a second copy of a known link in
+    the same file is the same escape, not a new one — the invariant is which
+    engine paths the demo references, and from where."""
 
     KNOWN_ESCAPES = {
         ("demo/README.md", "../AGENTS.md"),
@@ -6069,11 +6073,16 @@ class TestDemoIsLiftable(unittest.TestCase):
     }
 
     _LINK = re.compile(r"\]\(([^)\s#]+)")
+    # A reference-style definition ([label]: target) escapes just as well as an
+    # inline link and check_links would not flag it (the target resolves — in
+    # the ENGINE), so the tripwire scans both forms.
+    _REFDEF = re.compile(r"^ {0,3}\[[^\]]+\]:\s*(\S+)", re.M)
 
     @classmethod
     def escapes(cls):
         found = set()
         demo = REPO / "demo"
+        demo_real = os.path.realpath(str(demo))
         for dirpath, dirnames, filenames in os.walk(demo):
             dirnames[:] = [d for d in dirnames if not d.startswith(".")]
             for fn in filenames:
@@ -6081,11 +6090,17 @@ class TestDemoIsLiftable(unittest.TestCase):
                     continue
                 p = os.path.join(dirpath, fn)
                 text = open(p, encoding="utf-8").read()
-                for target in cls._LINK.findall(text):
+                targets = cls._LINK.findall(text) + cls._REFDEF.findall(text)
+                for target in targets:
                     if target.startswith(("http:", "https:", "mailto:")):
                         continue
-                    resolved = os.path.normpath(os.path.join(dirpath, target))
-                    if os.path.commonpath([resolved, str(demo)]) != str(demo):
+                    target = target.split("#", 1)[0]
+                    if not target:
+                        continue
+                    # realpath, not normpath: a symlink inside demo/ must not
+                    # smuggle a lexically-inside path to an engine file.
+                    resolved = os.path.realpath(os.path.join(dirpath, target))
+                    if os.path.commonpath([resolved, demo_real]) != demo_real:
                         found.add((os.path.relpath(p, REPO).replace(os.sep, "/"),
                                    target))
         return found
@@ -6126,10 +6141,26 @@ which work is agent-run, who owns each agent, and the rules that bind them.
 | Proposed changes awaiting a human | `proposals/` |
 | How this OS was decided | `interview/` |
 
+## The functions
+
+Every function's activity map is `ontologies/<function>/_executive-view.md`; an
+acted-on activity carries a deep record beside it. The views hold the detail — this
+file only routes.
+
+## The skill roster
+
+| Skill | Owner | Action class |
+|---|---|---|
+| `feature-request-triage` | Dana Whitfield | reversible-write |
+| `onboarding-orchestration` | Ruth Okafor | external-side-effect |
+| `performance-review-prep` | Ruth Okafor | reversible-write |
+| `renewal-prep` | Marcus Bell | reversible-write |
+
 ## Proposing a change
 
 An agent may propose a change to a skill or a rule by writing a file in `proposals/`.
-Only the maintainer lands one.
+Only the maintainer lands one. The rules that bind every agent, including the review
+gate on high-risk actions, are in `governance/`.
 """
 
     CURSOR = """---
@@ -6138,8 +6169,35 @@ alwaysApply: true
 Read AGENTS.md for how this company OS is organized.
 """
 
+    REVIEW_GATE = """# Review gate — high-risk actions
+
+You may **propose** a high-risk action — spend, delete, external-send — but you may
+not **perform** one. Stop, say what you would do in one line, name the owner on the
+relevant Owner's Card, and wait for that person's explicit approval in the session.
+
+This is an instruction, not runtime enforcement. The runnable gate stays in the
+groundwork engine; installing it here is a maintainer act.
+"""
+
     def _materialize(self, dest):
         shutil.copytree(str(REPO / "demo"), dest)
+        # generate.md's precondition 1: generation runs from a COMPLETE interview.
+        # demo/ models a later moment — a second-pass turn in flight — so the
+        # fixture promotes the copy to the post-generation shape.
+        man = os.path.join(dest, "interview", "00-manifest.md")
+        text = open(man, encoding="utf-8").read()
+        new = text.replace("status: in-progress", "status: complete", 1)
+        self.assertNotEqual(new, text, "manifest has no in-progress status to promote")
+        text = new
+        new = re.sub(r"open_question: \S+", "open_question: none", text, count=1)
+        self.assertNotEqual(new, text, "manifest has no open question to close")
+        text = new
+        # the prose link to the in-flight file would dangle once it is removed
+        new = text.replace("[_working.md](_working.md)", "`_working.md`")
+        self.assertNotEqual(new, text, "manifest has no _working.md link to retire")
+        with open(man, "w", encoding="utf-8") as fh:
+            fh.write(new)
+        os.remove(os.path.join(dest, "interview", "_working.md"))
         # The four teaching links point at engine paths that do not exist in a
         # company repo. Neutralize them to plain text — the same transform the
         # generation protocol tells a generator not to need in the first place.
@@ -6152,6 +6210,9 @@ Read AGENTS.md for how this company OS is organized.
             replaced += 1
             open(p, "w", encoding="utf-8").write(new)
         self.assertEqual(replaced, 4)
+        with open(os.path.join(dest, "governance", "review-gate.md"),
+                  "w", encoding="utf-8") as fh:
+            fh.write(self.REVIEW_GATE)
         with open(os.path.join(dest, "AGENTS.md"), "w", encoding="utf-8") as fh:
             fh.write(self.AGENTS)
         with open(os.path.join(dest, "CLAUDE.md"), "w", encoding="utf-8") as fh:
@@ -6174,17 +6235,43 @@ Read AGENTS.md for how this company OS is organized.
 
     def test_the_root_only_checks_actually_ran(self):
         """Zero ERRORs from a check that never looked is indistinguishable from
-        zero ERRORs from a clean repo. Break each root file in turn and prove
-        the corresponding root-only check is live on this root."""
-        with tempfile.TemporaryDirectory() as d:
-            repo = os.path.join(d, "acme-os")
-            self._materialize(repo)
-            # CLAUDE.md no longer imports AGENTS.md -> check_root_files ERROR
+        zero ERRORs from a clean repo. Break each root-only check's surface in
+        turn and demand its specific ERROR, proving all four are live on this
+        root."""
+
+        def bad_claude(repo):
             with open(os.path.join(repo, "CLAUDE.md"), "w", encoding="utf-8") as fh:
                 fh.write("# not an import\n")
-            msgs = [f.message for f in validate.validate(repo) if f.level == "ERROR"]
-            self.assertTrue(any("does not import AGENTS.md" in m for m in msgs),
-                            "check_root_files did not run against this root")
+
+        def oversized_agents(repo):
+            # > 32 KiB chain, still < the ~200 KB always-loaded ERROR floor
+            with open(os.path.join(repo, "AGENTS.md"), "a", encoding="utf-8") as fh:
+                fh.write("x" * 40_000)
+
+        def bloated_agents(repo):
+            # ~250 KB -> ~62.5K est. tokens, over the 50K always-loaded ERROR
+            with open(os.path.join(repo, "AGENTS.md"), "a", encoding="utf-8") as fh:
+                fh.write("x" * 250_000)
+
+        def empty_hooks(repo):
+            # a hook set with nothing to install is a named-but-unwired guard
+            os.makedirs(os.path.join(repo, "governance", "hooks"))
+
+        probes = [
+            ("check_root_files", bad_claude, "does not import AGENTS.md"),
+            ("check_agents_chain", oversized_agents, "project_doc_max_bytes"),
+            ("check_always_loaded_budget", bloated_agents, "context budget"),
+            ("check_hooks", empty_hooks, "no settings.snippet.json"),
+        ]
+        for name, break_it, expect in probes:
+            with tempfile.TemporaryDirectory() as d:
+                repo = os.path.join(d, "acme-os")
+                self._materialize(repo)
+                break_it(repo)
+                msgs = [f.message for f in validate.validate(repo)
+                        if f.level == "ERROR"]
+                self.assertTrue(any(expect in m for m in msgs),
+                                "%s did not run against this root" % name)
 
     def test_pin_travels_with_the_repo(self):
         with tempfile.TemporaryDirectory() as d:
