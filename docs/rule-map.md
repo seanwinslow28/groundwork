@@ -15,7 +15,11 @@ test that claimed more than this would be the vacuous-test trap wearing another 
 **Reading the Severity column.** Several checks are thin per-instance loops that delegate
 to a private body, so the severity given is the delegate's. ERROR fails the gate; WARN
 prints and does not. Where a rule is strict only once a field backs a running agent, the
-column says so — that is the machinery-follows doctrine, not an inconsistency.
+column says so — that is the machinery-follows doctrine, not an inconsistency. One
+severity is shared rather than per-row: every check that reads a structured file surfaces
+an ERROR through the common reader when that file is unreadable or not valid UTF-8, so a
+row that says WARN describes the check's own findings, not a promise that nothing under it
+can ever ERROR.
 
 | Enforces | Check | Severity |
 |---|---|---|
@@ -50,9 +54,10 @@ This table was drafted from CONTEXT.md and then verified against every function 
 per-instance delegate. Three rows changed in that pass, and recording them is the point
 of the audit:
 
-- **check_changelog** was drafted as "ERROR on a rewrite" — wrong. The stateless check
-  only WARNs on entry-format quality; the append-only rewrite ERROR is emitted by
-  `blast_radius_diff_findings` under `--diff`, so it lives on that row.
+- **check_changelog** was drafted as "ERROR on a rewrite" — wrong. The stateless check's
+  own findings are entry-format WARNs (an unreadable or non-UTF-8 changelog still ERRORs
+  through the shared reader, as any structured file does); the append-only rewrite ERROR
+  is emitted by `blast_radius_diff_findings` under `--diff`, so it lives on that row.
 - **check_interview_state** was drafted as "WARN on an open-question contradiction" —
   wrong direction. A half-committed turn (a working file naming a different question
   than the manifest, or one present without the other) is an ERROR; the WARNs are date

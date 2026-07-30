@@ -2895,6 +2895,18 @@ class TestChangelog(unittest.TestCase):
                    "# Governance changelog\n\n## Entries\n\n- oops not a real entry\n")
             self.assertTrue(any(f.level == "WARN" for f in validate.check_changelog(d)))
 
+    def test_unreadable_changelog_errors_via_shared_reader(self):
+        # Codex 4.3 r1: docs/rule-map.md says check_changelog's OWN findings are
+        # WARNs while an unreadable file still ERRORs through _read_utf8. Pin
+        # the second half so the map's severity note cannot silently rot.
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "governance"))
+            with open(os.path.join(d, "governance", "changelog.md"), "wb") as fh:
+                fh.write(b"# Governance changelog\n\xff\xfe not utf-8\n")
+            findings = validate.check_changelog(d)
+            self.assertTrue(any(f.level == "ERROR" and "UTF-8" in f.message
+                                for f in findings))
+
     def test_bad_date_warns(self):
         with tempfile.TemporaryDirectory() as d:
             _write(d, "governance/changelog.md",

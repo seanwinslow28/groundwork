@@ -14,7 +14,11 @@ groundwork is markdown files in a private git repository, read by coding agents,
 by one person who has the commit bit. There is no server, no database, no hosted component,
 and no account. That removes whole categories of risk — there is no service to breach, no
 tenancy to escape, no session to hijack — and concentrates what is left into two places:
-**your git host** and **the machines your agents run on**.
+**your git host** and **the machines your agents run on**. Choosing organization plugin
+distribution adds a third: the skills you package are uploaded to the harness vendor's
+hosted service (or synced to it from a connected repository), so their contents — skill
+bodies and Owner's Cards — leave your infrastructure. Repo-local provisioning has no such
+surface; the section below and [`delivery/README.md`](../delivery/README.md) draw the line.
 
 Everything groundwork ships that executes is three Python files: the validator, the
 action-class hook, and the demo's rung-3 reminder. All three are Python 3 standard library
@@ -65,13 +69,17 @@ The consequence is that **your repository's access control is your git host's** 
 protection, org membership, SSO, and audit log are the git host's features, not
 groundwork's. Organization plugin distribution adds a second surface with its own
 requirements (Team or Enterprise plan, Cowork and Skills enabled, Owners only), documented
-with its verification date in [`delivery/README.md`](../delivery/README.md).
+with its verification date in [`delivery/README.md`](../delivery/README.md) — and it is a
+**hosted** surface: what you package ships through the vendor's service and lands on every
+installing employee's machine, which is exactly why the subdirectory rule above is the one
+failure this page leads with.
 
 ## Secrets
 
 A company OS should contain no credentials, and the validator enforces a floor rather than
-a guarantee: a curated set of high-signal patterns plus an entropy heuristic, ERROR-level,
-running over all content. It is **not** exhaustive.
+a guarantee: a curated set of high-signal secret patterns at **ERROR** level, plus an
+entropy heuristic that only **WARNs** — a WARN prints and does not fail the gate — running
+over the walked, non-gitignored content. It is **not** exhaustive.
 
 **Use [Gitleaks](https://github.com/gitleaks/gitleaks) as the real backstop**, in CI or as
 a pre-commit hook. That is not a hedge — it is the documented design, because a

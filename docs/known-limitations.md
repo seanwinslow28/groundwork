@@ -319,10 +319,12 @@ Honest limits of the current build. This file grows as the product does (brief Â
 
 ## Licensing
 
-- **There is no `NOTICE` file, and that is deliberate.** Under Apache-2.0 a NOTICE file's
-  contents must be reproduced by every derivative work, which makes it an attribution
-  instrument. The `your-company/` carve-out is a statement about the adopter's own content
-  in a different repository, so propagating it to downstream redistributors of the engine
-  would be both meaningless and confusing. The carve-out lives in the README and in the
-  root instruction file the generator writes into the company repo. Ticket #3's wording
-  said "README/NOTICE"; only the README half ships, and this is the record of why.
+- **There is no `NOTICE` file, and that is deliberate.** Under Apache-2.0 section 4(d),
+  the attribution notices in a NOTICE file must be carried forward by the derivative works
+  they pertain to â€” an attribution instrument. The `your-company/` carve-out is not an
+  attribution notice and concerns the adopter's own content in a different repository, so
+  a NOTICE file is the wrong home for it either way: at best the statement is dead weight
+  there, at worst it confuses downstream redistributors of the engine. The carve-out lives
+  in the README and in the root instruction file the generator writes into the company
+  repo. Ticket #3's wording said "README/NOTICE"; only the README half ships, and this is
+  the record of why.

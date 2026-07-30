@@ -176,10 +176,11 @@ here: [`interview/generate.md`](interview/generate.md) instructs the generator t
 the same carve-out into the company repository's own root instruction file, so the
 repository holding your content is the one that says whose it is.
 
-There is deliberately **no `NOTICE` file.** Under Apache-2.0 a NOTICE file's contents must
-be reproduced by every derivative work, which makes it an attribution instrument — the
-wrong home for a statement about the adopter's own content in a different repository. The
-carve-out lives where the person it protects will read it.
+There is deliberately **no `NOTICE` file.** Under Apache-2.0 section 4(d), the attribution
+notices in a NOTICE file must be carried forward by the derivative works they pertain to —
+which makes NOTICE an attribution instrument, and the wrong home for a statement about the
+adopter's own content in a different repository. The carve-out lives where the person it
+protects will read it.
 
 ## Prior art & inspiration
 
