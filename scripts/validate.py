@@ -806,11 +806,19 @@ def check_always_loaded_budget(root):
 
 
 def check_root_files(root):
-    """§6 root-file set. AGENTS.md is canonical. Claude Code reads CLAUDE.md and
-    NOT AGENTS.md (verified live 2026-07-27), so CLAUDE.md must point at it —
-    either the documented '@AGENTS.md' import or a symlink resolving to it.
-    Two root files that each look canonical are two sources of truth, and that
-    drift is exactly what this catches. Silent when there is no AGENTS.md."""
+    """§6 root-file set. AGENTS.md is canonical and the other three root files
+    are pointers at it. Claude Code reads CLAUDE.md and NOT AGENTS.md; Gemini
+    CLI reads GEMINI.md and NOT AGENTS.md; Codex and Cursor read AGENTS.md
+    natively (all four verified live 2026-07-29). So CLAUDE.md and GEMINI.md
+    must each point at it, and an always-apply .cursor/rules/*.mdc must
+    reference it.
+
+    Severity split, deliberately: CLAUDE.md is an ERROR because two root files
+    that each look canonical are two sources of truth, and that drift is what
+    this check exists to catch. GEMINI.md and the Cursor pointer are WARNs —
+    a missing pointer costs one harness's users the instructions, which is a
+    completeness problem rather than a contradiction. Silent when there is no
+    AGENTS.md: this checks a claim you make, not one you failed to make."""
     findings = []
     agents = os.path.join(root, "AGENTS.md")
     if not os.path.isfile(agents):
@@ -876,6 +884,51 @@ def check_root_files(root):
                         "into separate sources of truth; its content should be "
                         "'@AGENTS.md' (§6; the first content line must be the "
                         "standalone '@AGENTS.md' import)"))
+
+    # Gemini CLI's default context filename is GEMINI.md, and it does not read
+    # AGENTS.md — AGENTS.md loads only when context.fileName is configured in
+    # settings.json (verified live 2026-07-29 against the first-party docs).
+    # The context file supports '@path' imports, "both relative and absolute
+    # paths", demonstrated as '@./file.md'.
+    #
+    # This sits BEFORE the .cursor/rules block on purpose: that block returns
+    # early when the directory is absent, so a GEMINI check placed after it
+    # would go silent on exactly the repos with the least harness wiring.
+    gemini = os.path.join(root, "GEMINI.md")
+    if not os.path.lexists(gemini):
+        findings.append(Finding(
+            "WARN", "GEMINI.md", None,
+            "no GEMINI.md — Gemini CLI reads GEMINI.md, not AGENTS.md, so Gemini "
+            "users get no route to the canonical instructions; add a GEMINI.md "
+            "whose content is '@./AGENTS.md' (§6)"))
+    elif os.path.islink(gemini):
+        if os.path.realpath(gemini) != os.path.realpath(agents):
+            findings.append(Finding(
+                "WARN", "GEMINI.md", None,
+                "GEMINI.md is a symlink that does not resolve to AGENTS.md — the "
+                "Gemini pointer has drifted off the canonical instructions (§6)"))
+    else:
+        text, rd = _read_utf8(gemini, "GEMINI.md")
+        findings += rd
+        # A diagnostic that cannot see says nothing rather than accusing
+        # (Slice 4.1): the read failure above is its own finding, and no drift
+        # claim is made about content nobody read.
+        if text is not None:
+            targets = _IMPORT.findall(_strip_code(text))
+            # The import must RESOLVE to the root AGENTS.md, not merely be
+            # named like it (Codex 4.2 r1): '@../AGENTS.md' and
+            # '@nested/AGENTS.md' share the basename and import a different
+            # file. Relative paths only — '~' and absolute paths resolve on
+            # the machine that wrote them, matching the CLAUDE.md rule.
+            if not any(not (os.path.isabs(t) or t.startswith("~"))
+                       and os.path.realpath(os.path.join(root, t))
+                       == os.path.realpath(agents)
+                       for t in targets):
+                findings.append(Finding(
+                    "WARN", "GEMINI.md", None,
+                    "GEMINI.md does not import AGENTS.md — Gemini CLI loads this file "
+                    "and would run on instructions that drifted from the canonical "
+                    "ones; its content should be '@./AGENTS.md' (§6)"))
 
     cdir = os.path.join(root, ".cursor", "rules")
     if not os.path.isdir(cdir):

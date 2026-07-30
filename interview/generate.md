@@ -34,6 +34,7 @@ Four preconditions. All four, every time.
 <company>-os/
   AGENTS.md                       the root instruction file — routing, not content
   CLAUDE.md                       one line: @AGENTS.md
+  GEMINI.md                       one line: @./AGENTS.md
   .cursor/rules/company.mdc       alwaysApply pointer to AGENTS.md
   groundwork.pin                  schema_version + generated_by_commit
   ontologies/
@@ -132,8 +133,17 @@ function map, the skill roster with owners and action classes, where memory and 
 live, and how to propose a change. Every session pays for it before anyone types
 anything, so it points and does not explain — the ontology records hold the detail.
 `CLAUDE.md` is exactly `@AGENTS.md` on its own first content line, because Claude Code
-reads `CLAUDE.md` and not `AGENTS.md`. `.cursor/rules/company.mdc` carries
-`alwaysApply: true` and references `AGENTS.md`.
+reads `CLAUDE.md` and not `AGENTS.md`. `GEMINI.md` is `@./AGENTS.md` for the same reason —
+Gemini CLI's default context filename is `GEMINI.md` and it does not read `AGENTS.md`
+either (verified 2026-07-29). `.cursor/rules/company.mdc` carries `alwaysApply: true` and
+references `AGENTS.md`. Codex and Cursor read `AGENTS.md` natively, so they need no
+pointer.
+
+**One more line in `AGENTS.md`, and it is a legal one.** State that the contents of this
+repository are the company's own work, generated with groundwork and not covered by
+groundwork's Apache-2.0 license. groundwork's own README says this; the promise is only
+worth something if the repository holding the content says it too, which is why it is
+written here rather than assumed.
 
 **7. `interview/` stays.** The confirmed layers are the record of why this OS says what
 it says, and the substrate a re-interview would merge against. Keep them.
@@ -173,4 +183,4 @@ and a company running last quarter's gate while believing it runs the engine's i
 off than one that knows it has a review gate.
 
 Installing the runnable gate is a deliberate maintainer act with a re-copy obligation
-attached — the provisioning guide covers it (`delivery/`, not built yet).
+attached — the provisioning guide covers it (`delivery/`).
