@@ -36,6 +36,10 @@ Small, and none of it is promised by a date.
   [known-limitations.md](known-limitations.md) until it is made.
 - **Severity mismatches from the rule map's hand audit** — the Slice 4.3 audit found
   none, so nothing is queued; this line is the standing home for any a later audit finds.
+- **Keep the comparison current.** [How groundwork compares](../README.md#how-groundwork-compares)
+  is a claim about a landscape that moves, and a comparison written once and left alone
+  becomes wrong without anyone editing it. It gets re-verified against the named projects
+  rather than left to rot, on the same principle as this document's review date.
 
 ## V2 — documented, not built
 
