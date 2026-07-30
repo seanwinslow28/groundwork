@@ -29,7 +29,10 @@ What is *processed* goes further, and a privacy reviewer should count both surfa
   repository**, not on the plugin subdirectory, so if the marketplace repository is your
   company repo, the integration can reach the interview transcript and organizational
   memory too. If those must stay off the vendor surface, use a dedicated marketplace
-  repository holding only the plugin folders.
+  repository holding only the plugin folders — and treat it as a **derived artifact**:
+  update it only by copying from an approved company-repo commit, never by editing it in
+  place, because a plugin-only repository carries no `groundwork.pin` and the consent
+  gate does not run there.
   [`delivery/README.md`](../delivery/README.md) documents both paths with dates.
 
 Everything groundwork ships that executes is three Python files: the validator, the
@@ -99,7 +102,9 @@ failure this page leads with.
 A company OS should contain no credentials, and the validator enforces a floor rather than
 a guarantee: a curated set of high-signal secret patterns at **ERROR** level, plus an
 entropy heuristic that only **WARNs** — a WARN prints and does not fail the gate — running
-over the walked, non-gitignored content. It is **not** exhaustive.
+over the walked, non-gitignored, **UTF-8-readable** content. A file the walker cannot read
+or decode is skipped silently, so a credential in a binary or non-UTF-8 file is outside
+this floor entirely. It is **not** exhaustive.
 
 **Use [Gitleaks](https://github.com/gitleaks/gitleaks) as the real backstop**, in CI or as
 a pre-commit hook. That is not a hedge — it is the documented design, because a
@@ -142,8 +147,12 @@ gating requirement for you, that is the honest answer today.
 Two things you can do now, neither of which groundwork implements for you: keep
 performance and assessment content out of organizational memory (the demo's
 performance-review rule models exactly this boundary), and decide deliberately whether
-your interview transcript is retained — nothing in the validator requires an `interview/`
-directory to exist, and the demo retains its own as a disposition rather than a rule.
+your interview transcript is retained — **before the repository's first commit.** The
+generator's default is to keep `interview/`, and once confirmed layers are committed the
+`--diff` gate treats deleting one as an ERROR (frozen layers are the consent record), so
+retention is an upfront choice, not one you can quietly reverse later. Nothing in the
+validator requires an `interview/` directory to exist, and the demo retains its own as a
+disposition rather than a rule.
 
 ## Reporting something
 
