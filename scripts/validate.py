@@ -915,8 +915,14 @@ def check_root_files(root):
         # claim is made about content nobody read.
         if text is not None:
             targets = _IMPORT.findall(_strip_code(text))
-            if not any(os.path.basename(t) == "AGENTS.md"
-                       and not (os.path.isabs(t) or t.startswith("~"))
+            # The import must RESOLVE to the root AGENTS.md, not merely be
+            # named like it (Codex 4.2 r1): '@../AGENTS.md' and
+            # '@nested/AGENTS.md' share the basename and import a different
+            # file. Relative paths only — '~' and absolute paths resolve on
+            # the machine that wrote them, matching the CLAUDE.md rule.
+            if not any(not (os.path.isabs(t) or t.startswith("~"))
+                       and os.path.realpath(os.path.join(root, t))
+                       == os.path.realpath(agents)
                        for t in targets):
                 findings.append(Finding(
                     "WARN", "GEMINI.md", None,

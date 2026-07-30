@@ -3806,6 +3806,42 @@ class TestRootFiles(unittest.TestCase):
             self.assertTrue(any(f.level == "WARN" and f.path == "GEMINI.md"
                                 for f in validate.check_root_files(d)))
 
+    def test_gemini_parent_escape_does_not_satisfy(self):
+        # Codex 4.2 r1: '@../AGENTS.md' has the right basename and imports a
+        # file OUTSIDE the repo. The import must resolve to the root file,
+        # not merely be named like it.
+        with tempfile.TemporaryDirectory() as d:
+            repo = os.path.join(d, "repo")
+            _write(repo, "AGENTS.md", "# a\n")
+            _write(repo, "CLAUDE.md", "@AGENTS.md\n")
+            _write(repo, "GEMINI.md", "@../AGENTS.md\n")
+            _write(repo, ".cursor/rules/g.mdc", CURSOR_ALWAYS)
+            _write(d, "AGENTS.md", "# the outer file the import actually reaches\n")
+            self.assertTrue(any(f.level == "WARN" and f.path == "GEMINI.md"
+                                and "does not import" in f.message
+                                for f in validate.check_root_files(repo)))
+
+    def test_gemini_nested_same_basename_does_not_satisfy(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "@AGENTS.md\n")
+            _write(d, "GEMINI.md", "@nested/AGENTS.md\n")
+            _write(d, "nested/AGENTS.md", "# not the canonical file\n")
+            _write(d, ".cursor/rules/g.mdc", CURSOR_ALWAYS)
+            self.assertTrue(any(f.level == "WARN" and f.path == "GEMINI.md"
+                                and "does not import" in f.message
+                                for f in validate.check_root_files(d)))
+
+    def test_gemini_import_of_a_missing_path_does_not_satisfy(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "@AGENTS.md\n")
+            _write(d, "GEMINI.md", "@does-not-exist/AGENTS.md\n")
+            _write(d, ".cursor/rules/g.mdc", CURSOR_ALWAYS)
+            self.assertTrue(any(f.level == "WARN" and f.path == "GEMINI.md"
+                                and "does not import" in f.message
+                                for f in validate.check_root_files(d)))
+
     def test_symlinked_gemini_md_is_accepted(self):
         with tempfile.TemporaryDirectory() as d:
             _write(d, "AGENTS.md", "# a\n")
@@ -3835,8 +3871,39 @@ class TestRootFiles(unittest.TestCase):
             with open(os.path.join(d, "GEMINI.md"), "wb") as fh:
                 fh.write(b"\xff\xfe not utf-8 \xff")
             findings = validate.check_root_files(d)
-            self.assertTrue(any(f.path == "GEMINI.md" and "UTF-8" in f.message
+            # ERROR, asserted deliberately (Codex 4.2 r1): the pointer rule is
+            # WARN-class, but a non-UTF-8 root markdown file is corrupt beyond
+            # the pointer question and the corpus scans ERROR on it anyway.
+            self.assertTrue(any(f.path == "GEMINI.md" and f.level == "ERROR"
+                                and "UTF-8" in f.message
                                 for f in findings), "the read failure is silent")
+            self.assertFalse(any("does not import" in f.message for f in findings),
+                             "the check accused a file it could not read")
+
+    def test_oserror_reading_gemini_md_does_not_accuse(self):
+        # The other unreadable direction (Codex 4.2 r1): the invalid-UTF-8
+        # case exercises UnicodeError, so an actual I/O failure was untested.
+        # Same rule — the read failure is its own finding, and no drift claim
+        # rides on content nobody read.
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "AGENTS.md", "# a\n")
+            _write(d, "CLAUDE.md", "@AGENTS.md\n")
+            _write(d, "GEMINI.md", GEMINI_POINTER)
+            _write(d, ".cursor/rules/g.mdc", CURSOR_ALWAYS)
+            gem = os.path.join(d, "GEMINI.md")
+            real_open = open
+            def broken_open(path, *args, **kwargs):
+                if os.path.abspath(str(path)) == os.path.abspath(gem):
+                    raise OSError("simulated read failure")
+                return real_open(path, *args, **kwargs)
+            validate.open = broken_open
+            try:
+                findings = validate.check_root_files(d)
+            finally:
+                del validate.open
+            self.assertTrue(any(f.path == "GEMINI.md" and f.level == "ERROR"
+                                and "could not read" in f.message
+                                for f in findings), "the I/O failure is silent")
             self.assertFalse(any("does not import" in f.message for f in findings),
                              "the check accused a file it could not read")
 
@@ -6276,6 +6343,11 @@ file only routes.
 An agent may propose a change to a skill or a rule by writing a file in `proposals/`.
 Only the maintainer lands one. The rules that bind every agent, including the review
 gate on high-risk actions, are in `governance/`.
+
+## License
+
+The contents of this repository are Acme Logistics' own work, generated with
+groundwork and not covered by groundwork's Apache-2.0 license.
 """
 
     CURSOR = """---
@@ -6407,6 +6479,36 @@ earned by acting, not by planning to act.
                 [(f.path, f.message) for f in errors], [],
                 "a company repo built to the generate.md manifest does not pass "
                 "the gate as its own root")
+
+    def test_fixture_root_files_match_the_manifest(self):
+        """The manifest in interview/generate.md is the contract this class
+        claims to build (Codex 4.2 r1: the fixture hardcoded its root files,
+        so the 'manifest' tests stayed green if the manifest changed). Parse
+        the manifest's fenced block and hold both sides to it: every root
+        file it names is one the fixture writes."""
+        text = (REPO / "interview" / "generate.md").read_text(encoding="utf-8")
+        block = text.split("## What you write", 1)[1].split("```", 2)[1]
+        roots = ("AGENTS.md", "CLAUDE.md", "GEMINI.md",
+                 ".cursor/rules/company.mdc", "groundwork.pin")
+        for name in roots:
+            self.assertIn(name, block, "the manifest lost %s" % name)
+        with tempfile.TemporaryDirectory() as d:
+            repo = os.path.join(d, "acme-os")
+            self._materialize(repo)
+            for name in roots:
+                self.assertTrue(
+                    os.path.exists(os.path.join(repo, *name.split("/"))),
+                    "the fixture does not write %s" % name)
+
+    def test_fixture_agents_carries_the_license_carveout(self):
+        # generate.md's root-files step now requires the company AGENTS.md to
+        # state that generated content is the company's own, outside
+        # groundwork's license. The fixture models the manifest, so it
+        # carries the line — and this couples the two so neither can drop it
+        # alone (Codex 4.2 r1).
+        gen = (REPO / "interview" / "generate.md").read_text(encoding="utf-8")
+        self.assertIn("not covered by", gen)
+        self.assertIn("not covered by groundwork's Apache-2.0 license", self.AGENTS)
 
     def test_manifest_repo_needs_no_gemini_warning(self):
         """Paired with the next test, which is what makes this one mean

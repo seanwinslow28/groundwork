@@ -80,7 +80,7 @@ Honest limits of the current build. This file grows as the product does (brief Â
   always-apply `.cursor/rules/`, and skill descriptions capped at Claude Code's 1,536-char
   listing truncation. The root `GEMINI.md` pointer is **not** separately counted: it is a
   one-line import of `AGENTS.md`, which is already in the total, so Gemini CLI's real
-  always-loaded surface is the measured figure plus twelve bytes. Harnesses also differ in
+  always-loaded surface is the measured figure plus thirteen bytes. Harnesses also differ in
   what else they preload (MCP tool names, system prompts); those are outside the repo and
   outside this check.
 - **Three of the four root files are pointers, and only one of them is an ERROR.** A

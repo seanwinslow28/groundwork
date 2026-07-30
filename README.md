@@ -13,21 +13,23 @@ governance instead of rewriting itself.
 
 ## Not technical? Point your agent at this repo
 
-One person who can use git. That is the whole technical requirement, and it is a real
-requirement — everyone else receives skills and proposes changes in conversation.
+One person who can use git and run a coding agent. That is the whole technical
+requirement, and it is a real requirement — everyone else receives skills and proposes
+changes in conversation.
 
 1. **Clone this repository and open it in your coding agent** — Claude Code, Codex,
    Cursor, or Gemini CLI. Each loads [`AGENTS.md`](AGENTS.md) by its own convention:
    Claude Code through `CLAUDE.md`, Gemini CLI through `GEMINI.md`, Codex and Cursor
-   natively. All four pointers are committed here, and `scripts/validate.py` checks that
-   they still point at the same file.
+   natively. All three pointers are committed here, and `scripts/validate.py` checks that
+   each still routes to the same canonical file.
 2. **Say this:** *"Read AGENTS.md, then walk me through `demo/walkthrough.md`."* Fifteen
    minutes, three questions, no credentials.
 3. **Then say this:** *"Interview me by following `interview/`, and generate our OS into a
    new private repository."* The agent asks one question at a time, and where an answer
    can only come from a person it stops instead of guessing.
 
-Nothing to install, no server, no signup. The one command anyone runs is
+No groundwork runtime to install, no server, no signup — the moving parts are git,
+Python 3, and your coding agent. The one command this page asks anyone to run is
 `python3 scripts/validate.py`.
 
 ## See it work first — fifteen minutes, no credentials
@@ -103,15 +105,15 @@ append-and-supersede rather than editable, confirmed interview layers are frozen
 change to a rule or a high-risk skill must carry a matching pending proposal or the gate
 ERRORs.
 
-**What it does not prove.** The secrets floor is high-signal, not exhaustive. Nothing
-checks prose — the validator can confirm every required field is answered and cannot tell
-you the answer is true. [`docs/known-limitations.md`](docs/known-limitations.md) is the
+**What it does not prove.** The secrets floor is high-signal, not exhaustive. No check
+reads prose for truth — the validator can confirm every required field is answered, and
+cannot tell you the answer is true. [`docs/known-limitations.md`](docs/known-limitations.md) is the
 full list, written to be read before you rely on a check rather than after.
 
 ## Getting it in front of people
 
 [`delivery/`](delivery/) is the provisioning guide: the repo-local symlink layer that
-gives your generated skills a path each harness reads, the organization plugin paths for
+gives your generated skills a harness-visible path, the organization plugin paths for
 people who never touch git, and how to install the runnable action-class gate — with the
 re-copy obligation that comes with it. Nothing in groundwork zips, uploads, or syncs
 anything; these are steps a maintainer runs, and every external fact in the guide carries
