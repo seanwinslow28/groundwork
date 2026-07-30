@@ -2,7 +2,7 @@
 
 > The groundwork your company runs on.
 
-A harness-agnostic **Company OS**. It is files, not an engine: markdown
+An open-source, harness-agnostic **Company OS**. It is files, not an engine: markdown
 conventions plus one zero-dependency validator, so any coding agent that reads a
 repository can read this one. You point your agent here, it interviews your company about
 the work each function actually does — what deserves **more** human time, what should be
@@ -121,20 +121,28 @@ the date it was verified, because all of these surfaces move.
 
 ## Status
 
-V1 is nearly complete, and this is the ledger.
+**V1 is complete.** Everything this page describes is in the repository, and
+`scripts/validate.py` gates all of it: the schema as files; eight function ontologies plus
+worked deep records on both governance tracks, including one recording a deliberate
+decision *not* to automate; work packages with Owner's Cards; a typed constitution on a
+five-rung enforcement ladder, with one runnable exemplar and prose degradation everywhere
+else; organizational memory with provenance and supersession; the consent gate and its
+blast-radius tripwire; the interview and generation protocols; the `demo/` company and its
+walkthrough; the provisioning guide; and the licence, security, and roadmap documents.
 
-**Working today:** the schema as files with `scripts/validate.py` gating every layer of
-it; eight function ontologies plus worked deep records on both governance tracks,
-including one recording a deliberate decision *not* to automate; work packages with
-Owner's Cards; a typed constitution on a five-rung enforcement ladder, with one runnable
-exemplar and prose degradation everywhere else; organizational memory with provenance and
-supersession; the consent gate and its blast-radius tripwire; the interview and generation
-protocols; the complete `demo/` company and its walkthrough; and the provisioning guide.
+**And here is the thing nobody has done.** No interview has been run on a real company, so
+no company OS has been generated from real answers. What is proven is the destination — a
+test builds a company repo in the shape the manifest specifies and validates it as its own
+root — plus one scoped dry run of the generation protocol against the demo's own layers.
+The path from a real conversation to a real repository has been designed, documented, and
+gated, and not yet walked. If you walk it, the thing we most want to hear about is where
+the protocol left you guessing.
 
-**Not here yet:** the `LICENSE` file, a security-and-privacy section, and a versioned
-roadmap. [`CONTEXT.md`](CONTEXT.md) is the glossary of all nineteen resolved design
-decisions; [`AGENTS.md`](AGENTS.md) carries the current built / not-built list and is
-always the more current of the two.
+[`docs/roadmap.md`](docs/roadmap.md) is what comes next and what never will.
+[`docs/known-limitations.md`](docs/known-limitations.md) is what this does not do.
+[`docs/security-and-privacy.md`](docs/security-and-privacy.md) is what it exposes.
+[`docs/rule-map.md`](docs/rule-map.md) is every check and the severity it fires at.
+[`CONTEXT.md`](CONTEXT.md) is the glossary of all nineteen resolved design decisions.
 
 ## How groundwork compares
 
@@ -155,15 +163,24 @@ The wider landscape (dswh/company-os, Workflowsio, gbrain, beevibe, the commodit
 
 ## License
 
-Apache-2.0 — chosen for its patent grant (enterprise-counsel comfort). The `LICENSE` file
-lands with the first release artifacts; until it does, this page does not call groundwork
-open source, because a license granted is a file, not an intention.
+[Apache-2.0](LICENSE) — chosen for its patent grant (enterprise-counsel comfort). The
+`LICENSE` file is the canonical Apache text, unmodified, so you can diff it against
+[apache.org](https://www.apache.org/licenses/LICENSE-2.0.txt) and see exactly what you are
+agreeing to.
+
+Copyright 2026 Sean Winslow.
 
 **Your content is yours.** The operating system the interview generates is the adopter's
 own work and is **not** covered by groundwork's license. That is not only a statement
 here: [`interview/generate.md`](interview/generate.md) instructs the generator to write
 the same carve-out into the company repository's own root instruction file, so the
 repository holding your content is the one that says whose it is.
+
+There is deliberately **no `NOTICE` file.** Under Apache-2.0 section 4(d), the attribution
+notices in a NOTICE file must be carried forward by the derivative works they pertain to —
+which makes NOTICE an attribution instrument, and the wrong home for a statement about the
+adopter's own content in a different repository. The carve-out lives where the person it
+protects will read it.
 
 ## Prior art & inspiration
 

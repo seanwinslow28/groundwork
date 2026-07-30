@@ -7,7 +7,19 @@ Honest limits of the current build. This file grows as the product does (brief �
 - **The gate skips its own harness.** `scripts/validate.py .` does not scan `tests/` or `docs/superpowers/` — the validator's own fixtures and build specs necessarily quote example secret and broken-link patterns. A real secret committed *into those two trees* is therefore not caught by the gate; [Gitleaks](https://github.com/gitleaks/gitleaks) is the documented global backstop (#16). Everywhere else — all product content (`ontologies/`, `skills/`, `governance/`, `demo/`, `your-company/`, root files) — the secret scan runs at full strictness.
 - **`.gitignore` matching is minimal.** The walker honors simple `.gitignore` entries (exact names and `*.ext` globs) so gitignored files like `.env` are not scanned. It does not implement full git ignore semantics (negation, nested ignores, path anchoring).
 - **The secret floor is high-signal, not exhaustive** (#16): a curated regex set plus an entropy heuristic. Gitleaks is the real guarantee.
+- **Link checking covers inline links only.** `check_links` matches the inline form — a
+  bracketed label immediately followed by a parenthesized target. A reference-style link
+  (`[label][id]` with an `[id]: target` definition) is never resolved, so a broken
+  relative target written that way passes the gate. This repository writes inline links
+  throughout, and the exec-view grammar independently bans link-reference definitions in
+  ontology files.
 - **`--diff` is a gate, not a security boundary against a concurrent writer.** The memory-immutability scan rejects symlinked records and folders, but its check-then-read is not atomic: a process racing the validator could swap a path between the symlink check and the file read (TOCTOU). PR-time CI runs on a quiescent checkout; that is the supported setting.
+- **The rule map binds names, not correctness.** [rule-map.md](rule-map.md) joins
+  CONTEXT.md's rules to the checks that implement them, and `TestRuleMap` proves the join
+  stays complete in both directions — a check cannot be added, renamed, or removed without
+  the map failing. It does **not** prove that a given severity is the *right* one. Those
+  were verified by hand once, during Slice 4.3, and a future disagreement about a severity
+  is a judgment call against CONTEXT.md rather than something the suite will catch.
 
 ## Governance — the action-class hook set
 
@@ -261,6 +273,22 @@ Honest limits of the current build. This file grows as the product does (brief �
   validator live in the engine clone, so checking a company OS requires both checkouts.
   The maintainer already holds both; an adopter who has only the company repo cannot
   check it.
+- **The generation protocol has been executed once, by the people who wrote it.** A scoped
+  dry run generated one function from `demo/interview/`'s committed layers into a scratch
+  repository, following `interview/generate.md` only, to find out where the protocol left
+  decisions to inference. That tests the document's clarity. It does not test the thing an
+  adopter cares about: **no interview has ever been run on a real company, and no company
+  OS has ever been generated from real answers.** The output *shape* is proven by a test
+  that materializes a company repo and validates it as its own root; the *transcription
+  from real answers* is proven by nothing. Walking that path for real is the first honest
+  post-V1 act, not a V1 claim.
+- **One composition in `generate.md` is unresolved, found by that dry run.** A skill
+  missing a human-only answer ships `provisioned: no` — but when its deep record *also*
+  did not ship (a missing Gate answer), the skill's `ontology:` reference has nothing to
+  resolve to and the gate ERRORs on the dangling path. The two instructions do not compose
+  in that case, and the protocol does not say which wins; the dry run shipped no skill.
+  Resolving it is a maintainer decision on the [roadmap](roadmap.md), not a rule either
+  document currently states.
 
 ## Provisioning (`delivery/`)
 
@@ -294,3 +322,15 @@ Honest limits of the current build. This file grows as the product does (brief �
   dot-directory would be invisible to the validator. So some extra hop is unavoidable and
   the guide names the untested one, with the `/doctor` check and the tested fallback next
   to it. Nothing in this repository can test another harness's discovery.
+
+## Licensing
+
+- **There is no `NOTICE` file, and that is deliberate.** Under Apache-2.0 section 4(d),
+  the attribution notices in a NOTICE file must be carried forward by the derivative works
+  they pertain to — an attribution instrument. The `your-company/` carve-out is not an
+  attribution notice and concerns the adopter's own content in a different repository, so
+  a NOTICE file is the wrong home for it either way: at best the statement is dead weight
+  there, at worst it confuses downstream redistributors of the engine. The carve-out lives
+  in the README and in the root instruction file the generator writes into the company
+  repo. Ticket #3's wording said "README/NOTICE"; only the README half ships, and this is
+  the record of why.

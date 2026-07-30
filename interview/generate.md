@@ -10,7 +10,8 @@ question skeleton already names the destination field for every answer, so this 
 transcription and formatting, not interpretation. A missing answer is never filled in:
 an incomplete interview stops generation entirely (precondition 1), and a gap inside a
 complete one means the artifact that needed it does not ship and the generation report
-says so (the ordering rules below name each case).
+says so (the ordering rules below name the commonest cases; the rule holds for every
+required field, named or not).
 
 ## Before you write anything
 
@@ -55,6 +56,14 @@ Four preconditions. All four, every time.
   interview/                      the confirmed layers, retained
 ```
 
+**The file grammars live in the engine, not here.** The validator accepts one canonical
+shape for each artifact, and this document names fields rather than showing files: the
+executive-view table is specified in [../ontologies/README.md](../ontologies/README.md),
+the card spine in [../skills/work-package-spec.md](../skills/work-package-spec.md), the
+memory-record schema in [../memory/README.md](../memory/README.md), the rule objects in
+[../governance/README.md](../governance/README.md), and the pin file in
+[../MIGRATIONS.md](../MIGRATIONS.md). Read the shape before writing to it.
+
 **A company repo links only inside itself.** Never write a link that climbs out of the
 repo root — an engine path resolves on the machine that generated it and nowhere else.
 Where you want to explain a convention, state it, or point at the engine by name in
@@ -68,7 +77,9 @@ after twenty.
 
 **1. `groundwork.pin` last — but decide it first.** Record which engine commit you
 generated against (`git -C <engine clone> rev-parse --short HEAD`) and
-`schema_version: 1`. Write the file at the end: once it exists the repo is a governed
+`schema_version: 1`. The pin is a frontmatter-fenced file — the two keys between two
+`---` lines, exactly as [../MIGRATIONS.md](../MIGRATIONS.md) shows; bare `key: value`
+lines with no fences fail the gate. Write the file at the end: once it exists the repo is a governed
 root, and every skill and rule you add after that is an escalating change wanting a
 proposal (#18). Generate under the pin and you will write a proposal per file.
 
@@ -90,7 +101,9 @@ interview pass.
 **3. `memory/` next, because skills depend on it.** Every baseline the interview captured
 becomes a record: `provenance`, `owner`, `valid_at`, `source`, and `review_by` — the
 interview asked when the baseline should be re-checked, and a record without that answer
-is drift with a number on it (the validator WARNs). Then `_index.md`, listing
+is drift with a number on it (the validator WARNs). A baseline whose **owner** was never
+answered does not ship as a record — `owner` is always required and a missing answer is
+never filled in; name the baseline in the generation report instead. Then `_index.md`, listing
 live records only. A skill cannot provision without a baseline, so these exist before the
 skills that cite them.
 

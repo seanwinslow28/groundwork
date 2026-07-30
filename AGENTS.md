@@ -1,6 +1,6 @@
 # AGENTS.md — groundwork
 
-**groundwork is a harness-agnostic Company OS.** It is files, not an
+**groundwork is an open-source, harness-agnostic Company OS.** It is files, not an
 engine: markdown conventions plus one zero-dependency validator. Any coding agent that
 reads a repository can read this one.
 
@@ -12,11 +12,12 @@ checks that the pointers still resolve here.
 
 ## Status — what is real today
 
-The design is fully charted (19 resolved decisions; see `CONTEXT.md`). Phases 1 through 3
-are complete and Phase 4 is closing it out: the schema exists as files, three functions
-are worked end to end across both governance tracks, one function records a deliberate
-non-automation verdict, the interview and its generator exist as documents, `demo/` is a
-complete governed company, and the validator gates every layer of it.
+The design is fully charted (19 resolved decisions; see `CONTEXT.md`). **V1 is complete:**
+the schema exists as files, three functions are worked end to end across both governance
+tracks, one function records a deliberate non-automation verdict, the interview and its
+generator exist as documents, `demo/` is a complete governed company, `delivery/` covers
+provisioning, and the validator gates every layer of it. The one thing nobody has done is
+run the interview on a real company — see `docs/known-limitations.md`.
 
 **Built and working:**
 
@@ -51,13 +52,6 @@ complete governed company, and the validator gates every layer of it.
   verified, and the guide says which symlink shape was tested head-to-head and which was
   not.
 
-**Not built yet — do not describe these as working:**
-
-- `your-company/` — a generated company OS lives in a **separate private repo**, never
-  here. There is no directory to look at; `demo/` is what a generated repo looks like.
-- The `LICENSE` file, the security-and-privacy section, and the versioned roadmap.
-  Phase 4.3.
-
 ## The map
 
 | Path | What it holds |
@@ -73,6 +67,9 @@ complete governed company, and the validator gates every layer of it.
 | `scripts/validate.py` | The validator. Run it before you claim anything is done. |
 | `MIGRATIONS.md` | The version-pin contract and the pull promise. |
 | `docs/known-limitations.md` | What this does **not** do. Read before relying on a check. |
+| `docs/rule-map.md` | Every check, what it enforces, and the severity it fires at. |
+| `docs/roadmap.md` | V1, V1.5, V2, V3, and the four things groundwork will never do. |
+| `docs/security-and-privacy.md` | What a company OS in a git repo exposes, and who can reach it. |
 
 ## How to use this repository today
 

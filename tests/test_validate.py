@@ -653,6 +653,18 @@ class TestLinks(unittest.TestCase):
             str(REPO))
         self.assertEqual(findings, [])
 
+    def test_reference_style_links_are_not_checked(self):
+        # Codex 4.3 r3: _LINK matches inline [label](path) only, so a broken
+        # reference-style target passes silently. docs/known-limitations.md and
+        # the rule map's check_links row now say "inline"; this pins the
+        # behavior those sentences describe. Extending the checker means
+        # updating both documents alongside this test.
+        findings = validate.check_links(
+            str(REPO / "README.md"),
+            "see [label][ref]\n\n[ref]: definitely-missing-file.md\n",
+            str(REPO))
+        self.assertEqual(findings, [])
+
     def test_links_inside_a_code_fence_are_still_checked(self):
         # Deliberate and load-bearing: check_links is line-based and fence
         # UNAWARE, so a link in a documentation example must resolve from the
@@ -2894,6 +2906,18 @@ class TestChangelog(unittest.TestCase):
             _write(d, "governance/changelog.md",
                    "# Governance changelog\n\n## Entries\n\n- oops not a real entry\n")
             self.assertTrue(any(f.level == "WARN" for f in validate.check_changelog(d)))
+
+    def test_unreadable_changelog_errors_via_shared_reader(self):
+        # Codex 4.3 r1: docs/rule-map.md says check_changelog's OWN findings are
+        # WARNs while an unreadable file still ERRORs through _read_utf8. Pin
+        # the second half so the map's severity note cannot silently rot.
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "governance"))
+            with open(os.path.join(d, "governance", "changelog.md"), "wb") as fh:
+                fh.write(b"# Governance changelog\n\xff\xfe not utf-8\n")
+            findings = validate.check_changelog(d)
+            self.assertTrue(any(f.level == "ERROR" and "UTF-8" in f.message
+                                for f in findings))
 
     def test_bad_date_warns(self):
         with tempfile.TemporaryDirectory() as d:
@@ -6715,6 +6739,75 @@ class TestCompanyRoot(unittest.TestCase):
             findings = validate.check_company_root(d)
             self.assertEqual(len(findings), 1)
             self.assertIn("no harness-visible path", findings[0].message)
+
+
+class TestRuleMap(unittest.TestCase):
+    """docs/rule-map.md binds CONTEXT.md's rules to the code that enforces
+    them, in BOTH directions. A prose map nothing checks is the artifact that
+    rots: the next check added or renamed silently falsifies it. This is 3.2's
+    question-bank coverage test pointed at the validator's own surface.
+
+    Parsed with validate._canonical_row — the EXISTING grammar. A second table
+    grammar in this repo is a decision nobody should make twice (the exec-view
+    table cost 32 review rounds establishing that)."""
+
+    MAP = REPO / "docs" / "rule-map.md"
+
+    def _rows(self):
+        rows = []
+        text = self.MAP.read_text(encoding="utf-8")
+        for lineno, line in enumerate(text.split("\n"), 1):
+            cells = validate._canonical_row(line)
+            if cells is None:
+                continue
+            if cells[1] == "Check":                 # header
+                continue
+            if all(set(c) <= set("-: ") for c in cells):   # delimiter
+                continue
+            rows.append((cells, lineno))
+        return rows
+
+    def _implemented(self):
+        tree = ast.parse((REPO / "scripts" / "validate.py").read_text())
+        return {n.name for n in tree.body
+                if isinstance(n, ast.FunctionDef)
+                and (n.name.startswith("check_") or n.name.endswith("_findings"))}
+
+    def test_the_map_actually_parsed(self):
+        """An empty extractor satisfies every other assertion in this class."""
+        rows = self._rows()
+        self.assertGreater(len(rows), 20,
+                           "docs/rule-map.md parsed %d rows — the table is not in "
+                           "the canonical three-cell shape" % len(rows))
+
+    def test_every_row_names_a_check_that_exists(self):
+        implemented = self._implemented()
+        for cells, lineno in self._rows():
+            self.assertIn(cells[1], implemented,
+                          "docs/rule-map.md:%d names %r, which validate.py does "
+                          "not define" % (lineno, cells[1]))
+
+    def test_every_shipped_check_is_mapped(self):
+        named = {cells[1] for cells, _ln in self._rows()}
+        missing = sorted(self._implemented() - named)
+        self.assertEqual(missing, [],
+                         "these checks ship with no row in docs/rule-map.md: %s "
+                         "— add a row or explain the omission in the document's "
+                         "'not in this table' section" % missing)
+
+    def test_every_row_declares_a_severity(self):
+        for cells, lineno in self._rows():
+            self.assertTrue("ERROR" in cells[2] or "WARN" in cells[2],
+                            "docs/rule-map.md:%d declares no severity" % lineno)
+
+    def test_one_table_only(self):
+        """Two tables would make the row set depend on which one a reader means."""
+        text = self.MAP.read_text(encoding="utf-8")
+        headers = [ln for ln in text.split("\n")
+                   if (validate._canonical_row(ln) or ["", "", ""])[1] == "Check"]
+        self.assertEqual(len(headers), 1,
+                         "docs/rule-map.md has %d canonical tables; it must have "
+                         "exactly one" % len(headers))
 
 
 if __name__ == "__main__":
