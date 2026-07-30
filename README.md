@@ -2,7 +2,7 @@
 
 > The groundwork your company runs on.
 
-An open-source, harness-agnostic **Company OS**. It is files, not an engine: markdown
+A harness-agnostic **Company OS**. It is files, not an engine: markdown
 conventions plus one zero-dependency validator, so any coding agent that reads a
 repository can read this one. You point your agent here, it interviews your company about
 the work each function actually does — what deserves **more** human time, what should be
@@ -156,7 +156,8 @@ The wider landscape (dswh/company-os, Workflowsio, gbrain, beevibe, the commodit
 ## License
 
 Apache-2.0 — chosen for its patent grant (enterprise-counsel comfort). The `LICENSE` file
-lands with the first release artifacts.
+lands with the first release artifacts; until it does, this page does not call groundwork
+open source, because a license granted is a file, not an intention.
 
 **Your content is yours.** The operating system the interview generates is the adopter's
 own work and is **not** covered by groundwork's license. That is not only a statement

@@ -1,6 +1,6 @@
 # AGENTS.md — groundwork
 
-**groundwork is an open-source, harness-agnostic Company OS.** It is files, not an
+**groundwork is a harness-agnostic Company OS.** It is files, not an
 engine: markdown conventions plus one zero-dependency validator. Any coding agent that
 reads a repository can read this one.
 

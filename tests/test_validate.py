@@ -6483,22 +6483,40 @@ earned by acting, not by planning to act.
     def test_fixture_root_files_match_the_manifest(self):
         """The manifest in interview/generate.md is the contract this class
         claims to build (Codex 4.2 r1: the fixture hardcoded its root files,
-        so the 'manifest' tests stayed green if the manifest changed). Parse
-        the manifest's fenced block and hold both sides to it: every root
-        file it names is one the fixture writes."""
+        so the 'manifest' tests stayed green if the manifest changed; r2: a
+        hardcoded expected tuple could not see a root file ADDED to the
+        manifest either). The declared set is derived from the fenced tree —
+        entries at the top indent level that are not directories — and
+        compared against what the fixture actually produces, both ways."""
         text = (REPO / "interview" / "generate.md").read_text(encoding="utf-8")
         block = text.split("## What you write", 1)[1].split("```", 2)[1]
-        roots = ("AGENTS.md", "CLAUDE.md", "GEMINI.md",
-                 ".cursor/rules/company.mdc", "groundwork.pin")
-        for name in roots:
-            self.assertIn(name, block, "the manifest lost %s" % name)
+        declared = set()
+        for line in block.splitlines():
+            if line.startswith("  ") and not line.startswith("   "):
+                entry = line.strip().split()[0]
+                if not entry.endswith("/"):
+                    declared.add(entry)
+        self.assertGreaterEqual(
+            declared,
+            {"AGENTS.md", "CLAUDE.md", "GEMINI.md",
+             ".cursor/rules/company.mdc", "groundwork.pin"},
+            "the manifest parse lost a known root file — the tree's indent "
+            "shape changed and this test's parser needs to follow it")
         with tempfile.TemporaryDirectory() as d:
             repo = os.path.join(d, "acme-os")
             self._materialize(repo)
-            for name in roots:
-                self.assertTrue(
-                    os.path.exists(os.path.join(repo, *name.split("/"))),
-                    "the fixture does not write %s" % name)
+            # Top-level plain files plus the .cursor rule; other dotfiles are
+            # excluded so an incidental .DS_Store cannot flake the comparison.
+            produced = {n for n in os.listdir(repo)
+                        if os.path.isfile(os.path.join(repo, n))
+                        and not n.startswith(".")}
+            cdir = os.path.join(repo, ".cursor", "rules")
+            if os.path.isdir(cdir):
+                produced |= {".cursor/rules/" + n for n in os.listdir(cdir)}
+            self.assertEqual(
+                declared, produced,
+                "the manifest's root-file set and the fixture's diverge — "
+                "whichever side changed, the other must follow")
 
     def test_fixture_agents_carries_the_license_carveout(self):
         # generate.md's root-files step now requires the company AGENTS.md to
