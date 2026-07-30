@@ -32,10 +32,10 @@ can ever ERROR.
 | The section 6 root-file set: the CLAUDE.md import, the Cursor and Gemini pointers | check_root_files | ERROR on CLAUDE.md drift, WARN on a missing Cursor or Gemini pointer |
 | Machinery-follows fields on one acted-on activity's deep record (5) | check_deep_record | ERROR on the automation path and on invalid values, WARN off it and on incomplete thinking |
 | The canonical executive-view grammar and deep-record listing, per instance (5) | check_ontology | ERROR on the grammar, WARN on an unlisted deep record |
-| Card spine, track-2 trio, freshness, and the three drift checks, per instance (6) | check_owner_cards | ERROR on drift always and on the spine at provisioning, WARN below provisioning and on freshness |
-| Org-memory record shape, provenance, and supersession chains (7) | check_memory | ERROR on the spine and broken supersession, WARN on staleness, a missing source, and an unindexed record |
+| Card spine, track-2 trio, freshness, and the three drift checks, per instance (6) | check_owner_cards | ERROR on drift and malformed values always, and on missing spine fields at provisioning; WARN on missing fields below provisioning and on freshness |
+| Org-memory record shape, provenance, and supersession chains (7) | check_memory | ERROR on the spine, broken supersession, and a confirmed record with no source; WARN on staleness, an unindexed record, and a missing source below confirmed |
 | Typed rules, the no-rung-six safety invariant, orphan-prohibition, sunset (8) | check_constitution | ERROR on the safety spine, WARN on drafts and missing provenance |
-| Resumable interview state: manifest pointer, frozen layers, one working file (9) | check_interview_state | ERROR on shape and on a half-committed turn, WARN on dates, ordering, and a missing source |
+| Resumable interview state: manifest pointer, frozen layers, one working file (9) | check_interview_state | ERROR on shape, a half-committed turn, and a confirmed layer missing its source; WARN on dates, ordering, and a working file without a source |
 | The action-class gate's registration as part of its own enforcement claim (8) | check_hooks | ERROR on a guard that cannot fire, WARN on an incomplete set |
 | The version-skew gate and the pull promise (21) | check_version_pin | ERROR on a malformed pin or a skew of one or more, WARN on reverse skew |
 | What a pinned company root owes: a root AGENTS.md, a harness-visible skills path (10) | check_company_root | WARN |
@@ -67,7 +67,11 @@ of the audit:
   freshness checks WARN regardless; only the spine and track-2 requirements follow it.
 
 No implemented severity was found to contradict CONTEXT.md; every disagreement found was
-between this document's draft and the code, and the document was corrected.
+between this document's draft and the code, and the document was corrected. Codex review
+rounds then sharpened three more cells the audit had summarized too coarsely — a confirmed
+memory record or confirmed interview layer missing its source is an ERROR, and a malformed
+card value ERRORs regardless of the provisioned flag. Same class of correction: the
+document moved, not the code.
 
 ## What is deliberately not in this table
 

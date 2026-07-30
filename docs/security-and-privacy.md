@@ -13,12 +13,24 @@ list of gaps.
 groundwork is markdown files in a private git repository, read by coding agents, maintained
 by one person who has the commit bit. There is no server, no database, no hosted component,
 and no account. That removes whole categories of risk — there is no service to breach, no
-tenancy to escape, no session to hijack — and concentrates what is left into two places:
-**your git host** and **the machines your agents run on**. Choosing organization plugin
-distribution adds a third: the skills you package are uploaded to the harness vendor's
-hosted service (or synced to it from a connected repository), so their contents — skill
-bodies and Owner's Cards — leave your infrastructure. Repo-local provisioning has no such
-surface; the section below and [`delivery/README.md`](../delivery/README.md) draw the line.
+tenancy to escape, no session to hijack — and concentrates what is *stored* in two places:
+**your git host** and **the machines your agents run on**.
+
+What is *processed* goes further, and a privacy reviewer should count both surfaces:
+
+- **The model provider, on every cloud-backed harness.** Claude Code, Codex, Cursor, and
+  Gemini CLI send what the agent reads to their model APIs — and an agent working in a
+  company OS reads the ontology, the memory records, and (if retained) the interview
+  transcript. Whatever retention, training-use, and access terms you have with that
+  provider apply to this material; groundwork adds no layer on top of them.
+- **The plugin path, if you choose organization distribution.** A manually uploaded
+  plugin ships only what you packaged — skill bodies and Owner's Cards. A GitHub-synced
+  marketplace is broader: the vendor's GitHub App is authorized on the **connected
+  repository**, not on the plugin subdirectory, so if the marketplace repository is your
+  company repo, the integration can reach the interview transcript and organizational
+  memory too. If those must stay off the vendor surface, use a dedicated marketplace
+  repository holding only the plugin folders.
+  [`delivery/README.md`](../delivery/README.md) documents both paths with dates.
 
 Everything groundwork ships that executes is three Python files: the validator, the
 action-class hook, and the demo's rung-3 reminder. All three are Python 3 standard library
