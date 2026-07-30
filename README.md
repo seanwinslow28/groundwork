@@ -121,20 +121,28 @@ the date it was verified, because all of these surfaces move.
 
 ## Status
 
-V1 is nearly complete, and this is the ledger.
+**V1 is complete.** Everything this page describes is in the repository, and
+`scripts/validate.py` gates all of it: the schema as files; eight function ontologies plus
+worked deep records on both governance tracks, including one recording a deliberate
+decision *not* to automate; work packages with Owner's Cards; a typed constitution on a
+five-rung enforcement ladder, with one runnable exemplar and prose degradation everywhere
+else; organizational memory with provenance and supersession; the consent gate and its
+blast-radius tripwire; the interview and generation protocols; the `demo/` company and its
+walkthrough; the provisioning guide; and the licence, security, and roadmap documents.
 
-**Working today:** the schema as files with `scripts/validate.py` gating every layer of
-it; eight function ontologies plus worked deep records on both governance tracks,
-including one recording a deliberate decision *not* to automate; work packages with
-Owner's Cards; a typed constitution on a five-rung enforcement ladder, with one runnable
-exemplar and prose degradation everywhere else; organizational memory with provenance and
-supersession; the consent gate and its blast-radius tripwire; the interview and generation
-protocols; the complete `demo/` company and its walkthrough; and the provisioning guide.
+**And here is the thing nobody has done.** No interview has been run on a real company, so
+no company OS has been generated from real answers. What is proven is the destination — a
+test builds a company repo in the shape the manifest specifies and validates it as its own
+root — plus one scoped dry run of the generation protocol against the demo's own layers.
+The path from a real conversation to a real repository has been designed, documented, and
+gated, and not yet walked. If you walk it, the thing we most want to hear about is where
+the protocol left you guessing.
 
-**Not here yet:** the `LICENSE` file, a security-and-privacy section, and a versioned
-roadmap. [`CONTEXT.md`](CONTEXT.md) is the glossary of all nineteen resolved design
-decisions; [`AGENTS.md`](AGENTS.md) carries the current built / not-built list and is
-always the more current of the two.
+[`docs/roadmap.md`](docs/roadmap.md) is what comes next and what never will.
+[`docs/known-limitations.md`](docs/known-limitations.md) is what this does not do.
+[`docs/security-and-privacy.md`](docs/security-and-privacy.md) is what it exposes.
+[`docs/rule-map.md`](docs/rule-map.md) is every check and the severity it fires at.
+[`CONTEXT.md`](CONTEXT.md) is the glossary of all nineteen resolved design decisions.
 
 ## How groundwork compares
 
