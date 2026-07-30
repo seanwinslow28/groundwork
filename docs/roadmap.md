@@ -13,9 +13,10 @@ pin and the pull promise, the interview and generation protocols, the `demo/` co
 its fifteen-minute walkthrough, the provisioning guide, and the zero-dependency validator
 that gates all of it.
 
-One thing on this list has never been done by anyone: **the generation protocol has been
-executed once, in a scoped dry run by the team that wrote it, and never by an adopter on a
-real company.** [known-limitations.md](known-limitations.md) says so where it counts.
+One thing on this list has never been done by anyone: **no adopter has run the interview
+and generation on a real company.** The protocol itself has been executed exactly once —
+a scoped dry run by the team that wrote it, against the demo's own layers.
+[known-limitations.md](known-limitations.md) says so where it counts.
 
 ## V1.5 — hardening, no schema change
 

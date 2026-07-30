@@ -109,9 +109,9 @@ Three limits matter more than the rest, and none of them is a bug:
   shaped, and wrong. The validator checks that the answer exists; a person checks that it
   is true.
 - **It cannot prove your demo or your records are free of real names.** Structured
-  identifiers — emails, domains, phones, addresses — are mechanically checked against a
-  declared allowlist in demo content. A real person named in free prose looks exactly like
-  a fictional one.
+  identifiers — emails, domains, phone numbers, IP addresses — are mechanically checked
+  against a declared allowlist in demo content. A real person named in free prose looks
+  exactly like a fictional one, and a postal address is prose to this check.
 
 ## Personal data, and an honest tension
 

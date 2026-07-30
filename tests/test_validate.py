@@ -653,6 +653,18 @@ class TestLinks(unittest.TestCase):
             str(REPO))
         self.assertEqual(findings, [])
 
+    def test_reference_style_links_are_not_checked(self):
+        # Codex 4.3 r3: _LINK matches inline [label](path) only, so a broken
+        # reference-style target passes silently. docs/known-limitations.md and
+        # the rule map's check_links row now say "inline"; this pins the
+        # behavior those sentences describe. Extending the checker means
+        # updating both documents alongside this test.
+        findings = validate.check_links(
+            str(REPO / "README.md"),
+            "see [label][ref]\n\n[ref]: definitely-missing-file.md\n",
+            str(REPO))
+        self.assertEqual(findings, [])
+
     def test_links_inside_a_code_fence_are_still_checked(self):
         # Deliberate and load-bearing: check_links is line-based and fence
         # UNAWARE, so a link in a documentation example must resolve from the
