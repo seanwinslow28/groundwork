@@ -61,9 +61,17 @@ nothing organizational is ever written into it.
 
 ## Who can reach it
 
-**One git-capable maintainer.** That is the access model, stated plainly rather than as a
-limitation: employees do not get the repository. They receive skills through organization
-provisioning and propose changes in conversation; the maintainer commits.
+**One git-capable maintainer holds the commit bit.** That is the write model: everyone
+else proposes changes in conversation, and the maintainer commits.
+
+**Read access depends on how you distribute skills, and only one path keeps the
+repository off employees' machines.** Under organization plugin distribution, employees
+receive the packaged skills and never the repository. Under repo-local provisioning — the
+only path that exists for Codex, Cursor, and Gemini CLI, which have no organization push
+surface — provisioning means the person **has the repository checked out**, interview
+transcript, organizational memory, and constitution included. If those must stay
+maintainer-only, plugin distribution is the only current answer, and it is
+Claude-Code-only; [known-limitations.md](known-limitations.md) records this squarely.
 
 The consequence is that **your repository's access control is your git host's** — branch
 protection, org membership, SSO, and audit log are the git host's features, not

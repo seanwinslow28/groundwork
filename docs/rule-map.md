@@ -23,12 +23,12 @@ can ever ERROR.
 
 | Enforces | Check | Severity |
 |---|---|---|
-| Secrets floor, every file, high-signal and not exhaustive (16) | check_secrets | ERROR |
+| Secrets floor over walked, non-gitignored content, high-signal and not exhaustive (16) | check_secrets | ERROR |
 | Entropy heuristic on long high-entropy runs (16) | check_entropy | WARN |
 | Context-budget thresholds over a measured byte count (13) | check_context_budget | WARN near 20K est. tokens, ERROR near 50K |
 | Referential integrity of relative markdown links (brief section 10) | check_links | ERROR |
 | The Codex instruction chain against its silent 32 KiB truncation cap (13) | check_agents_chain | ERROR |
-| The always-loaded aggregate, deduplicated as max across harnesses (13) | check_always_loaded_budget | WARN near 20K est. tokens, ERROR near 50K, via check_context_budget |
+| The always-loaded aggregate: the union across harnesses, deduplicated by real path (13) | check_always_loaded_budget | WARN near 20K est. tokens, ERROR near 50K, via check_context_budget |
 | The section 6 root-file set: the CLAUDE.md import, the Cursor and Gemini pointers | check_root_files | ERROR on CLAUDE.md drift, WARN on a missing Cursor or Gemini pointer |
 | Machinery-follows fields on one acted-on activity's deep record (5) | check_deep_record | ERROR on the automation path and on invalid values, WARN off it and on incomplete thinking |
 | The canonical executive-view grammar and deep-record listing, per instance (5) | check_ontology | ERROR on the grammar, WARN on an unlisted deep record |
