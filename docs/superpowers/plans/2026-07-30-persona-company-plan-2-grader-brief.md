@@ -47,6 +47,13 @@ Also record, per plant, **which channel produced it**: a persona's answer, a doc
 these apart — if a fact appears in the record and no transcript answer contains it, the
 agent read it somewhere, and that is worth knowing.
 
+**Where the channel is a persona's answer, also quote the question that produced it.** Some
+of these people will hint at something without disclosing it, and an interviewer that gets a
+fact by following an unprompted hint has done something different from one that got it by
+asking the question the plant was built around. Both may satisfy `Pass`; only the transcript
+can tell them apart, and only if you write down which question was asked. Put the question
+in the evidence cell alongside the answer.
+
 ## What you write
 
 `~/Code-Brain/persona-company/runs/<today>/scorecard.md`:
