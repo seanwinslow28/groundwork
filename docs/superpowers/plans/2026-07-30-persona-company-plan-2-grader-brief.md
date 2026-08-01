@@ -56,7 +56,9 @@ in the evidence cell alongside the answer.
 
 ## What you write
 
-`~/Code-Brain/persona-company/runs/<today>/scorecard.md`:
+`~/Code-Brain/persona-company/runs/2026-07-31/scorecard.md` — **that exact directory**, not
+today's date. It already exists and holds the rest of this run's record; a scorecard filed
+under a different date splits the run in two.
 
 ```markdown
 # Scorecard — <date>

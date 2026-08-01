@@ -167,11 +167,15 @@ interviewing agent, so the agent starts in a working directory that already sati
 - [ ] **Step 3: start the run record**
 
   ```bash
-  mkdir -p ~/Code-Brain/persona-company/runs/2026-07-30
+  mkdir -p ~/Code-Brain/persona-company/runs/2026-07-31
   ```
 
   Note the wall-clock start time in `runs/<date>/timing.md`, along with the persona-company
   sha from Task 0 and the groundwork sha (`git -C ~/Code-Brain/groundwork rev-parse --short HEAD`).
+
+  > **The run's canonical directory is `runs/2026-07-31/`** — the date the interview
+  > actually ran. Every later artifact (generation report, scorecard, audit, findings) goes
+  > there regardless of what date its own session happens on, or the run record splits.
 
 ---
 
