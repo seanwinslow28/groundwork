@@ -134,7 +134,7 @@ walkthrough; the provisioning guide; and the licence, security, and roadmap docu
 no company OS has been generated from real answers. What is proven is the destination — a
 test builds a company repo in the shape the manifest specifies and validates it as its own
 root — plus one scoped dry run of the generation protocol against the demo's own layers,
-and, as of 2026-07-31, one full end-to-end run of both protocols against a simulated
+and, as of 2026-08-01, one full end-to-end run of both protocols against a simulated
 company staffed by adversarial agent personas: an interview nobody scripted, a generated
 OS the validator passes, a scorecard graded blind against planted gaps, and a transcript
 audit confirming the interviewer never read the answer key. What a simulated company can

@@ -276,13 +276,14 @@ Honest limits of the current build. This file grows as the product does (brief �
 - **The protocols have been executed twice, neither time by a real company.** A scoped
   dry run generated one function from `demo/interview/`'s committed layers into a scratch
   repository, following `interview/generate.md` only — that tested the document's
-  clarity. Then, on 2026-07-31, the interview and generation protocols were run end to
-  end against a simulated twenty-person services company staffed by adversarial agent
-  personas: seventy-one questions across seven personas, on answers nobody scripted; a
-  generated company OS the stateless gate passes at zero errors; a scorecard graded
-  blind against nine planted concealed facts; and a transcript audit confirming the
-  interviewer never read the answer key. The run surfaced one of the nine planted facts
-  in full and a second in part, landing on the lowest row of its pre-committed
+  clarity. Then, on 2026-07-31 and 2026-08-01, the interview and generation protocols
+  were run end to end against a simulated twenty-person services company staffed by
+  adversarial agent personas — the interview on the first day, generation, blind grading,
+  and the audit on the second: seventy-one questions across seven personas, on answers
+  nobody scripted; a generated company OS the stateless gate passes at zero errors; a
+  scorecard graded blind against nine planted concealed facts; and a transcript audit
+  confirming the interviewer never read the answer key. The run surfaced one of the nine
+  planted facts in full and a second in part, landing on the lowest row of its pre-committed
   diagnostic band — *"Something structural is wrong — in the protocol, the harness, or
   the plants. Diagnose before changing anything."* — and the diagnosis landed on the
   protocol: the interview's stopping
