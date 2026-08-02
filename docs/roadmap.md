@@ -15,9 +15,10 @@ that gates all of it.
 
 One thing on this list has never been done by anyone: **no adopter has run the interview
 and generation on a real company.** The protocols have been executed twice by the team
-that wrote them — a scoped dry run against the demo's own layers, and one full
-end-to-end run against a simulated company staffed by adversarial agent personas, scored
-blind against planted gaps and with the interviewing session's transcript audited.
+that wrote them — a generation-only dry run against the demo's own layers, and one full
+end-to-end run, the interview protocol's first, against a simulated company staffed by
+adversarial agent personas, scored blind against planted gaps and with the interviewing
+session's transcript audited.
 [known-limitations.md](known-limitations.md) records both runs and what a simulated
 company cannot prove.
 
@@ -56,10 +57,10 @@ first one is the only one with a schema cost.
   gap matters and could not: its must-not-degrade plant failed at elicitation, so the
   fact never reached prose and the typed-field question stays open. Second, and the only
   candidate with a measured instance behind it: **a representable form for *enforced,
-  but nobody owns it***. That run generated a rule the simulated company enforces today
-  as a hard gate whose owner nobody claims; the schema's only honest encoding was a
+  but nobody owns it***. That run's confirmed interview record carried a rule at
+  `hard-block` whose ownership nobody claimed; the schema's only honest encoding was a
   draft with the truth in prose, so a structural consumer reads two drafts and zero
-  active rules for a company that runs a hard gate. Either addition is a v2 change with
+  active rules where the confirmed record says a hard gate. Either addition is a v2 change with
   a migration note, and the pull promise has been binding since 2026-07-29.
 - **Per-check `since:` tags** and scatter-suppression, which is the other half of the
   version-skew policy. Dormant at v1 by construction; wired at the first real bump.

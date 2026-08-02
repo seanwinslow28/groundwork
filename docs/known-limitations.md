@@ -273,10 +273,11 @@ Honest limits of the current build. This file grows as the product does (brief �
   validator live in the engine clone, so checking a company OS requires both checkouts.
   The maintainer already holds both; an adopter who has only the company repo cannot
   check it.
-- **The protocols have been executed twice, neither time by a real company.** A scoped
-  dry run generated one function from `demo/interview/`'s committed layers into a scratch
-  repository, following `interview/generate.md` only — that tested the document's
-  clarity. Then, on 2026-07-31 and 2026-08-01, the interview and generation protocols
+- **The protocols have been executed twice — generation both times, the interview once,
+  and never with a real company.** A scoped dry run generated one function from
+  `demo/interview/`'s committed layers into a scratch repository, following
+  `interview/generate.md` only — that tested the document's clarity.
+  Then, on 2026-07-31 and 2026-08-01, the interview and generation protocols
   were run end to end against a simulated twenty-person services company staffed by
   adversarial agent personas — the interview on the first day, generation, blind grading,
   and the audit on the second: seventy-one questions across seven personas, on answers
