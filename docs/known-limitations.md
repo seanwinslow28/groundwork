@@ -273,15 +273,34 @@ Honest limits of the current build. This file grows as the product does (brief �
   validator live in the engine clone, so checking a company OS requires both checkouts.
   The maintainer already holds both; an adopter who has only the company repo cannot
   check it.
-- **The generation protocol has been executed once, by the people who wrote it.** A scoped
+- **The protocols have been executed twice, neither time by a real company.** A scoped
   dry run generated one function from `demo/interview/`'s committed layers into a scratch
-  repository, following `interview/generate.md` only, to find out where the protocol left
-  decisions to inference. That tests the document's clarity. It does not test the thing an
-  adopter cares about: **no interview has ever been run on a real company, and no company
-  OS has ever been generated from real answers.** The output *shape* is proven by a test
-  that materializes a company repo and validates it as its own root; the *transcription
-  from real answers* is proven by nothing. Walking that path for real is the first honest
-  post-V1 act, not a V1 claim.
+  repository, following `interview/generate.md` only — that tested the document's
+  clarity. Then, on 2026-07-31, the interview and generation protocols were run end to
+  end against a simulated twenty-person services company staffed by adversarial agent
+  personas: seventy-one questions across seven personas, on answers nobody scripted; a
+  generated company OS the stateless gate passes at zero errors; a scorecard graded
+  blind against nine planted concealed facts; and a transcript audit confirming the
+  interviewer never read the answer key. The run surfaced one of the nine planted facts
+  in full and a second in part, landing on the lowest row of its pre-committed
+  diagnostic band — *"Something structural is wrong — in the protocol, the harness, or
+  the plants. Diagnose before changing anything."* — and the diagnosis landed on the
+  protocol: the interview's stopping
+  condition is schema completeness, not evidential grounding. Those findings are
+  returning as ordinary reviewed changes; the personas were calibrated to yield only to
+  near-exact probes, so the number is argued — not measured — to understate what the
+  protocol would extract from people. None of this tests the thing an adopter cares
+  about: **no interview has ever been run on a real company, and no company OS has ever
+  been generated from real answers.** The output *shape* is proven by a test that
+  materializes a company repo and validates it as its own root; the *transcription from
+  real answers* is proven only against personas. Walking the path with a real company is
+  the first honest post-V1 act, not a V1 claim.
+- **A persona is a cooperative interviewee by construction.** The honest ceiling of the
+  whole simulated-company design, recorded here because it bounds every claim the run
+  above supports. The plants approximate human evasiveness; they do not reproduce it. A
+  persona will not be bored, will not protect a colleague, will not misremember, and
+  will not hold knowledge it cannot articulate. What this measures is whether the
+  protocol surfaces *designed* gaps. Whether it surfaces *human* ones remains untested.
 - **One composition in `generate.md` is unresolved, found by that dry run.** A skill
   missing a human-only answer ships `provisioned: no` — but when its deep record *also*
   did not ship (a missing Gate answer), the skill's `ontology:` reference has nothing to
