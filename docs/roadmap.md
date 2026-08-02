@@ -1,6 +1,6 @@
 # Roadmap
 
-**Last reviewed 2026-07-30.** Nothing below V1 is described in the present tense, and
+**Last reviewed 2026-08-01.** Nothing below V1 is described in the present tense, and
 nothing moves onto the shipped list until it is. That rule is the same one the README has
 run on since the first commit: no capability claim precedes the capability.
 
@@ -14,9 +14,12 @@ its fifteen-minute walkthrough, the provisioning guide, and the zero-dependency 
 that gates all of it.
 
 One thing on this list has never been done by anyone: **no adopter has run the interview
-and generation on a real company.** The protocol itself has been executed exactly once —
-a scoped dry run by the team that wrote it, against the demo's own layers.
-[known-limitations.md](known-limitations.md) says so where it counts.
+and generation on a real company.** The protocols have been executed twice by the team
+that wrote them — a scoped dry run against the demo's own layers, and one full
+end-to-end run against a simulated company staffed by adversarial agent personas, scored
+blind against planted gaps and with the interviewing session's transcript audited.
+[known-limitations.md](known-limitations.md) records both runs and what a simulated
+company cannot prove.
 
 ## V1.5 — hardening, no schema change
 
@@ -46,11 +49,18 @@ Small, and none of it is promised by a date.
 Each of these is designed far enough to be described and deliberately absent from V1. The
 first one is the only one with a schema cost.
 
-- **The first `SCHEMA_VERSION` bump, and its named first passenger:** a health-metrics
-  field. The interview already asks what must not degrade while a standard is met — the
-  Goodhart guard — and there is nowhere typed to put the answer, so it lands in prose. A
-  new required field is a v2 change with a migration note, and the pull promise has been
-  binding since 2026-07-29.
+- **The first `SCHEMA_VERSION` bump, and its two candidate passengers.** First, a
+  health-metrics field: the interview already asks what must not degrade while a
+  standard is met — the Goodhart guard — and there is nowhere typed to put the answer,
+  so it lands in prose. The first end-to-end run was designed to measure whether that
+  gap matters and could not: its must-not-degrade plant failed at elicitation, so the
+  fact never reached prose and the typed-field question stays open. Second, and the only
+  candidate with a measured instance behind it: **a representable form for *enforced,
+  but nobody owns it***. That run generated a rule the simulated company enforces today
+  as a hard gate whose owner nobody claims; the schema's only honest encoding was a
+  draft with the truth in prose, so a structural consumer reads two drafts and zero
+  active rules for a company that runs a hard gate. Either addition is a v2 change with
+  a migration note, and the pull promise has been binding since 2026-07-29.
 - **Per-check `since:` tags** and scatter-suppression, which is the other half of the
   version-skew policy. Dormant at v1 by construction; wired at the first real bump.
 - **The Classify, Consent, Enforce compliance pack:** a consent registry with approved and
