@@ -16,8 +16,9 @@ The design is fully charted (19 resolved decisions; see `CONTEXT.md`). **V1 is c
 the schema exists as files, three functions are worked end to end across both governance
 tracks, one function records a deliberate non-automation verdict, the interview and its
 generator exist as documents, `demo/` is a complete governed company, `delivery/` covers
-provisioning, and the validator gates every layer of it. The one thing nobody has done is
-run the interview on a real company — see `docs/known-limitations.md`.
+provisioning, and the validator gates every layer of it. The protocols have been run end
+to end against a simulated persona company, scored blind and with the interview
+transcript audited; nobody has run them on a real company — see `docs/known-limitations.md`.
 
 **Built and working:**
 
