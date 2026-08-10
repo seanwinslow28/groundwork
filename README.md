@@ -1,3 +1,4 @@
+
 # groundwork
 
 > The groundwork your company runs on.
@@ -10,6 +11,35 @@ the work each function actually does — what deserves **more** human time, what
 that map into a separate private repository: folder-per-function ontologies, skills with
 named owners, a compiled constitution, and organizational memory that learns under
 governance instead of rewriting itself.
+
+## The governance, up front
+
+groundwork's lane is governance. These are the mechanisms, not the claims:
+
+- **The generator refuses to invent accountability.** Five fields it will never draft:
+  the owner, the backup owner, the forbidden actions, and the two death conditions. Those
+  come only from a human's interview answers. An invented owner is an accountability
+  structure the named person discovers when something goes wrong.
+- **Every skill can die, and a human names the trigger.** Each skill's Owner's Card
+  carries a pause condition and a retirement condition, both human-authored. "Some agents
+  should die" only means something if a person named the trigger.
+- **Eight preconditions before any skill exists.** The Describability Gate: inputs,
+  output, standard, source of truth, exception path, error cost, owner, review gate. All
+  eight must be answered. A truthful "none" counts as an answer. "N/A" does not. There is
+  no waiver mechanism. (The full decision record lives in [`CONTEXT.md`](CONTEXT.md).)
+- **Changes route by blast radius.** A change auto-applies only when a bad version's
+  worst case is bounded. Anything touching governance, an owner, or a higher-risk skill
+  escalates to human review, and auto-applied changes land in an append-only governance
+  changelog.
+- **One command checks all of it.** `python3 scripts/validate.py .`, Python standard
+  library only. The validator errors exactly where a field backs a running agent, warns
+  on incomplete thinking you have acted on, and stays silent on untouched work.
+  Strictness follows consequence, not completeness.
+
+And what this repo will not claim: no check reads prose for truth, the demo's refusal is
+instruction-strength rather than a runtime block, and no real company has run the
+interview yet. [`docs/known-limitations.md`](docs/known-limitations.md) is written to be
+read before you rely on a check, not after.
 
 ## Not technical? Point your agent at this repo
 
