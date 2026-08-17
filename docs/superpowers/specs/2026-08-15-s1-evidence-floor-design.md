@@ -3,11 +3,11 @@
 > **Workbench artifact, not product content.** The design for fixing run 1's headline
 > finding — S1, *the interview has no evidence floor off the automation path*
 > (`~/Code-Brain/persona-company/runs/2026-07-31/findings.md`). Brainstormed and
-> decision-locked 2026-08-01; design approved by the maintainer 2026-08-15; two Codex
-> adversarial review rounds the same day returned ten findings between them, each
-> verified against the record and resolved with the maintainer's approval — the
-> resolutions are folded into the sections they touch and summarized under "Decisions
-> locked". It feeds a Fable implementation plan through the ordinary slice loop.
+> decision-locked 2026-08-01; design approved by the maintainer 2026-08-15; three Codex
+> adversarial review rounds (2026-08-15 through 2026-08-17) returned fifteen findings
+> between them, each verified against the record and resolved with the maintainer's
+> approval — the resolutions are folded into the sections they touch and summarized
+> under "Decisions locked". It feeds a Fable implementation plan through the ordinary slice loop.
 > S1 is structural, so it was reported first and is patched here, never mid-run.
 
 ## Why this exists
@@ -102,13 +102,35 @@ This design makes those the same stopping condition.
     prose strings would be the same grep wearing a test's authority, so substance stays
     gated at review, and "nothing checks interview prose" remains true and documented.
     (Round-1 finding 4; round-2 finding 6.)
-11. **The floor is prospective.** It binds layers frozen after it lands; a pre-floor
-    interview generates as before, the generation report saying so per acted-on record,
-    and grounding backfill arrives as a later correction layer under the state format's
-    existing rule — never an edit to a frozen layer. The pull promise holds without a
-    migration note because nothing in the floor is validator-checked: a same-version
-    pull cannot turn a green repo red. `demo/interview/` is untouched. (Round-2
-    finding 3.)
+11. **The floor is prospective, and generation reports observables, never history.**
+    The floor binds layers frozen after it lands; grounding backfill arrives as a later
+    correction layer under the state format's existing rule — never an edit to a frozen
+    layer. Generation cannot verify when an interview happened, so it never adjudicates
+    legacy versus noncompliance: the report records the observable — "these layers
+    carry no grounding dispositions; grounding paragraphs not generated" — and
+    compliance is gated where it is enforceable, at the operator's freeze and the
+    slice review. The pull promise holds without a migration note because nothing in
+    the floor is validator-checked: a same-version pull cannot turn a green repo red.
+    `demo/interview/` is untouched. (Round-2 finding 3; mechanism revised by round-3
+    finding 4 — a durable floor-adoption marker was rejected as state machinery solving
+    a problem generation does not own.)
+12. **The floor's second law: a practice claim carries its evidential basis, and
+    generation preserves it.** The disposition gains a `practice_basis` qualifier —
+    `execution-record | instance-testimony | general-account-only | disputed` — and a
+    `general-account-only` basis makes every practice claim in the record and the
+    Motion rationale carry **unverified**. The evidenced divergence form types its
+    evidence (execution record or instance testimony), closing the grammar gap on Rule
+    3's middle branch. An untested cited claim about an acted-on activity is never
+    stated as practice — it enters the record as *stated in <document>, untested* — so
+    the "records why not" waiver degrades a claim's status and never launders it;
+    Codex's stricter alternative (no time waiver; halt or split the layer) was rejected
+    as re-creating the halt-everything cost Part 5 warns against. (Round-3 findings 1,
+    2, and 5, unified.)
+13. **An unknown freezes only as a confirmed unknown.** The accountable owner, or the
+    person the layer names as closest to the activity, confirms the company cannot
+    say — "we don't track who runs it" is an answer. "I don't know, someone might" is
+    an open question: ask the person they point to, or run the halt rule as written.
+    (Round-3 finding 3.)
 
 ## The change — one new mechanic, six files
 
@@ -125,13 +147,17 @@ constitution pass keeps or repeals, aimed at its last enforcement instance. A co
 same confirmed-absence pattern the baseline row already established. An acted-on
 activity whose last run *nobody can name* is recorded as **unknown** — a finding, not a
 gap in the notes, and a different state from confirmed absence: lack of evidence is
-never translated into evidence of absence. When nobody in reach can answer a grounding
-question, **the existing halt rule fires unchanged**: the question is written into
-`_working.md`, committed with the manifest, and surfaced — the operator may route it
-("ask <name>") or close it ("nobody knows"), and the outcome lands as the `unknown`
-disposition, with which the layer then freezes. Run 1's q-headcount is the precedent:
-the same machinery carried an unknown honestly into the generated OS. The floor adds
-no exception to the halt rule, and never converts an unknown into an absence.
+never translated into evidence of absence. **An unknown freezes only as a confirmed
+unknown**: the accountable owner, or the person the layer names as closest to the
+activity, confirms the company cannot say — "we don't track who runs it" is an answer,
+and it freezes. "I don't know, someone might" is not; it leaves the question open — ask
+the person they point to, and when nobody in reach can answer, **the existing halt rule
+fires unchanged**: the question is written into `_working.md`, committed with the
+manifest, and surfaced — the operator may route it ("ask <name>") or close it ("nobody
+knows"), and the outcome lands as the `unknown` disposition, with which the layer then
+freezes. Run 1's q-headcount is the precedent: the same machinery carried an unknown
+honestly into the generated OS. The floor adds no exception to the halt rule, and never
+converts an unknown into an absence.
 
 **Rule 2 — the cited-source obligation.** For each acted-on activity, a document named
 in a layer's `source:` that makes an operational claim *about that activity* — how it
@@ -145,7 +171,9 @@ skipped; that is the honest form of the cost, not a reason to uncite the documen
 Claims the record does not rely on stay in scope when they speak about an acted-on
 activity: run 1's measured failure was a cited handbook whose step about an acted-on
 activity was never quoted, never relied on, and silently contradicted by reality.
-Citing is claiming you tested.
+Citing is claiming you tested — and **an untested cited claim is never stated as
+practice in any record**: it enters as *stated in <document>, untested*, so skipping
+the test degrades the claim's status and never launders it.
 
 **Rule 3 — the divergence rule.** A divergence is recorded, never silently resolved and
 never talked into agreement — and **a document proves what it is**: an **execution
@@ -173,6 +201,14 @@ the floor changes what is asked and recorded, not who approves it. (This is the
 stated-vs-practised sibling of finding S4's disputed-classification rule; S4 remains
 its own finding and its own slice.)
 
+**The floor's second law, binding all three rules:** a practice claim carries its
+evidential basis, and generation preserves it. The disposition's `practice_basis`
+states the basis at the freeze; a `general-account-only` basis makes every practice
+claim in the record and the Motion rationale carry **unverified**; an untested cited
+claim enters as *stated, untested*; a divergence carries its typed evidence.
+Uncertainty is recorded, and it is never laundered into fact by prose that outruns its
+basis.
+
 **The reasoning paragraph the mechanic carries** (so an interviewer can decide from it
 in cases the rules do not enumerate): people report the rules they wish they had.
 General-case questions fill schema fields with the designed process; only instance-level
@@ -195,7 +231,8 @@ avoided: the design must not be shaped by the known plants.)
 
 **"What good looks like at the end"** gains one bullet: every acted-on record names its
 grounding in all three dimensions — an instance or record, a confirmed absence, an
-honest unknown, or a recorded refusal — and every stated-vs-practised divergence
+honest unknown, or a recorded refusal — every practice claim carries its evidential
+basis, unverified where that is the truth, and every stated-vs-practised divergence
 carries its operating truth, evidenced or explicitly unresolved.
 
 ### 2. `interview/questions.md` — the grounding row, twice
@@ -228,17 +265,24 @@ the triplet's three dimensions, plus a divergence line when one exists:
 ```
 Grounding: <activity> — last_run: <date or instance | unknown | refused>;
   performed_by: <name | unknown | refused>;
-  record: <record named, what it showed | none (confirmed by <name>) | unknown | refused>
+  record: <record named, what it showed | none (confirmed by <name>) | unknown | refused>;
+  practice_basis: <execution-record | instance-testimony | general-account-only | disputed>
 ```
 
 - **Each slot is answered independently.** A known instance with an unknown performer
   and a refused record is one honest line — not a forced choice among forms that each
   hide a dimension.
 - `none` is **confirmed absence** and names its confirmer; `unknown` is
-  nobody-could-say; `refused` is access not granted — a fact about the company, per
-  mechanic 3. Lack of evidence is never written as `none`.
+  nobody-could-say, and it is a **confirmed** unknown (decision 13) — "we don't track
+  this," attested, not "I don't know" from one person; `refused` is access not
+  granted — a fact about the company, per mechanic 3. Lack of evidence is never written
+  as `none`.
+- `practice_basis` states what the record's practice claims rest on.
+  `general-account-only` is legal and freezes — and every practice claim generated
+  from it carries **unverified**, because the floor records uncertainty; it never
+  converts uncertainty into fact.
 - A divergence, when present, is its own second line in one of two forms:
-  - `Diverges (evidenced): <side> states <X>; <execution evidence> shows <Y> — operating truth: <Y>`
+  - `Diverges (evidenced by <execution record | instance testimony>): <side> states <X>; <evidence> shows <Y> — operating truth: <Y>`
   - `Diverges (unresolved): <side A> states <X>; <side B> states <Y> — operating truth: unresolved`
 
 **Strictness that makes the line mean something:** a restated general account is not an
@@ -261,9 +305,11 @@ deep record carries its grounding paragraph, whatever the Motion. One new instru
 **a divergence recorded in a layer lands in the record's body as a divergence, with its
 operating truth as the layer states it — generation never resolves it, and a generated
 record that states the policy side as practice is laundering** (the same refusal class
-as inventing an owner). And the prospective line: generating from layers frozen before
-the floor existed, the generator writes "grounding: interviewed before the evidence
-floor" in the generation report for each acted-on record, and invents nothing.
+as inventing an owner). And the prospective line, stated as an observable: layers
+carrying no grounding dispositions are generated without grounding paragraphs, the
+report says "these layers carry no grounding dispositions; grounding paragraphs not
+generated," and the generator invents nothing — it never adjudicates whether the
+interview predated the floor, because it cannot verify when an interview happened.
 
 ### 5. `README.md` (root) — one parenthetical
 
@@ -282,12 +328,15 @@ other v2 discussions.
 ### Prospective application — pre-floor layers
 
 The floor binds layers frozen after it lands. An interview whose layers predate it
-generates as before: the generation report records "grounding: interviewed before the
-evidence floor" for each acted-on record, and grounding arrives — if the company wants
-it — as a later correction layer under the state format's existing rule, never as an
-edit to a frozen one. The pull promise holds without a migration note because nothing
-in the floor is validator-checked: a same-version engine pull cannot turn a green repo
-red. `demo/interview/`'s frozen layers are untouched.
+generates as before: the generation report records the observable — "these layers
+carry no grounding dispositions; grounding paragraphs not generated" — and never
+adjudicates legacy versus noncompliance, which generation cannot verify; compliance is
+gated where it is enforceable, at the operator's freeze and the slice review. Grounding
+arrives — if the company wants it — as a later correction layer under the state
+format's existing rule, never as an edit to a frozen one. The pull promise holds
+without a migration note because nothing in the floor is validator-checked: a
+same-version engine pull cannot turn a green repo red. `demo/interview/`'s frozen
+layers are untouched.
 
 ## What NOT to change
 
@@ -326,7 +375,9 @@ stated rather than implied.
 | 8. Divergence precedence, freeze-with-unresolved | `grep -c "operating truth: unresolved" interview/README.md` → ≥ 1; `grep -c "execution record" interview/protocol.md` → ≥ 1; `grep -c "unresolved" interview/protocol.md` → ≥ 1 |
 | 9. Carry, never resolve, at generation | `grep -c "never resolves it" interview/generate.md` → 1; grounding-paragraph amendment present in the Motion-pivot sentence |
 | 10. Surface files | `grep -c "ground every acted-on activity" README.md` → 1; `grep -c "evidence floor" docs/known-limitations.md` → ≥ 1; `grep -n "plus the grounding row" interview/questions.md interview/protocol.md` → one hit each |
-| 11. Prospective application | `grep -c "interviewed before the evidence floor" interview/generate.md` → 1 |
+| 11. Prospective application, observables only | `grep -c "no grounding dispositions" interview/generate.md` → 1 |
+| 12. Second law, practice basis | `grep -c "practice_basis" interview/README.md` → ≥ 1; `grep -c "unverified" interview/protocol.md` → ≥ 1; `grep -c "evidenced by" interview/README.md` → ≥ 1; `grep -c "untested" interview/protocol.md` → ≥ 1 |
+| 13. Confirmed unknown | `grep -c "confirmed unknown" interview/protocol.md` → ≥ 1 |
 
 Plus, unchanged as always:
 
@@ -343,11 +394,15 @@ expected outcome. They are generic shapes drawn from the failure class, not run-
 plants.
 
 **Scenario 1 — partial triplet.** An acted-on activity where the owner names last
-Tuesday's run, cannot say who performed it, and the tracker sits on a drive the company
-declined to open. Expected: one disposition line — `last_run: <instance>`,
-`performed_by: unknown`, `record: refused` — the layer freezes with it, and the
-generated deep record's grounding paragraph carries all three states. No halt fires:
-every question was answered, and a refusal is an answer.
+Tuesday's run, confirms that nobody tracks who performed it — the crew rotates,
+untracked — and the tracker sits on a drive the company declined to open. Expected: one
+disposition line — `last_run: <instance>`, `performed_by: unknown` (a **confirmed**
+unknown: the owner attests the company cannot say), `record: refused`,
+`practice_basis: instance-testimony` — the layer freezes with it, and the generated
+deep record's grounding paragraph carries all the states. No halt fires: an attested
+cannot-say and a refusal are both answers. Contrast the non-freezing variant: had the
+owner said "I don't know, ask the coordinator," the question stays open — the
+coordinator is asked, and only the halt rule can close it if nobody in reach answers.
 
 **Scenario 2 — nobody can say.** An acted-on activity where the owner and both adjacent
 people cannot name the last run. Expected: the halt rule fires as written —
@@ -368,8 +423,18 @@ incompatible accounts of who runs an activity and no record exists; the same lay
 cites a handbook making several claims about that activity, of which the interview
 tested two and ran out of time. Expected: `Diverges (unresolved)` with both accounts
 attributed and operating truth `unresolved`; the layer freezes with the dispute stated;
-the layer records which handbook claims were tested and that the rest were not; the
-generated record carries the dispute unresolved and the Motion verdict states it.
+the layer records which handbook claims were tested and that the rest were not — and
+the untested claims enter the generated record as *stated in the handbook, untested*,
+never as practice; the generated record carries the dispute unresolved and the Motion
+verdict states it.
+
+**Scenario 5 — instance testimony against policy.** A cited process page states that
+the owner reviews every output before it goes out; the owner, asked for the last run,
+names Thursday's and says it went out unreviewed, as most do. No execution record is
+reachable. Expected: `Diverges (evidenced by instance testimony)` with the operating
+truth bound to the instance account and the policy side preserved as stated;
+`practice_basis: instance-testimony`; the Motion verdict reasons from the unreviewed
+reality. Generation never writes the policy side as practice.
 
 ## Band-aid tripwires — reject these in review
 
@@ -383,6 +448,14 @@ generated record carries the dispute unresolved and the Motion verdict states it
 - A policy document written as the operating truth over an instance-grade account or
   execution evidence — documents prove what they are, and the stale-handbook inversion
   is the failure this rule exists to stop.
+- A why-not note that leaves the untested claim stated as practice — the waiver
+  degrades a claim's status; it never launders it.
+- A generation report that adjudicates pre-floor history ("interviewed before the
+  floor") instead of reporting the observable — generation cannot verify when an
+  interview happened.
+- Practice prose or a Motion rationale that outruns its `practice_basis` — a
+  general-account-only basis without "unverified" on the claim is the second law
+  broken.
 - Mechanic 3 softened, reworded, or made conditional to "fund" mechanic 5.
 - Any edit to `scripts/validate.py` or `tests/` to accommodate wording.
 - A claim anywhere that the floor is *proven* — it is designed from measured failure and
