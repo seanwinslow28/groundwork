@@ -58,9 +58,10 @@ first one is the only one with a schema cost.
   fact never reached prose and the typed-field question stays open. Second, and the only
   candidate with a measured instance behind it: **a representable form for *enforced,
   but nobody owns it***. That run's confirmed interview record carried a rule at
-  `hard-block` whose ownership nobody claimed; the schema's only honest encoding was a
-  draft with the truth in prose, so a structural consumer reads two drafts and zero
-  active rules where the confirmed record says a hard gate. Either addition is a v2 change with
+  `hard-block` whose ownership nobody claimed. Three honest encodings were open — omit the
+  rule, ship it and let the gate fail, or ship it as a declared draft — and only the draft
+  both shipped the rule and left the gate green, so a structural consumer reads two drafts
+  and zero active rules where the confirmed record says a hard gate. Either addition is a v2 change with
   a migration note, and the pull promise has been binding since 2026-07-29.
 - **Per-check `since:` tags** and scatter-suppression, which is the other half of the
   version-skew policy. Dormant at v1 by construction; wired at the first real bump.
