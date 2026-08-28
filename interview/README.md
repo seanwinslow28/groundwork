@@ -77,6 +77,9 @@ source: interview turns 9 through 14, plus the Q2 renewal log read with permissi
 
 Renewal prep is the one acted-on activity: Motion automate, run from the CRM as the
 source of truth. Health-check calls stay human — Direction up, and Mara said why.
+
+Grounding: renewal prep — last_run: the 12 August renewal; performed_by: Mara Voss;
+  record: Q2 renewal log, fifteen of twenty-six briefs written; practice_basis: execution-record
 ```
 
 **Frozen at its checkpoint.** Once committed, a layer file never changes — not the
@@ -88,6 +91,45 @@ so; you do not go back and rewrite what a person approved.
 `provenance`, `source`, and the ERROR-vs-WARN split on them are #7's vocabulary, not a
 parallel one: `confirmed` means a human approved it at a checkpoint, and a confirmed fact
 without a source is an ERROR.
+
+### The grounding disposition
+
+A layer covering an acted-on activity (or a ritual the constitution pass kept or
+repealed) carries one grounding disposition per activity in its body — a composable
+line mirroring the evidence floor's three questions (mechanic 5), plus a divergence
+line when one exists:
+
+```
+Grounding: <activity> — last_run: <date or instance | unknown | refused>;
+  performed_by: <name | unknown | refused>;
+  record: <record named, what it showed | none (confirmed by <name>) | unknown | refused>;
+  practice_basis: <execution-record | instance-testimony | general-account-only | disputed | none-established>
+```
+
+Each slot is answered independently — a known instance with an unknown performer and a
+refused record is one honest line. `none` is confirmed absence and names its
+confirmer; `unknown` is nobody-could-say, and it is a **confirmed** unknown — "we
+don't track this," attested, not "I don't know" from one person; `refused` is access
+not granted, a fact about the company. Lack of evidence is never written as `none`:
+lack of evidence is not evidence of absence.
+
+`practice_basis` is a weakest-link summary — the weakest basis among the record's
+load-bearing practice claims, so a strong claim can never launder a weak one; the
+per-claim truth lives in the record prose, each claim marked, and a claim resting on a
+general account alone carries **unverified** wherever it appears. `none-established`
+is the honest value when nothing about current practice could be attested at all.
+
+A divergence, when present, is its own second line in one of two forms:
+
+```
+Diverges (evidenced by <execution record | instance testimony>): <side> states <X>; <evidence> shows <Y> — operating truth: <Y>
+Diverges (unresolved): <side A> states <X>; <side B> states <Y> — operating truth: unresolved
+```
+
+This is what the operator checks at the freeze: an acted-on activity with no
+disposition, a blank slot, or a value that fits no legal form is grounds for a
+procedural rejection. A restated general account is not an instance — testimony
+without a nameable instance or record fills its slot as `unknown`.
 
 ### The turn in flight — `_working.md`
 
@@ -144,6 +186,12 @@ is what `check_interview_state` catches on the next run.
 
 Set `status: complete` and `open_question: none`, and delete `_working.md`. A completed
 interview with a turn still in flight is a contradiction, and it ERRORs.
+
+`open_question` tracks a **turn in flight, not a knowledge gap**. An unanswered
+question does not hold the interview open forever — it closes the field by being
+recorded in a frozen layer's grounding disposition or body as an explicit unknown,
+which is how a halt the operator closes with "nobody knows" resolves: the gap travels
+into the record, never blocks completion, and is never estimated.
 
 ## What is checked, and how hard
 
