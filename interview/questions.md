@@ -38,7 +38,7 @@ the work type (section 1), the accountable owner (section 7), plus the grounding
 | How much judgment does it take? | ontology:score_judgment | High judgment is not a veto; it is a scoping question. |
 | How specific is it to this company, and how mature is the market for it? | ontology:score_company_specificity, ontology:score_market_maturity | Market maturity is the buy-versus-build tell. |
 | Is this routing, sensemaking, or accountability? | ontology:work_type | Accountability work rarely leaves a person. |
-| When did this last run, who did it, and what does the record show? | — | The evidence floor (mechanic 5), asked regardless of Motion. Confirmed absence, unknown, and refused are all honest answers; record which one. |
+| When did this last run, who did it, and what does the record show? | — | The evidence floor (mechanic 5), asked regardless of Motion — acted-on activities only, never at the executive tier. Confirmed absence, unknown, and refused are all honest answers; record which one. |
 | Which business process runs differently if this works? | — | The ontology record's accountability paragraph. |
 
 ## 2. User goal — who is this for?
