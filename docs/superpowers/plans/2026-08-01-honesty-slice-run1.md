@@ -12,8 +12,11 @@
 > retained, so the merge to `main` — `153cbbf`, 2026-08-28 — is the durable record of the
 > approval, and no inspectable artifact dates round 3 itself. The pre-made blocks below are
 > left **exactly as they were executed**, so this file stays a record of what was planned.
-> Four defects are recorded below, spanning those blocks and, in two cases, text outside
-> them. What shipped differs, and this section is authoritative where they disagree.
+> Four defects are recorded below. Three of them also reach text outside those blocks:
+> defect 1 is a verification instruction, defect 2 includes the Goal, and defect 3 includes
+> Task 2's heading and a commit message. Only defect 4 is confined to a block. Each row
+> names its own locations. What shipped differs, and this section is authoritative where
+> they disagree.
 
 | # | Where | Defect | What shipped instead |
 |---|---|---|---|
