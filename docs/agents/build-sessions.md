@@ -15,11 +15,10 @@
 8. **Pre-made text is not pre-verified.** A plan's pre-made replacement text carries a
    source citation for every factual claim, and the executor verifies those claims against
    that source *before* transcribing. Transcription fidelity protects the wording a review
-   approved; it does not make the claims true, and "the plan said so" is not a basis. The
-   2026-08-01 honesty slice shipped a wrong date, an overcounted execution, and a company
-   fact its own answer key contradicted — all three inherited from pre-made blocks, none
-   caught until Codex review. Where the source is another record, check it against *its*
-   sources too: two of the three were already wrong there.
+   approved; it does not make the claims true, and "the plan said so" is not a basis. Where
+   the source is another record, check that record against *its* sources too — one of the
+   2026-08-01 slice's three factual defects was inherited from a run record that was itself
+   wrong, and Codex review is the only reason none of the three reached `main`.
 
 ## Where the plan lives
 - Design: `docs/superpowers/specs/2026-07-22-groundwork-v1-build-sequence-design.md`
