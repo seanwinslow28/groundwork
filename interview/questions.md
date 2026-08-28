@@ -21,8 +21,8 @@ Work the sections in order, one question at a time, per acted-on activity. Secti
 and 2 also run once per function, for every activity, at the executive tier. A row that
 names two fields is still asked in parts — one question at a time, per the protocol. For
 `buy`, `hire`, and `wait`, stop after the common core — the Motion and its five scores,
-the work type (section 1), and the accountable owner (section 7); every other row is
-automation-path only.
+the work type (section 1), the accountable owner (section 7), plus the grounding row
+(section 1); every other row is automation-path only.
 
 ---
 
@@ -38,6 +38,7 @@ automation-path only.
 | How much judgment does it take? | ontology:score_judgment | High judgment is not a veto; it is a scoping question. |
 | How specific is it to this company, and how mature is the market for it? | ontology:score_company_specificity, ontology:score_market_maturity | Market maturity is the buy-versus-build tell. |
 | Is this routing, sensemaking, or accountability? | ontology:work_type | Accountability work rarely leaves a person. |
+| When did this last run, who did it, and what does the record show? | — | The evidence floor (mechanic 5), asked regardless of Motion. Confirmed absence, unknown, and refused are all honest answers; record which one. |
 | Which business process runs differently if this works? | — | The ontology record's accountability paragraph. |
 
 ## 2. User goal — who is this for?
@@ -126,6 +127,7 @@ with its destinations attached.
 | Ask | Fills | Notes |
 |---|---|---|
 | Name the ritual, in plain words. What do we actually do? | rule:ritual | Not what the policy says. What happens. |
+| When did this ritual last actually run, who worked it, and what does the record show? | — | Mechanic 5. The last enforcement instance, not the policy. |
 | What was expensive or rare when this started? | rule:scarcity | Somebody's attention, usually. |
 | Is that scarcity still real, and what job survives if it is not? | rule:surviving_job | The job almost always outlives the ritual. |
 | Rewrite it as a rule a person can verify. | — | The rule record's title and body. No vibes. |
