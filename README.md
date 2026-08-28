@@ -1,3 +1,4 @@
+
 # groundwork
 
 > The groundwork your company runs on.
@@ -10,6 +11,35 @@ the work each function actually does — what deserves **more** human time, what
 that map into a separate private repository: folder-per-function ontologies, skills with
 named owners, a compiled constitution, and organizational memory that learns under
 governance instead of rewriting itself.
+
+## The governance, up front
+
+groundwork's lane is governance. These are the mechanisms, not the claims:
+
+- **The generator refuses to invent accountability.** Five fields it will never draft:
+  the owner, the backup owner, the forbidden actions, and the two death conditions. Those
+  come only from a human's interview answers. An invented owner is an accountability
+  structure the named person discovers when something goes wrong.
+- **Every skill can die, and a human names the trigger.** Each skill's Owner's Card
+  carries a pause condition and a retirement condition, both human-authored. "Some agents
+  should die" only means something if a person named the trigger.
+- **Eight preconditions before any skill exists.** The Describability Gate: inputs,
+  output, standard, source of truth, exception path, error cost, owner, review gate. All
+  eight must be answered. A truthful "none" counts as an answer. "N/A" does not. There is
+  no waiver mechanism. (The full decision record lives in [`CONTEXT.md`](CONTEXT.md).)
+- **Changes route by blast radius.** A change auto-applies only when a bad version's
+  worst case is bounded. Anything touching governance, an owner, or a higher-risk skill
+  escalates to human review, and auto-applied changes land in an append-only governance
+  changelog.
+- **One command checks all of it.** `python3 scripts/validate.py .`, Python standard
+  library only. The validator errors exactly where a field backs a running agent, warns
+  on incomplete thinking you have acted on, and stays silent on untouched work.
+  Strictness follows consequence, not completeness.
+
+And what this repo will not claim: no check reads prose for truth, the demo's refusal is
+instruction-strength rather than a runtime block, and no real company has run the
+interview yet. [`docs/known-limitations.md`](docs/known-limitations.md) is written to be
+read before you rely on a check, not after.
 
 ## Not technical? Point your agent at this repo
 
@@ -133,10 +163,15 @@ walkthrough; the provisioning guide; and the licence, security, and roadmap docu
 **And here is the thing nobody has done.** No interview has been run on a real company, so
 no company OS has been generated from real answers. What is proven is the destination — a
 test builds a company repo in the shape the manifest specifies and validates it as its own
-root — plus one scoped dry run of the generation protocol against the demo's own layers.
-The path from a real conversation to a real repository has been designed, documented, and
-gated, and not yet walked. If you walk it, the thing we most want to hear about is where
-the protocol left you guessing.
+root — plus one scoped dry run of the generation protocol against the demo's own layers,
+and, as of 2026-08-01, one full end-to-end run of both protocols against a simulated
+company staffed by adversarial agent personas: an interview nobody scripted, a generated
+OS the validator passes, a scorecard graded blind against planted gaps, and a transcript
+audit confirming the interviewer never read the answer key. What a simulated company can
+and cannot prove is recorded in [`docs/known-limitations.md`](docs/known-limitations.md).
+The path from a real conversation to a real repository has been designed, documented,
+gated, and walked in simulation — not yet with a real company. If you walk it for real,
+the thing we most want to hear about is where the protocol left you guessing.
 
 [`docs/roadmap.md`](docs/roadmap.md) is what comes next and what never will.
 [`docs/known-limitations.md`](docs/known-limitations.md) is what this does not do.
