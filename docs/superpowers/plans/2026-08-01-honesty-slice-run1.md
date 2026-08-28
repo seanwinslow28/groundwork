@@ -6,10 +6,13 @@
 
 ## Post-execution corrections — read before transcribing anything below
 
-> **Status: executed and Codex-approved 2026-08-01** (three adversarial rounds; round 3
-> `approve`, no material findings), **merged to `main` 2026-08-28** as `153cbbf`. The pre-made blocks below are left **exactly as they
-> were executed**, so this file stays a record of what was planned. Four of them are
-> defective. What shipped differs, and this section is authoritative where they disagree.
+> **Status: executed 2026-08-01** — the plan's six implementation and fix commits, including
+> the two answering Codex findings, all carry that author date. Three adversarial review
+> rounds ran, ending in `approve` with no material findings; those review outputs were not
+> retained, so the merge to `main` — `153cbbf`, 2026-08-28 — is the durable record of the
+> approval, and no inspectable artifact dates round 3 itself. The pre-made blocks below are
+> left **exactly as they were executed**, so this file stays a record of what was planned.
+> Four of them are defective. What shipped differs, and this section is authoritative where they disagree.
 
 | # | Where | Defect | What shipped instead |
 |---|---|---|---|
