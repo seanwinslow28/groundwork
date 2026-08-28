@@ -56,7 +56,8 @@ This design makes those the same stopping condition.
    instruction-strength suffices.
 5. **Packaging: a fifth mechanic.** `protocol.md`'s "The four mechanics" becomes five,
    with the floor owned in one named home. Run 1 showed distributed guidance does not
-   bind — mechanic 3's "highest-yield move" framing was exercised once in 71 questions.
+   bind — mechanic 3's "highest-yield move" framing is a once-per-engagement permission
+   ask, not a per-claim obligation (`findings.md`, the S1 "Before" section).
    A named mechanic is also one changed thing a second run can measure.
 6. **Rituals are in scope.** The grounding triplet applies to any ritual the
    constitution pass keeps or repeals, asked about its last enforcement instance. A kept
