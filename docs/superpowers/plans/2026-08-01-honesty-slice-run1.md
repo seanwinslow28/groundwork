@@ -12,7 +12,8 @@
 > retained, so the merge to `main` — `153cbbf`, 2026-08-28 — is the durable record of the
 > approval, and no inspectable artifact dates round 3 itself. The pre-made blocks below are
 > left **exactly as they were executed**, so this file stays a record of what was planned.
-> Four of them are defective. What shipped differs, and this section is authoritative where they disagree.
+> Four defects are recorded below, spanning those blocks and, in two cases, text outside
+> them. What shipped differs, and this section is authoritative where they disagree.
 
 | # | Where | Defect | What shipped instead |
 |---|---|---|---|
@@ -23,16 +24,16 @@
 
 **Where defects 2–4 came from, and the lesson.** They do not share an origin, and the
 difference is the whole lesson. **Defects 2 and 3 first appear here** — the run record is
-right on both points: `timing.md` marks 2026-07-31 as
-"**Interview phase only**", separating generation, grading and the audit onto the following
-day, and it calls run 1 "the first end-to-end execution of groundwork's interview protocol".
+right on both points: `timing.md` marks 2026-07-31 as "**Interview phase only**",
+separating generation, grading and the audit onto the following day, and it calls run 1 "the first end-to-end execution of groundwork's interview protocol".
 Neither the wrong date nor the two-execution framing appears in any run record; both
 originate in this plan. **Defect 4 was already in the run record before this plan was
 written** — the hard gate is asserted as company fact in four passages, earliest in the
 generating session's own report (`ffa4ff7`, 09:09) and last in `findings.md` (`a9369c7`,
 15:32). Which of them the plan author read is not recoverable; no artifact records the
-copy. All four now carry a pointer to `quad-check-correction.md`. **Pre-made text is not pre-verified** — transcription fidelity
-protects the wording a review approved, it does not make the claims true. That is now
+copy. All four now carry a pointer to `quad-check-correction.md`. **Pre-made text is not
+pre-verified** — transcription fidelity protects the wording a review approved, it does not
+make the claims true. That is now
 standing rule 8 in [`../../agents/build-sessions.md`](../../agents/build-sessions.md).
 
 ---
