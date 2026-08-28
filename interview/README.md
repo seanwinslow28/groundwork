@@ -78,7 +78,7 @@ source: interview turns 9 through 14, plus the Q2 renewal log read with permissi
 Renewal prep is the one acted-on activity: Motion automate, run from the CRM as the
 source of truth. Health-check calls stay human — Direction up, and Mara said why.
 
-Grounding: renewal prep — last_run: the 12 August renewal; performed_by: Mara Voss;
+Grounding: renewal prep — last_run: the 12 June renewal; performed_by: Mara Voss;
   record: Q2 renewal log, fifteen of twenty-six briefs written; practice_basis: execution-record
 ```
 
