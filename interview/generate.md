@@ -90,13 +90,26 @@ get more. Then one deep record per acted-on activity.
 The **Motion is the pivot**: `automate` and `build` carry the common core *plus*
 Substrate, Shape, and all eight Describability Gate fields. `buy`, `hire`, and `wait`
 carry only the common core — Motion, the five scores, work type, and the accountable
-owner. **Write the `wait` records.** A recorded decision not to build something is a
+owner — plus the grounding paragraph every deep record carries, whatever its Motion.
+**Write the `wait` records.** A recorded decision not to build something is a
 decision, and an ontology holding only automation verdicts reads as an automation funnel.
 
 All eight Gate fields must be *answered*. A truthful "none" is an answer; "N/A" is not,
 and there is no waiver. If a Gate answer is missing from the layers, that activity does
 not get a deep record — it is named in the generation report as a question for the next
 interview pass.
+
+**Grounding and divergence carry through.** Every deep record carries a grounding
+paragraph transcribed from the layer's disposition — its three dimensions and its
+`practice_basis`. A claim whose basis is a general account alone carries
+**unverified** wherever it appears, including the Motion rationale. A divergence
+recorded in a layer lands in the record's body with its operating truth as the layer
+states it — generation never resolves it, and a record that states the policy side as
+practice is laundering, the same refusal class as inventing an owner. An untested
+cited claim is carried as *stated in the document, untested*, never as practice.
+Layers carrying no grounding dispositions are generated without grounding paragraphs,
+and the report says so: "these layers carry no grounding dispositions; grounding
+paragraphs not generated."
 
 **3. `memory/` next, because skills depend on it.** Every baseline the interview captured
 becomes a record: `provenance`, `owner`, `valid_at`, `source`, and `review_by` — the
