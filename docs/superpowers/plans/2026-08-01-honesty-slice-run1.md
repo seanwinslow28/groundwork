@@ -4,6 +4,31 @@
 > superpowers:subagent-driven-development) to implement this plan task-by-task. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
 
+## Post-execution corrections — read before transcribing anything below
+
+> **Status: executed and Codex-approved on 2026-08-28** (three adversarial rounds; round 3
+> `approve`, no material findings). The pre-made blocks below are left **exactly as they
+> were executed**, so this file stays a record of what was planned. Four of them are
+> defective. What shipped differs, and this section is authoritative where they disagree.
+
+| # | Where | Defect | What shipped instead |
+|---|---|---|---|
+| 1 | Task 3, Step 4 | The verification `grep -c "enforced, but nobody owns it"` **can never return 1** — the pre-made block on this file's own lines 284–285 wraps that phrase across a line break. | Verified with the unwrapped head, `grep -c "but nobody owns it"` → `1`, the convention this plan already uses in Task 5 Step 2. |
+| 2 | Task 1 Step 1; Task 2 Step 1 | **Backdated the run.** Both blocks date the end-to-end run to 2026-07-31, which is the run *directory label*. `timing.md` records that date as the **interview phase only**; generation ran 2026-08-01 08:39–08:58, with grading and the audit the same day. | `4f5545c`. README: "as of 2026-08-01". known-limitations: "on 2026-07-31 and 2026-08-01 … the interview on the first day, generation, blind grading, and the audit on the second". |
+| 3 | Task 2 Step 1; Task 3 Step 2 | **Overcounted interview executions.** "The protocols have been executed twice" counts a generation-only dry run as a second interview run. `timing.md` calls run 1 the interview protocol's *first* end-to-end execution. | `8479480`. known-limitations: "generation both times, the interview once, and never with a real company". roadmap: "a generation-only dry run … and one full end-to-end run, the interview protocol's first". |
+| 4 | Task 3, Step 3 | **Asserted a persona surface as company fact.** "a rule the simulated company enforces today as a hard gate" is contradicted by `plants.md`: P1-a's truth is that the grid was *not* used on the last delivery, P1-b's carriers have never seen it used, and both plants FAILED. The claim states as fact exactly what the run failed to establish. | `8479480`. roadmap now attributes the status to the record: "That run's confirmed interview record carried a rule at `hard-block` whose ownership nobody claimed". |
+
+**Where defects 2–4 came from, and the lesson.** All three were inherited, not invented
+here: they trace to the run record's own prose in
+`~/Code-Brain/persona-company/runs/2026-07-31/` (`timing.md`, `findings.md`,
+`generation-report.md`), which the plan author transcribed without checking against
+`plants.md` and the scorecard. Defect 4's source contradiction is now recorded there in
+`quad-check-correction.md`. **Pre-made text is not pre-verified** — transcription fidelity
+protects the wording a review approved, it does not make the claims true. That is now
+standing rule 8 in [`../../agents/build-sessions.md`](../../agents/build-sessions.md).
+
+---
+
 **Goal:** Amend groundwork's product content so it stops claiming the pre-run world —
 run 1 (2026-07-31, the persona-company end-to-end test) falsified two present-tense
 status claims and made the pre-committed persona-cooperativeness limitation due — while

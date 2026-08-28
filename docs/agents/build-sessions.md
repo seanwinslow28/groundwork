@@ -12,6 +12,14 @@
 5. **Explain before Sean decides.** Before each decision he owns, explain in plain terms: what it is, the options, the recommendation, and the honest counter-argument. Never accept "go with your recommendation" as a substitute for understanding.
 6. **Honesty rules:** claims match what is verified/built; no capability claim precedes the capability; overclaiming is trust debt.
 7. **Source of truth:** the approved design brief and CONTEXT.md (the resolved-decision glossary). Locked decisions are not reopened without new evidence.
+8. **Pre-made text is not pre-verified.** A plan's pre-made replacement text carries a
+   source citation for every factual claim, and the executor verifies those claims against
+   that source *before* transcribing. Transcription fidelity protects the wording a review
+   approved; it does not make the claims true, and "the plan said so" is not a basis. The
+   2026-08-01 honesty slice shipped a wrong date, an overcounted execution, and a company
+   fact its own answer key contradicted — all three inherited from pre-made blocks, none
+   caught until Codex review. Where the source is another record, check it against *its*
+   sources too: two of the three were already wrong there.
 
 ## Where the plan lives
 - Design: `docs/superpowers/specs/2026-07-22-groundwork-v1-build-sequence-design.md`
