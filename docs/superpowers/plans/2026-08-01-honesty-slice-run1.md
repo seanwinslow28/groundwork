@@ -6,8 +6,8 @@
 
 ## Post-execution corrections — read before transcribing anything below
 
-> **Status: executed and Codex-approved on 2026-08-28** (three adversarial rounds; round 3
-> `approve`, no material findings). The pre-made blocks below are left **exactly as they
+> **Status: executed and Codex-approved 2026-08-01** (three adversarial rounds; round 3
+> `approve`, no material findings), **merged to `main` 2026-08-28** as `153cbbf`. The pre-made blocks below are left **exactly as they
 > were executed**, so this file stays a record of what was planned. Four of them are
 > defective. What shipped differs, and this section is authoritative where they disagree.
 
@@ -19,15 +19,14 @@
 | 4 | Task 3, Step 3 | **Asserted a persona surface as company fact.** "a rule the simulated company enforces today as a hard gate" is contradicted by `plants.md`: P1-a's truth is that the grid was *not* used on the last delivery, P1-b's carriers have never seen it used, and both plants FAILED. The claim states as fact exactly what the run failed to establish. | `8479480`. roadmap now attributes the status to the record: "That run's confirmed interview record carried a rule at `hard-block` whose ownership nobody claimed". |
 
 **Where defects 2–4 came from, and the lesson.** They do not share an origin, and the
-difference is the whole lesson. **Defects 2 and 3 were introduced here, not inherited** —
-the run record is right on both points: `timing.md` marks 2026-07-31 as
+difference is the whole lesson. **Defects 2 and 3 first appear here** — the run record is
+right on both points: `timing.md` marks 2026-07-31 as
 "**Interview phase only**", separating generation, grading and the audit onto the following
 day, and it calls run 1 "the first end-to-end execution of groundwork's interview protocol".
-The plan author read the run *directory name* as the run date, and recast one interview
-execution as two. **Defect 4 was inherited** — three operator-written passages in
-`~/Code-Brain/persona-company/runs/2026-07-31/` (`findings.md`, `timing.md`,
-`generation-report.md`) assert the hard gate as company fact, none checked against
-`plants.md` or the scorecard; that contradiction is now recorded there in
+Neither the wrong date nor the two-execution framing appears in any run record; both
+originate in this plan. **Defect 4 was inherited from `findings.md`**, whose S3 section
+asserts the hard gate as company fact; `timing.md` and `generation-report.md` carry the
+same erroneous sentence. That contradiction is now recorded beside all three in
 `quad-check-correction.md`. **Pre-made text is not pre-verified** — transcription fidelity
 protects the wording a review approved, it does not make the claims true. That is now
 standing rule 8 in [`../../agents/build-sessions.md`](../../agents/build-sessions.md).
