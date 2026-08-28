@@ -251,6 +251,11 @@ Honest limits of the current build. This file grows as the product does (brief Â
   file check can see them. The two engine tests cover what can be mechanized: that the
   documented examples validate, and that the question skeleton can fill every required
   field.
+  The evidence floor (protocol mechanic 5) is the same posture deliberately: an
+  instruction plus a freeze-visible convention â€” no check enforces it, and no run has
+  yet measured whether instruction-strength suffices. If a measured run shows it does
+  not, a validator-checked grounding rule becomes a candidate alongside the other v2
+  discussions.
 
 ## Generation (#10)
 

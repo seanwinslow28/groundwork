@@ -92,7 +92,8 @@ answer contains, not a transcript to match.
 **It is documents, not a program.** There is no `generate.py`. [`interview/`](interview/)
 holds four things an agent follows: a resumable state format where "confirmed" is git
 structure rather than a label an agent can edit, the consultant protocol (define the role
-first, one question at a time, no generation until understanding is complete), a
+first, one question at a time, ground every acted-on activity in evidence, no
+generation until understanding is complete), a
 nine-section question skeleton in which every question names the field its answer fills,
 and the generation protocol with the manifest of what a company repo contains.
 
