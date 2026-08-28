@@ -27,10 +27,11 @@ right on both points: `timing.md` marks 2026-07-31 as
 "**Interview phase only**", separating generation, grading and the audit onto the following
 day, and it calls run 1 "the first end-to-end execution of groundwork's interview protocol".
 Neither the wrong date nor the two-execution framing appears in any run record; both
-originate in this plan. **Defect 4 was inherited from `findings.md`**, whose S3 section
-asserts the hard gate as company fact; `timing.md` and `generation-report.md` carry the
-same erroneous sentence. That contradiction is now recorded beside all three in
-`quad-check-correction.md`. **Pre-made text is not pre-verified** — transcription fidelity
+originate in this plan. **Defect 4 was already in the run record before this plan was
+written** — the hard gate is asserted as company fact in four passages, earliest in the
+generating session's own report (`ffa4ff7`, 09:09) and last in `findings.md` (`a9369c7`,
+15:32). Which of them the plan author read is not recoverable; no artifact records the
+copy. All four now carry a pointer to `quad-check-correction.md`. **Pre-made text is not pre-verified** — transcription fidelity
 protects the wording a review approved, it does not make the claims true. That is now
 standing rule 8 in [`../../agents/build-sessions.md`](../../agents/build-sessions.md).
 
