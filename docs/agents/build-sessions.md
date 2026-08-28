@@ -18,7 +18,9 @@
    approved; it does not make the claims true, and "the plan said so" is not a basis. Where
    the source is another record, check that record against *its* sources too — one of the
    2026-08-01 slice's three factual defects was inherited from a run record that was itself
-   wrong, and Codex review caught all three before they reached `main`.
+   wrong, and Codex review caught all three before they reached the product files. The
+   defective plan text and one commit message are on `main` regardless — preserved
+   deliberately, and superseded in place by that plan's corrections section.
 
 ## Where the plan lives
 - Design: `docs/superpowers/specs/2026-07-22-groundwork-v1-build-sequence-design.md`
