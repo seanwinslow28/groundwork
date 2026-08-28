@@ -20,7 +20,7 @@ gh repo create <company>-os --private
 
 Then `interview/` is created inside it, and the manifest is the first commit.
 
-## The four mechanics
+## The five mechanics
 
 ### 1. Define the role first, then act as it
 
@@ -106,6 +106,66 @@ layer records the correction and says what it corrects. You do not go back and r
 what somebody approved — `--diff` will catch it, and more importantly it destroys the
 one thing the checkpoint was for.
 
+### 5. The evidence floor — ground every acted-on activity
+
+Before a layer covering an acted-on activity is frozen, ask — one question at a time,
+regardless of Motion — **When did this last run? Who did it? What does the record
+show?** The same three questions go to every ritual the constitution pass keeps or
+repeals, aimed at its last enforcement instance. A `wait` is acted on; a kept rule is
+acted on. The floor does not extend to the executive tier — fifteen-activity sweeps
+stay cheap.
+
+The reason is the same uncomfortable one behind mechanic 3: people report the rules
+they wish they had. A general-case question fills a schema field with the process as
+designed; only an instance-level question surfaces the process as run. A complete
+record of a stopped process is worse than a gap — it is confident error, and
+everything downstream is generated from it. The floor exists so "schema complete" and
+"grounded" are the same stopping condition. When any answer comes back as a general
+case, go one level down before recording it — a specific recent instance, a concrete
+scenario, the document behind it.
+
+Three rules bind:
+
+**"No record is kept" is an answer.** It is recorded as confirmed absence, naming who
+confirmed it. **An unknown freezes only as a confirmed unknown**: the person answering
+for the activity, or whoever they name as closest, confirms the company cannot say —
+"we don't track who runs it" is an answer, and it freezes. "I don't know, someone
+might" is not; it leaves the question open — ask the person they point to, and when
+nobody in reach can answer, the halt rule fires unchanged (next section): the operator
+may route the question or close it, and the outcome lands in the layer's grounding
+disposition ([README.md](README.md)). Never convert an unknown into an absence: lack
+of evidence is not evidence of absence.
+
+**Citing is claiming you tested.** For each acted-on activity, a document named in a
+layer's `source:` that makes an operational claim about that activity — how it runs,
+who performs it, what gate it passes — has that claim quoted back to a person and
+either confirmed or recorded as divergence, or the layer records why not. The unit is
+the claim-about-the-activity, never the whole document; you test what you cite, and
+you cite what the layer uses. An untested cited claim is never stated as practice in
+any record — it enters as *stated in the document, untested*. Skipping the test
+degrades a claim's status; it never launders it.
+
+**A document proves what it is, and divergence is recorded, never resolved.** An
+execution record — a log, a tracker, an artifact of runs — is evidence of practice; a
+policy document is evidence only of the stated rule. When accounts and evidence
+conflict: execution evidence establishes practice and the Motion verdict binds to it;
+with no execution evidence, an instance-grade account outweighs a policy statement;
+with no practice evidence on either side, record both sides with attribution and an
+explicitly unresolved operating truth. A layer may freeze with an unresolved operating
+truth — the dispute is the finding — and the Motion verdict ships only with the
+dispute stated on the record. Never talk one side into the other.
+
+Above all: **a practice claim carries its evidential basis, and the record preserves
+it.** The layer's grounding disposition states the basis at the freeze; a claim
+resting on a general account alone carries **unverified** wherever it appears,
+including the Motion rationale. Uncertainty is recorded; it is never converted into
+fact by prose that outruns its basis.
+
+The cost, honestly: roughly three extra questions per acted-on activity and per
+examined ritual, plus a variable source-testing cost that scales with what you choose
+to cite. That is the price of records that describe the company that exists rather
+than the one in the handbook.
+
 ## The rule when nobody can answer
 
 **An unanswerable question halts the interview.** It does not get resolved by inference.
@@ -148,7 +208,8 @@ For the activities they have chosen to act on, work the question skeleton
 ([questions.md](questions.md)) in section order. The Motion verdict is the pivot: only
 `automate` and `build` need Substrate, Shape, and all eight Describability Gate answers.
 `buy`, `hire`, and `wait` stop after the common core — the Motion and its five scores,
-the work type (section 1), and the accountable owner (section 7's one-name question).
+the work type (section 1), the accountable owner (section 7's one-name question), plus
+the grounding row (section 1, mechanic 5).
 
 **A `wait` is a real answer.** Record it, with its reasoning. An ontology that only ever
 records automation verdicts reads as an automation funnel, and in a year somebody will
@@ -190,4 +251,9 @@ what the company decided; the generation protocol says how the confirmed layers 
 - At least one rule was **repealed** with its surviving job reassigned — or the
   confirmed layers record why no ritual deserved repeal. An interview that examined
   nothing is a failure; one that honestly found nothing to repeal is not.
+- Every acted-on record names its grounding in all three dimensions — an instance or
+  record, a confirmed absence, an honest unknown, or a recorded refusal — every
+  practice claim carries its evidential basis, unverified where that is the truth, and
+  every stated-vs-practised divergence carries its operating truth, evidenced or
+  explicitly unresolved.
 - Every provisioned skill cites a baseline captured before it was provisioned.
