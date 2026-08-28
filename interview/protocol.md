@@ -208,8 +208,8 @@ For the activities they have chosen to act on, work the question skeleton
 ([questions.md](questions.md)) in section order. The Motion verdict is the pivot: only
 `automate` and `build` need Substrate, Shape, and all eight Describability Gate answers.
 `buy`, `hire`, and `wait` stop after the common core — the Motion and its five scores,
-the work type (section 1), the accountable owner (section 7's one-name question), plus
-the grounding row (section 1, mechanic 5).
+the work type (section 1), the accountable owner (section 7's one-name question),
+plus the grounding row (section 1, mechanic 5).
 
 **A `wait` is a real answer.** Record it, with its reasoning. An ontology that only ever
 records automation verdicts reads as an automation funnel, and in a year somebody will
