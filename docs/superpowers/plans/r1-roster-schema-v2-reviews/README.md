@@ -13,14 +13,17 @@ keep changing.
 
 | Round | Reviewed | Verdict | Findings | Fix commit |
 |---|---|---|---|---|
+| 1 | `199b5bc` | does not approve | 11 (2 BLOCKER, 3 HIGH, 3 MEDIUM, 3 LOW) | `7eb0885` |
+
+Eleven findings, all accepted and all fixed. None rejected, none left open.
 
 ## Open findings
 
-None recorded yet.
+None. Every round-1 finding is fixed in `7eb0885`.
 
 ## Rejected findings
 
-None recorded yet.
+None.
 
 ## Maintainer items
 
@@ -53,6 +56,41 @@ None recorded yet.
    consent invariant should carry the bootstrap qualification; whether a later `--diff` base
    must be proven to contain the generated root; and ratification of the rule-1 departure
    recorded in both merged logs.
+
+## Maintainer question raised by round 1 — the demo's staleness WARN
+
+Round-1 finding N1 was correct twice over: the demo roster's `review_by` carried a cadence
+no demo source records, and the plan's stated reason for it was false. Removing the invented
+cadence leaves the 90-day policy default, `2026-08-09`, which **has passed** — so the demo's
+roster now raises a staleness WARN. Two documented outputs moved with it:
+
+- `python3 scripts/validate.py demo` → `0 error(s), **3** warning(s)` (was 2)
+- `python3 scripts/validate.py .` → `0 error(s), **8** warning(s)` (was 7), the same WARN
+  seen from the outer root
+
+The tree currently carries the honest state. The maintainer's call is whether to keep it:
+
+- **(a) Keep `2026-08-09`, the policy default** — the roster genuinely has not been
+  re-confirmed since May, and the WARN demonstrates the staleness mechanism on real content.
+  Cost: groundwork's own gate output carries a WARN that only gets older, and a WARN that
+  never clears is a WARN people stop reading.
+- **(b) A future `review_by`, justified by the demo's own convention** — every dated record
+  under `demo/memory/` carries a `review_by` that has not yet passed (2026-09-30, 2026-10-31,
+  2026-12-01), so the demo reads as a live company rather than an overdue one. Under (b) the
+  roster would say plainly that its date follows that convention, not an elicited cadence.
+  Cost: it is a convention of the fiction, not an answer anybody gave, and dating around a
+  WARN is the move finding N1 exists to catch.
+
+The builder's original date was (b) with a false reason attached. Presented rather than
+decided, because it changes the gate output the maintainer reads every session.
+
+## Also open, not taken
+
+Whether `demo/governance/roles.md` should carry **Role rows** for the five offices
+`demo/canon.md` assigns (CEO, VP Customer Success, Director of Product, VP Engineering, Head
+of People). None of the demo's three rules names an office, so nothing requires them, and
+Role rows are R2's elicitation work — so they were not added. Adding them would be true to
+canon and would make a future role-named owner resolve.
 
 ## Verification the builder ran, before round 1
 
