@@ -311,3 +311,14 @@ amended: round-20 rows 1 and 2.
 |---|---|---|---|---|
 | 1 | major | "The operator fixes the record" has no legal path — the halt rule needs an in-progress interview, and frozen layers cannot be edited | CONFIRMED | Fixed: the recovery is a new confirming turn (append-and-supersede); the aggregate reads each entry's most recent confirming layer. Amends round-20 row 1 |
 | 2 | major | The carried pending proposal is a rejected state (applied-beside-pending), and removing it fails the tripwire that demanded it — no valid landing sequence | CONFIRMED | Fixed: the first roster introduction is the bootstrap, non-escalating by the S2 principle (the commit creating the governed artifact cannot be governed by it); decision 8 binds from the first modification on, and its text now carries the operational scope plus the narrow delete-then-re-add analysis. Amends round-20 row 2 |
+
+## Round 22 — 2026-08-29, task-mte69sdo-fxdbqm, verdict: does not approve (2 findings, both major)
+
+Reviewed: commit `352ba76` (spec after round-21 fixes, plus this log). Both accepted;
+fixed in the following commit. Rows amended: round-19 rows 1 and 3 (the "adds/mods"
+scope wording), round-21 row 2.
+
+| # | Sev | Finding (compressed) | Verdict | Disposition |
+|---|---|---|---|---|
+| 1 | major | Decision 8's scope statements disagreed across sites — heading and validator said additions gated, the decision body said modifications only | CONFIRMED | Fixed: modifications is the scope everywhere; an addition is definitionally the bootstrap (base had no roster), stated in the decision, the heading, and the validator bullet. The maintainer's chosen option read "adds/mods"; the refinement is a factual consequence of what a file addition is, recorded here rather than re-asked. Amends round-19 rows 1 and 3 |
+| 2 | major | The delete-then-re-add analysis failed for drafts-only roots — missing roster WARNs there, so the swap lands green and re-addition is bootstrap-exempt | CONFIRMED | Fixed: the analysis splits by root contents — active rules make the route red; a drafts-only swap goes green but binds nothing, since activation is itself a gated constitution change reviewed against the then-current roster; the residual pre-activation improvement is named and accepted as the cost of ungated deletions. Amends round-21 row 2 |
