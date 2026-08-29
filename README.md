@@ -141,8 +141,8 @@ context budget. The second adds the stateful rules: organizational memory is
 append-and-supersede rather than editable; a confirmed interview layer is frozen wherever
 the base holds both the layer and its `00-manifest.md`; and the #18 consent gate
 classifies every changed constitution rule, roles roster, and skill-package file, ERRORing
-on an escalating change with no matching pending proposal. Deleting a governed file
-**WARNs** rather than ERRORs, and #17's changelog rules run alongside.
+on an escalating change with no matching pending proposal. Deleting one of those governed
+files **WARNs** rather than ERRORs, and #17's changelog rules run alongside.
 [`proposals/README.md`](proposals/README.md) carries the full classification.
 
 **What it does not prove.** The secrets floor is high-signal, not exhaustive. No check

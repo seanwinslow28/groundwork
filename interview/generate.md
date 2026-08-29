@@ -297,6 +297,10 @@ where that artifact is written above; the report is where they all come due toge
 - Any layers carrying no grounding dispositions, in those words: "these layers carry no
   grounding dispositions; grounding paragraphs not generated."
 - The baselines that did not ship as memory records, because `owner` was never answered.
+- The memory records that shipped **without** a `review_by`, because the interview never
+  answered when the baseline should be re-checked. That record ships and the validator
+  WARNs — drift with a number on it — so the report is the only place the omission is
+  stated rather than merely detectable.
 - The skills that shipped `provisioned: no`, and which human-only answer each is waiting
   on.
 - The constitution rules that shipped as declared drafts, and which gaps each one
