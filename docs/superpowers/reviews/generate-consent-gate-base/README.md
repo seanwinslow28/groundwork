@@ -30,13 +30,32 @@ does not show the rule was satisfied or waived. Ratifying it is the maintainer's
 | 4 | `7421d58` | does not approve | 7 | `10e1ec1` |
 | 5 | `10e1ec1` | does not approve | 8 | `d2ce4fc` |
 | 6 | `d2ce4fc` | does not approve | 9 | `13d8bef` |
-| 7 | — | maintainer decision, not a review round | — | see round-07 |
+| 7 | — | maintainer decision, not a review round | — | `41e0a36` |
+| 8 | `41e0a36` | **approve** | 0 | terminal |
 
-Forty-three findings across six rounds, all accepted, none rejected.
+Forty-three findings across six review rounds, all accepted. Two were never fixed and are
+rejected with grounds at round 8; the rest were fixed.
 
 ## Rejected findings
 
-None. Every finding in every round was accepted.
+Two, both rejected for scope at round 8, both real and both recorded as work rather than
+dismissed. Rule 9 requires them listed here so the one move that closes a finding by
+disagreeing with it is visible without reading every round file.
+
+- **Round 1, row 4** — adopter-facing sites unreconciled: `README.md:127` sends someone
+  checking a freshly generated OS to `--diff main`, and `CONTEXT.md:105` states the consent
+  invariant without the bootstrap qualification. *Grounds:* the approved slice is confined
+  to `generate.md`, and `CONTEXT.md` is the locked-decision glossary. Open items 1 and 2.
+- **Round 5, row 7** — the parallel-site inventory is incomplete:
+  `delivery/README.md:247–248`, `proposals/README.md:55`, `interview/README.md:85`,
+  `interview/protocol.md:13–15`, `docs/security-and-privacy.md:151–152`. *Grounds:* same
+  scope, and several need the later-run base contract settled first. Open items 2 and 3.
+
+## Status
+
+**Ready to merge.** Round 8 approved with no findings; every finding on the branch is
+fixed or rejected with grounds; the gate is green. The open items below are recorded
+follow-up work, not unresolved findings.
 
 ## Open maintainer items
 
