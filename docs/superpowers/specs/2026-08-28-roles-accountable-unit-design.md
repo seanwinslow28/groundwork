@@ -169,7 +169,13 @@ established here.
    unresolvable does not ship at all, declared or not — decisions 2 and 3 ERROR it
    even as a draft, so the declared-draft path cannot apply; the spine outranks the
    contract. The exception covers every spine-ERROR form of the appeal gap:
-   missing, unresolvable, or resolving to no human holder. The other artifact
+   missing, unresolvable, or resolving to no human holder. And it binds by the
+   **stricter reading of a disputed class**: where a recorded action-class dispute
+   includes `high-risk` among the accounts, the exception applies as if the rule
+   were high-risk, even when the scalar field carries the lower class — otherwise
+   a dispute the validator cannot read would ship a rule the spine would reject.
+   (This takes S4's stricter-reading direction for exactly this contract clause;
+   S4's full tie-break rule remains its own queued slice.) The other artifact
    kinds stand unchanged: a deep record missing its Gate answer and a memory record
    missing its owner do not ship — those kinds have no draft state to ship into, and
    this design does not invent one — while a skill missing human-only answers is
@@ -362,17 +368,19 @@ review:
   types: a holder enters typed `human` only where the binding protocol guarantees a
   person — the acted-on activity owner and the skill owner/backup, exactly its
   human-only owner rows — entered as **holder-only rows** (the Role cell empty;
-  the human-only questions yield a person's name, not a role, and the Role column
-  fills with R2's elicitation). Every other owner value (a constitution rule's
-  owners may be roles or disclaimers; run 1's `runtime_check_owner` proves it)
-  enters as an unheld Role row — except a string already entered as a typed
-  Holder, which enters once: the Holder classification wins, since it carries
-  more information, and duplicating it as a Role would trip the roster-integrity
-  ERROR. A generated rule whose owners do not all resolve ships rungless as a
-  declared draft under decision 6 — subject to its safety-spine exception: a rule
-  whose high-risk appeal gap takes any of the three ERROR forms does not ship at
-  all — with its unresolved owners named as the gaps. Agent-typed holders, and
-  typing for the rest, arrive with R2's elicitation. These edits exist because without them the documented
+  the human-only questions yield a person's name, not a role). Every other owner
+  value (a constitution rule's owners may be roles or disclaimers; run 1's
+  `runtime_check_owner` proves it) is **not entered at all** — writing it as a
+  Role row would assert a role the record never confirmed, a disclaimer least of
+  all; the roster asserts nothing about it, it fails resolution by absence, and
+  the rule ships rungless as a declared draft under decision 6 — subject to its
+  safety-spine exception: a rule whose high-risk appeal gap takes any of the
+  three ERROR forms does not ship at all — with its unresolved owners named as
+  the gaps. Role rows, agent-typed holders, and typing for the rest arrive with
+  R2's elicitation — for repos generated **after** R2: a repo generated in the
+  R1–R2 window keeps its holder-only roster, which stays valid v2 content, and
+  enriching it is that company's own edit (content is never re-copied by an
+  engine pull). These edits exist because without them the documented
   generation workflow is broken for exactly the window between R1 and R2: today's
   `generate.md` instructs `schema_version: 1`, which the R1 engine ERRORs at the
   migration boundary, and writing `2` without a roster fails the missing-roster

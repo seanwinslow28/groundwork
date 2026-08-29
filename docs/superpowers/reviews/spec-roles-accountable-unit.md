@@ -208,3 +208,16 @@ commit. Rows amended: round-12 rows 1 and 3.
 | 1 | high | R1's "ships rungless as a declared draft" was unconditional — reintroducing ship-and-fail for the high-risk appeal gaps decision 6 excludes | CONFIRMED | Fixed: the R1 rule is now subject to decision 6's safety-spine exception, restated inline. Amends round-12 rows 1 and 3 |
 | 2 | med | The same string arriving from a human-only row (Holder) and a constitution owner row (Role) would trip the roster-integrity ERROR — no dedup rule existed | PLAUSIBLE-only | Accepted: one entry per distinct string; the Holder classification wins (more information) |
 | 3 | med | The human-only rows yield a person's name, not a role — nothing said what fills the Role cell without invention | PLAUSIBLE-only | Accepted: person-confirmed owners enter as holder-only rows (Role cell empty), the Role column filled by R2's elicitation |
+
+## Round 14 — 2026-08-29, task-mtdvnkol-w61gcx, verdict: does not approve (4 findings)
+
+Reviewed: commit `0df8977` (spec after round-13 fixes, plus this log). All 4 accepted
+(three PLAUSIBLE-only, accepted as real); fixed in the following commit. Rows
+amended: round-12 row 1, round-13 rows 2 and 3.
+
+| # | Sev | Finding (compressed) | Verdict | Disposition |
+|---|---|---|---|---|
+| 1 | med | Generating an "unheld Role row" for a disclaimer invents a role the record never confirmed | CONFIRMED | Fixed: unconfirmed owner values are not entered at all — absence fails resolution identically, with no false roster content. Amends round-12 row 1 |
+| 2 | med | Holder-wins dedup suppressed the very collision the integrity rule ERRORs, invisibly | PLAUSIBLE-only | Resolved by row 1's fix: generation writes no Role rows, so there is nothing to suppress; the residual person-name coincidence is the documented intent-blind blind spot. Amends round-13 row 2 (the dedup rule is withdrawn) |
+| 3 | high | A dispute whose accounts include high-risk could carry the lower class in the scalar and ship past the spine exception — S4 entering the contract | PLAUSIBLE-only | Fixed: the exception binds by the stricter reading of a recorded dispute; S4's full tie-break stays its own queued slice |
+| 4 | med | "The Role column fills with R2's elicitation" implied R2 reaches existing rosters — engine pulls never re-copy content | PLAUSIBLE-only | Fixed: R2 fills rosters for repos generated after it; R1-window repos keep valid holder-only rosters, enriched only by their own edits. Amends round-13 row 3 |
