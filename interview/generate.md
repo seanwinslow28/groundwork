@@ -47,6 +47,7 @@ Four preconditions. All four, every time.
     <name>/owner-card.md          its Owner's Card
   governance/
     constitution/<rule>.md        one file per kept rule
+    roles.md                      who holds each owner the rules name, typed
     changelog.md                  append-only, header only at generation
     review-gate.md                the #19 review-gate instruction, as prose
   memory/
@@ -60,7 +61,7 @@ Four preconditions. All four, every time.
 shape for each artifact, and this document names fields rather than showing files: the
 executive-view table is specified in [../ontologies/README.md](../ontologies/README.md),
 the card spine in [../skills/work-package-spec.md](../skills/work-package-spec.md), the
-memory-record schema in [../memory/README.md](../memory/README.md), the rule objects in
+memory-record schema in [../memory/README.md](../memory/README.md), the rule objects and the roster in
 [../governance/README.md](../governance/README.md), and the pin file in
 [../MIGRATIONS.md](../MIGRATIONS.md). Read the shape before writing to it.
 
@@ -77,7 +78,7 @@ after twenty.
 
 **1. `groundwork.pin` last — but decide it first.** Record which engine commit you
 generated against (`git -C <engine clone> rev-parse --short HEAD`) and
-`schema_version: 1`. The pin is a frontmatter-fenced file — the two keys between two
+`schema_version: 2`. The pin is a frontmatter-fenced file — the two keys between two
 `---` lines, exactly as [../MIGRATIONS.md](../MIGRATIONS.md) shows; bare `key: value`
 lines with no fences fail the gate. **Write the pin last, and commit it only in the final
 generation commit** — if generation takes more than one commit, the pin belongs in the last
@@ -152,6 +153,60 @@ rule, runtime check, human appeal, each with its owner), a rung, and a sunset da
 things the compiler does not negotiate: a `high-risk` rule must carry a human appeal path
 with an owner — **there is no rung six** — and a repealed ritual's surviving job must be
 reassigned to a named person before the repeal ships.
+
+**Then `governance/roles.md` — and invent nothing in it.** The roster is what makes an
+owner resolve, so a rule cannot carry a rung until its four owner values do. Write it from the confirmed
+answers you already have, by this rule and no wider:
+
+- **Enter a holder, typed `human`, only where the binding protocol guarantees a person:**
+  the acted-on activity's owner and the skill's owner — the answers under the row
+  [questions.md](questions.md) marks "A role is not an owner", and the person guarantee in
+  [protocol.md](protocol.md). Write each as a **holder-only row**: the Role cell empty.
+  Those questions yield a person's name, not a role, and a Role row would assert a role the
+  record never confirmed.
+- **The backup owner is not among them.** Its `(human-only)` marker denotes where the
+  answer came from, not the holder's humanity, and nothing forbids a role-shaped backup.
+- **Every other owner value is not entered at all.** A constitution rule's owners may be
+  roles, and a run has recorded one that disclaims an owner outright — "the function, no
+  person named". Writing such a value as a Role row would assert a role the record never
+  confirmed, a disclaimer least of all. Left out, the roster asserts nothing about it and
+  it simply fails to resolve, which is the true answer.
+- **`valid_at` is the earliest `confirmed_at` among the interview layers these entries
+  transcribe.** A conservative aggregate: layers freeze independently and a newer one
+  reconfirms nothing about older entries, so the earliest date masks no entry's staleness.
+  Never the generation date, which may fall later and confirms nothing.
+- **Precondition.** Every source layer's `confirmed_at` must parse as a real, non-future
+  ISO date. A malformed or future one **stops roster generation**, naming the offending
+  layer. The legal recovery is a **new confirming turn**, never an edit — frozen layers are
+  immutable, so the operator runs a correction layer re-confirming the affected entries
+  with a parseable date, and the aggregate reads each entry's most recent confirming layer.
+  Never invent a date.
+- **`review_by` is an interim policy default**: 90 days after `valid_at`, because no
+  question elicits a review cadence yet. Record it in the file as default-not-answered, so
+  a reader can tell a policy default from an answer.
+- **`source`** names where the org map came from — the interview layers, by name.
+
+Role rows and agent-typed holders arrive when the interview elicits them directly. A repo
+generated before then keeps its holder-only roster: that is valid content, and enriching it
+is the company's own edit.
+
+**A rule with a gap ships as a declared draft, or not at all.** A constitution rule
+carrying a gap in any of three classes — a required field that is **missing**, a field
+populated but **unresolvable** against the roster, or a field populated but recorded as
+**disputed** — may ship only as a **draft** (no rung) that declares those gaps in its own
+body. An undeclared incomplete rule does not ship.
+
+**One exception, and it outranks this permission:** a rule carrying a gate ERROR that fires
+regardless of rung does not ship at all, declared or not. That is a `high-risk` rule whose
+appeal path is missing, unresolvable, or resolves to no human holder, and a repealing rule
+whose surviving job is not reassigned. Where a recorded action-class dispute includes
+`high-risk` among the accounts, this exception applies as if the rule were high-risk, even
+when the scalar field carries the lower class — otherwise a dispute the validator cannot
+read would ship a rule the spine would reject.
+
+**And the obligation that pays for the permission:** the generation report must name every
+constitution rule that shipped incomplete, and why. The permission without the obligation
+would make declaring cheaper than completing.
 
 Then `changelog.md` with its header and no entries, and `review-gate.md` — the prose form
 of the action-class rule, the instruction every harness that ignores hooks falls back to.

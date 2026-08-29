@@ -6987,6 +6987,15 @@ Sales, engineering, and legal have executive views and nothing deeper — depth 
 earned by acting, not by planning to act.
 """
 
+    def test_the_manifest_specifies_the_roster_and_the_v2_pin(self):
+        """generate.md is the manifest a generator follows. If it still says
+        schema_version: 1, or never mentions the roster, a run against the R1
+        engine produces a repo that fails the gate on its first command."""
+        text = (REPO / "interview" / "generate.md").read_text(encoding="utf-8")
+        self.assertIn("schema_version: 2", text)
+        self.assertNotIn("schema_version: 1", text)
+        self.assertIn("governance/roles.md", text)
+
     def _unlink(self, dest, rel, target):
         """Rewrite [text](target) links in the copied file `rel` to plain text."""
         p = os.path.join(dest, rel)
