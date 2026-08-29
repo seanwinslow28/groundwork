@@ -164,12 +164,19 @@ established here.
    contract and its in-file declaration, never a validator check, which does not
    read dispute prose. Run 1's central case, the populated-but-unresolvable
    `runtime_check_owner`, is the second class; the intake gate's disputed action
-   class the third.) An undeclared incomplete shipment stays prohibited. The other artifact
+   class the third.) An undeclared incomplete shipment stays prohibited. **One
+   safety-spine exception:** a high-risk rule whose appeal fields are missing or
+   unresolvable does not ship at all, declared or not — decisions 2 and 3 ERROR it
+   even as a draft, so the declared-draft path cannot apply; the spine outranks the
+   contract. The other artifact
    kinds stand unchanged: a deep record missing its Gate answer and a memory record
    missing its owner do not ship — those kinds have no draft state to ship into, and
-   this design does not invent one — while a skill missing human-only answers
-   already ships as `provisioned: no`, the work-package convention's own drafting
-   state, which this design leaves as it is.
+   this design does not invent one — while a skill missing human-only answers is
+   already written into the repo as `provisioned: no`, the work-package
+   convention's own drafting state. (`generate.md`'s wording both denies and
+   affirms this today — "the skill does not ship — write it `provisioned: no`",
+   then "the skills that shipped `provisioned: no`" — a self-contradiction R2's
+   contract amendment reconciles; the file behavior is unchanged either way.)
    Under decision 2 this is not a concession — the declared draft is the designed
    encoding of *confirmed but incomplete or unheld*. Run 1 already practiced this
    contract for the gaps it recognized as gaps: each shipped rule declares its own
@@ -280,18 +287,18 @@ biting. This is flagged for the maintainer at R1 plan review.
   scatter of field ERRORs. S3 was already the second-named bump candidate; this is
   that bump happening.
 - **Activation resolution** (`since: 2`): an active rule with an owner field that
-  resolves to nothing in the roster → ERROR (WARN under a v1 pin).
+  resolves to nothing in the roster → ERROR (behind a v1 pin's migration-boundary ERROR, demoted to a finger-pointing WARN).
 - **Appeal-human** (`since: 2`): a rule whose `human_appeal_owner` resolves to
   agent-only holders — or, on a **high-risk draft**, to nothing at all — → ERROR on
   any active rule and on high-risk drafts (the safety-spine tier decision 3
-  defines) — WARN under a v1 pin. On a non-high-risk draft, an appeal owner
+  defines) — behind a v1 pin's migration-boundary ERROR, demoted to a finger-pointing WARN. On a non-high-risk draft, an appeal owner
   resolving to agent-only holders or to nothing takes decision 5's WARN tier
   instead.
 - **Draft visibility (hole a)** (`since: 2`): a draft rule missing any owner field,
   or carrying one that does not resolve → one WARN per gap, named. The existing
   draft-time safety-spine ERRORs are untouched.
 - **Missing roster** (`since: 2`): an instance with any active constitution rule and
-  no `governance/roles.md` → ERROR (WARN under a v1 pin); an instance with only
+  no `governance/roles.md` → ERROR (behind a v1 pin's migration-boundary ERROR, demoted to a finger-pointing WARN); an instance with only
   drafts → WARN.
 - **Scope: constitution rules only, deliberately.** Owner-shaped fields also live in
   deep records (`accountable_owner`, `gate_owner`), owner cards, and memory records.
@@ -339,15 +346,20 @@ review:
   instance carrying an active rule, so without its own roster R1 would turn
   groundwork's own gate red), the demo roster rows naming its existing person-owners
   as holders, tests, and the `docs/rule-map.md`, `docs/known-limitations.md`, and
-  `MIGRATIONS.md` entries. **R1 also carries the minimal `generate.md` workflow
-  edits** — the pin writes `schema_version: 2`, and a `governance/roles.md` is
-  generated from the confirmed owner answers (each named owner enters as a holder;
-  the interview's existing human-only markers supply the type) — because without
-  them the documented generation workflow is broken for exactly the window between
-  R1 and R2: today's `generate.md` instructs `schema_version: 1`, which the R1
-  engine ERRORs at the migration boundary, and writing `2` without a roster fails
-  the missing-roster check on any active rule. A generation run on the R1 engine
-  must produce a passing repo.
+  `MIGRATIONS.md` entries, **and the demo pin migrated to `schema_version: 2`** —
+  without that, the R1 engine's own gate goes red on `demo/groundwork.pin` at the
+  migration boundary. **R1 also carries the minimal `generate.md` workflow edits**
+  — the pin writes `schema_version: 2`, and a `governance/roles.md` is generated
+  from the confirmed owner answers, every holder typed `human`: until R2 rewrites
+  it, the binding interview protocol still requires person owners ("a person, not a
+  role"), so typing its confirmed owners human is transcription of what that
+  protocol guarantees, not interpretation, and agent-typed holders become possible
+  only with R2's elicitation. These edits exist because without them the documented
+  generation workflow is broken for exactly the window between R1 and R2: today's
+  `generate.md` instructs `schema_version: 1`, which the R1 engine ERRORs at the
+  migration boundary, and writing `2` without a roster fails the missing-roster
+  check on any active rule. A generation run on the R1 engine must produce a
+  passing repo.
 - **R2** — the `generate.md` contract amendment (hole b) and the prose rewrite,
   including the full roster elicitation (typed holders asked for directly, rather
   than derived from the human-only markers).

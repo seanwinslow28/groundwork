@@ -168,3 +168,18 @@ implied a green gate; in fact skew ≥ 1 fires the single migration-boundary ERR
 the `since: 2` demotions are the finger-pointing behind that red gate (the pull
 promise's one-clean-error form). This supersedes the tier wording in round-4 row 1
 and round-7 row 2 a second time.
+
+## Round 11 — 2026-08-29, task-mtdul84p-fvdaa7, verdict: does not approve (5 findings, 3 high)
+
+Reviewed: commit `539dea5` (spec after round-10 fixes, plus this log). All 5 findings
+accepted; fixed in the following commit. The highs show round 10's sequencing fix was
+infeasible as written, incomplete, and in contradiction with the spine. Rows amended:
+round-10 rows 1 and 2.
+
+| # | Sev | Finding (compressed) | Verdict | Disposition |
+|---|---|---|---|---|
+| 1 | high | R1's roster typing "from the human-only markers" is infeasible — the marker denotes answer source, not holder humanity, and covers one owner row of five | CONFIRMED | Fixed: R1 types every holder `human`, which is transcription under the still-binding person-owner protocol; agent holders arrive with R2's elicitation. Amends round-10 row 1 |
+| 2 | high | R1 omitted migrating `demo/groundwork.pin` — the R1 engine's own gate would go red on demo at the migration boundary | CONFIRMED | Fixed: the demo pin migration joins R1's enumeration |
+| 3 | high | Decision 6 permitted shipping a declared draft with an unresolvable field while decisions 2–3 ERROR a high-risk draft with an unresolvable appeal owner — ship-and-fail | CONFIRMED | Fixed: decision 6 gains the safety-spine exception — high-risk appeal gaps do not ship, declared or not |
+| 4 | med | `generate.md` itself both denies and affirms that `provisioned: no` skills ship — the spec repeated the affirmation as if uncontested | CONFIRMED | Fixed: the spec states the self-contradiction and assigns its reconciliation to R2. Amends round-10 row 2 |
+| 5 | low | The three per-check bullets still said "(WARN under a v1 pin)" after round 10's recast — accurate in context, but the log overstated removal | CONFIRMED | Fixed: all three bullets now name the demotion as finger-pointing behind the boundary ERROR |
