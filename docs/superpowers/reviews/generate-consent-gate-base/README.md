@@ -4,13 +4,14 @@ The durable per-round review log rule 9 requires. Rule 9 lands on the sibling br
 `docs/review-record-rule`, this session's other slice, and the approved landing order puts
 it first — so this log is kept prospectively, and merging this branch ahead of that one
 would make the citation premature. Rule 9 is the operative text; this file carries the
-parts that keep changing, and each `round-NN.md` beside it is fixed once its round has
-passed.
+parts that keep changing, and each `round-NN.md` beside it is fixed once committed.
 
 **This log's own addition, which rule 9 does not require:** each finding is marked
 CONFIRMED (the reviewer verified it against a source) or PLAUSIBLE (reasoned, unverified).
 
-**Layout.** Rounds 1–6 ran before rule 9 named the per-round layout; they were split into
+**Branch:** `docs/generate-consent-gate-base`.
+
+**Layout.** Rounds 1–6 ran before rule 9 named the per-entry layout; they were split into
 `round-NN.md` unchanged when the maintainer's decisions landed (round 7). No round's
 content was edited in the move.
 
