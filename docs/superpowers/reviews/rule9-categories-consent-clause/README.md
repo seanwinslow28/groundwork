@@ -29,7 +29,8 @@ answered, in the directories that raised them:
 | `round-02.md` | `74369a5` | 2 minor findings (reported once per axis; no approval word given) | `4dc7bc6` |
 | `round-03.md` | `4dc7bc6` | 1 minor finding (reported once per axis; no approval word given) | `c27257e` — a record-only correction, no product file changed |
 | `round-04.md` | `c27257e` | not clean: 3 Standards, 2 Spec, "three unique defects overall" | `933f1fc` |
-| `round-05.md` | `933f1fc` | not clean: 2 Minor Standards, 2 Minor Spec, "two unique Minor defects" | see the next entry |
+| `round-05.md` | `933f1fc` | not clean: 2 Minor Standards, 2 Minor Spec, "two unique Minor defects" | `bb76828` |
+| `round-06.md` | `bb76828` | **approving — 0 findings**, "Ready to merge" | none needed |
 
 ## Open findings
 
@@ -59,6 +60,14 @@ immutable, as rule 9 requires:
 ## Rejected findings
 
 None.
+
+## Status
+
+**Ready to merge.** Round 6 approved with no findings, against `bb76828`. Every finding on
+the branch is fixed or corrected, none is open, none is rejected, and the gate is green at
+the post-R1 baselines: engine `0 error(s), 8 warning(s)`; `demo` `0 error(s), 3 warning(s)`;
+`--diff main` exit 0; 824 tests OK, one skipped. The commit carrying `round-06.md` is the
+unreviewed terminal commit rule 9 accepts.
 
 ## Maintainer items
 
