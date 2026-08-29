@@ -26,15 +26,23 @@ answered, in the directories that raised them:
 | Entry | Reviewed revision | Verdict | Fixes committed in |
 |---|---|---|---|
 | `round-01.md` | `85211b4` | 1 minor finding, 0 spec findings (no approval word given) | `74369a5` |
-| `round-02.md` | `74369a5` | 2 minor findings (reported once per axis; no approval word given) | see the next entry |
+| `round-02.md` | `74369a5` | 2 minor findings (reported once per axis; no approval word given) | `4dc7bc6` |
+| `round-03.md` | `4dc7bc6` | 1 minor finding (reported once per axis; no approval word given) | record-only correction, in `round-03.md` itself |
 
 ## Open findings
 
-None. Round 1's one finding and round 2's two are all fixed or corrected.
+None. Every finding from rounds 1–3 is fixed or corrected.
 
-**Correction carried by `round-02.md`:** `round-01.md`'s scope note says seven disclosed
-items where the list holds six. The entry is immutable, so the correction lives in the later
-entry, as rule 9 requires.
+**Two corrections to earlier entries, each carried by a later one** — the entries themselves
+are immutable, as rule 9 requires:
+
+- **`round-02.md` corrects `round-01.md`:** its scope note says seven disclosed items where
+  the list holds six. Six is right.
+- **`round-03.md` corrects `round-02.md`:** its claim that every complete entry-12 citation
+  trips `check_entropy` is false — a relative markdown link to the directory scores 3.952797
+  and resolves — and its two figures came from two different citation forms. The split
+  citation in rule 9 is a style choice, not a necessity; `round-03.md` carries all four
+  measurements.
 
 ## Rejected findings
 
