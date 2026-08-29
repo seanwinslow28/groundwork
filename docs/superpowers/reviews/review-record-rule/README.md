@@ -12,7 +12,7 @@ CONFIRMED (the reviewer verified it against a source) or PLAUSIBLE (reasoned, un
 
 **Layout.** Rounds 1–6 ran before rule 9 named the per-entry layout; they were split into
 `round-NN.md` unchanged when the maintainer's decisions landed (round 7). No round's
-content was edited in the move. An entry is fixed once committed.
+content was edited in the move.
 
 **Session note.** Both branches of this session — this one and
 `docs/generate-consent-gate-base` — were built as one session's work, departing from rule 1
@@ -34,11 +34,15 @@ the maintainer's at merge.
 | 8 | `b33296e` | does not approve | 9 | `21c6c74` |
 | 9 | `21c6c74` | does not approve | 9 | `edce94b` |
 | 10 | `edce94b` | does not approve | 6 | `214c1b5` |
-| 11 | `214c1b5` | does not approve | 5 | see round-12 |
+| 11 | `214c1b5` | does not approve | 5 | `7f327ab` |
+| 12 | `7f327ab` | does not approve | 3 | see round-14 |
+| 13 | — | record correction, not a review round | — | see round-14 |
 
-Seventy-six findings across ten review rounds, all accepted, none rejected. Sixteen rows
-that had been escalated rather than closed are dispositioned in `round-09.md`, three of them
-corrected again in `round-10.md`.
+Eighty-one findings across eleven review rounds, all accepted, none rejected. **Seventeen**
+rows that had been escalated rather than closed are dispositioned across `round-09.md`,
+`round-10.md` and `round-11.md` — each table superseding the last, the seventeenth row found
+only at round 11 — and `round-13.md` reclassifies the last two that were recorded as
+"standing" rather than open.
 
 ## Rejected findings
 
@@ -59,13 +63,22 @@ not that every finding is closed:
 - which commit is mapped when one round's fixes span several;
 - how a clean round is represented — left open by maintainer decision 11;
 - whether treating a directory rename as outside entry immutability is coherent, given git
-  records it as a path deletion and addition.
+  records it as a path deletion and addition;
+- which plan supplies `<slice>` when a branch's commits edit a plan and then revert it, or
+  rename or delete one — the "adds or changes" test is not settleable from the final diff in
+  those cases.
 
 ## Open maintainer items
 
 **None blocking.** The eleven items rounds 4–6 raised were decided by the maintainer on
 2026-08-29; `round-07.md` records each decision and `round-08.md` records where round 8
 found the landing incomplete and what was fixed.
+
+### Open, from the reclassified rows
+
+- **The rule-1 departure** — this session built two slices where rule 1 allows one. Recorded
+  from the moment it was noticed; ratification is the maintainer's at merge. Reclassified
+  from "standing" to open in `round-13.md`.
 
 **One item is open for the maintainer: what counts as adequate grounds for rejecting a
 finding.** It was part of item 8 and the decision did not cover it. Round 8 defined it
