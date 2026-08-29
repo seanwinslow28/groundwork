@@ -39,15 +39,36 @@ roster's staleness WARN belongs to R2b, which is what gives the demo an elicited
 | 02 | `3d61902` | 3 findings, no approve/does-not-approve word | 3 | `a9bc5de` |
 | 03 | `a9bc5de` | does not approve as written | 4 | `99514c3` |
 | 04 | `99514c3` | 2 findings, Spec clean, no approve/does-not-approve word | 2 | `5081052` |
-| 05 | `5081052` | 2 findings, Spec clean, no approve/does-not-approve word | 2 | `<round-05 fixes>` |
+| 05 | `5081052` | 2 findings, Spec clean, no approve/does-not-approve word | 2 | `20ec974` |
+| 06 | `20ec974` | **approve** | 0 | terminal |
+
+Every finding raised on this branch was **fixed**. Round 1 found one in the product edits;
+every finding from round 2 on was in this record's own prose about its work, and rounds 4,
+5 and 6 reported the Spec axis clean.
 
 ## Open findings
 
-None recorded yet.
+**None.** No finding on this branch is open.
 
 ## Rejected findings
 
-None recorded yet.
+**None.** Rule 9's three-category rejection list was never used on this branch — nothing
+was closed by disagreeing with it. Two findings were fixed by a different route than the
+reviewer proposed, and both are recorded as fixed with the reasoning in the entry, not as
+rejections: round 2's third finding (`round-02.md`) and round 3's fourth (`round-03.md`).
+
+## Baselines
+
+**Unchanged by this slice**, and stated because the next session inherits them:
+`validate.py .` → 0 errors, 8 warnings, exit 0; `validate.py demo` → 0 errors, 3 warnings;
+`validate.py . --diff main` → exit 0; `unittest discover -s tests` → OK, 824 tests,
+skipped=1. Retiring the demo roster's staleness WARN belongs to R2b, which gives the demo
+an elicited cadence.
+
+## Status
+
+**Ready for the maintainer to merge.** Round 6 approved with zero findings; every finding
+is fixed; no finding is open or rejected; the gate is green on all four commands.
 
 ## Maintainer items
 
