@@ -33,9 +33,10 @@
    an earlier row by superseding it, never by rewriting the earlier round's table.
    *Evidence:* the session that landed rule 8 ran twenty-five rounds — sixteen on the
    groundwork branch, nine on the persona-company correction, per merge commit `df6df21` —
-   and what survives is what its fix commits chose to quote. Two of the sixteen — r3 and r9 —
-   left no commit in the `fix(build): Codex r…` sequence, and nothing else in the repository
-   records them; no complete round output survives anywhere. The honesty plan paid the same cost
+   and what survives is what the fix commits and the merge chose to quote. Three of the
+   sixteen left no numbered commit in the `fix(build): Codex r…` sequence: r16 approved, and
+   `df6df21` carries that verdict and both round counts; r3 and r9 left nothing, there or
+   anywhere else in the repository. No complete round output survives for any of the sixteen. The honesty plan paid the same cost
    earlier: its header records that its three rounds' "review outputs were not retained",
    leaving the merge as the durable record of the approval, with "no inspectable artifact"
    dating round 3 itself. The non-gating rounds are where the pattern data lives — the
