@@ -111,3 +111,17 @@ and 3.
 | 3 | med | "A row with no holder is unheld" contradicted "listing it as a Role resolves it" — a holderless Role row does not resolve | CONFIRMED | Fixed at all three sites: resolution = Holder cell, or Role row with a holder. Amends round-5 row 3 |
 | 4 | low | "`_answered()` rejects only placeholders" is overbroad — it also rejects empty values and non-strings | CONFIRMED | Fixed: the full rejection set stated |
 | 5 | low | Round-5 row 2's amendment pointer named round-3 row 6 but not round-4 row 3, whose "matching the files" disposition the same omission falsified | CONFIRMED | Recorded here (append-and-supersede; prior rows stay as written): round-5 row 2 also amends round-4 row 3 |
+
+## Round 7 — 2026-08-28, task-mtdsjg9i-ucu826, verdict: does not approve (4 findings)
+
+Reviewed: commit `dfe0b2c` (spec after round-6 fixes, plus this log). All 4 findings
+accepted; fixed in the following commit. All four are consistency debts of round 6's
+own design changes. Rows amended: round-6 rows 1 and 2; round-4 row 1 (superseded by
+round-6 row 2, recorded here per row 4 below).
+
+| # | Sev | Finding (compressed) | Verdict | Disposition |
+|---|---|---|---|---|
+| 1 | high | Decision 6's classes claimed to "mirror" decision 5's — they differ (disputed vs wrongly-typed; required vs owner fields), and no validator check reads disputes | CONFIRMED | Fixed: the mirror claim dropped; the contract's classes stated as deliberately wider, with the disputed class binding contract and declaration only. Amends round-6 row 1 |
+| 2 | high | The new resolves-to-nothing ERROR's pin tier was unstated in decision 3 and conflicts with decision 2's unqualified invariant under a v1 pin | CONFIRMED | Fixed: both resolution-based ERRORs are `since: 2` — necessarily, since a v1 repo has no roster to resolve against; the verbatim invariant is the v1 check's, said at both decision 2 and decision 3. Amends round-6 row 2 |
+| 3 | med | Decision 5's "no roster match" omitted the holderless-Role-row case, which matches but does not resolve | CONFIRMED | Fixed: "does not resolve (no match, or a match on a Role row with no holder)" |
+| 4 | low | Round 6's amendment list omitted round-4 row 1, whose age-tier disposition the resolves-to-nothing check superseded | CONFIRMED | Recorded here: round-6 row 2 also amends round-4 row 1 |

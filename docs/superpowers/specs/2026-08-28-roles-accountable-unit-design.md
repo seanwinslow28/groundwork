@@ -74,7 +74,9 @@ their shape from the holding semantics.
    above all, the ERROR on a high-risk rule with no answered appeal path and owner —
    keep firing on drafts exactly as the code and
    `test_draft_high_risk_without_appeal_still_errors` pin today. "A high-risk draft
-   with no appeal path must not leave the gate green" stays true verbatim.
+   with no appeal path must not leave the gate green" stays true verbatim in the
+   sense that check gives it — answered appeal fields; decision 3 states how its
+   resolution-strengthened form tiers under version pins.
    **On S3:** this decision supersedes S3's requested outcome rather than delivering
    it. S3 asked for a representable third state so the machine layer stops reading
    *draft* for a practice the confirmed record carries as enforced with no owner
@@ -105,12 +107,15 @@ their shape from the holding semantics.
    appeal reaching no human is no appeal path by this decision's own definition, and
    a WARN would leave exit 0, exactly the green gate the spine forbids. On
    non-high-risk drafts, an appeal owner resolving to nothing stays in decision 5's
-   WARN tier — unheld is the drafting state. The tiers under a v1 pin
-   differ by age: the existing check — a high-risk rule whose appeal fields are not
-   answered — is a v1 ERROR and keeps firing as one under any pin; only the **new**
-   agent-only-resolution ERRORs are `since: 2` checks, demoted to WARN on v1-pinned
-   content, so that part of the spine's guarantee holds in full from v2. Value,
-   rule, and runtime-check owners may be agent-held.
+   WARN tier — unheld is the drafting state. The tiers under a v1 pin differ by
+   age: the existing check — a high-risk rule whose appeal fields are not answered —
+   is a v1 ERROR and keeps firing as one under any pin, and decision 2's verbatim
+   spine guarantee is that check's. Both **new** resolution-based ERRORs —
+   agent-only holders, and resolves-to-nothing on a high-risk draft — are `since: 2`
+   and demote to WARN on v1-pinned content, necessarily so: a v1 repo has no roster
+   to resolve against, so a resolution check cannot bind content pinned before
+   rosters existed. The resolution-strengthened form of the spine therefore holds in
+   full from v2. Value, rule, and runtime-check owners may be agent-held.
    *Counter-argument, recorded:* per-object holder-type rules add a distinction the
    schema could not previously see, and the smallest adopter — one human holding
    everything — carries typing machinery built for the multi-agent case.
@@ -127,10 +132,10 @@ their shape from the holding semantics.
 
 5. **Hole (a), the drafting gate: WARN, naming each gap.** A draft rule raises one
    WARN per gap in three named classes: a missing owner field (any of the four —
-   rule owner, value owner, runtime-check owner, appeal owner), an owner value with
-   no roster match, and an appeal owner that resolves but to agent-only holders on a
-   non-high-risk draft — resolvable, wrongly typed. Each WARN names its gap
-   specifically. (A missing sunset already
+   rule owner, value owner, runtime-check owner, appeal owner), an owner value that
+   does not resolve (no roster match, or a match on a Role row with no holder), and
+   an appeal owner that resolves but to agent-only holders on a non-high-risk
+   draft — resolvable, wrongly typed. Each WARN names its gap specifically. (A missing sunset already
    WARNs today, draft or active, outside the rung branch; that check is unchanged.)
    Today an absent rule owner and appeal owner on a draft raise nothing at all (the
    safety-spine ERRORs above are the exception, and they stay ERRORs). Blocking more
@@ -146,10 +151,13 @@ their shape from the holding semantics.
    field populated but unresolvable against the roster, or a field populated but
    recorded as disputed — may ship only as a draft that declares those gaps in-file,
    and the generation report must name every artifact that shipped incomplete and
-   why. (The three classes mirror decision 5's WARN classes; run 1's central case,
-   the populated-but-unresolvable `runtime_check_owner`, is the second, and its
-   disputed action class the third.) An undeclared incomplete shipment stays
-   prohibited. The other artifact
+   why. (These are the contract's own classes, deliberately wider than decision 5's
+   WARN classes: they cover every required field, not only owner fields, and the
+   disputed class is visible only in prose — a recorded dispute binds the generation
+   contract and its in-file declaration, never a validator check, which does not
+   read dispute prose. Run 1's central case, the populated-but-unresolvable
+   `runtime_check_owner`, is the second class; its disputed action class the
+   third.) An undeclared incomplete shipment stays prohibited. The other artifact
    kinds' no-ship rules — a deep record missing its Gate answer, a memory record
    missing its owner, a skill missing human-only answers — stand unchanged: they have
    no draft state to ship into, and this design does not invent one.
