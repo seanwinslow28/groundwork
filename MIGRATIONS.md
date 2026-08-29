@@ -39,9 +39,15 @@ It lives at the company-repo root, independent of `interview/`.
 
 ## Per-check `since:` demotion
 
-Each check declares the `SCHEMA_VERSION` it was introduced at. A finding from a check
-introduced at v*N* **demotes from ERROR to WARN** for content pinned below *N*: a v1 repo
-has no roster, so a v2 resolution check cannot bind content pinned before rosters existed.
+A finding may carry the `SCHEMA_VERSION` its requirement was introduced at, and one that
+does **demotes from ERROR to WARN** for content pinned below that version: a v1 repo has no
+roster, so a v2 resolution check cannot bind content pinned before rosters existed.
+
+A finding that carries no version binds **every** pin, and that is the default. Every check
+that predates versioning is in that state, and a check that gained new requirements at v2
+tags only those — the high-risk appeal spine, for instance, keeps ERRORing on its original
+answered-fields condition under any pin while its new resolution-based conditions demote.
+The tag is per finding, not per check, for exactly that reason.
 
 This is not leniency. Such a repo is already red at the **one** migration-boundary ERROR
 above, and the demoted WARNs are the precise finger-pointing that error promises — which
@@ -74,13 +80,17 @@ escalating change wanting a proposal.
 1. Write `governance/roles.md`. Frontmatter: `valid_at` (when this mapping was last
    confirmed — a snapshot, not when a fact became true), `review_by`, and `source` (where the
    org map came from). Then one table, `| Role | Holder | Type |`, plain-text cells.
-2. Make every **active** rule's four owner values resolve. Two ways, by exact string: a value
+2. Write it as one table and nothing else: below the frontmatter a roster carries no code
+   fence, no angle-bracket construct (HTML tag, comment, doctype, CDATA, processing
+   instruction, or autolink), and no `|` outside the table. Non-rendered text must never
+   supply a holder. See `governance/README.md`.
+3. Make every **active** rule's four owner values resolve. Two ways, by exact string: a value
    matching a **Role** cell resolves to that row's holders; a value matching a **Holder** cell
    resolves to that holder. A person-named owner therefore resolves through a **holder-only
    row** — the Role cell left empty, which asserts a holder without asserting a role. A role
    with no row, or a row with no holder, is unheld.
-3. Check that every `human_appeal_owner` reaches a holder typed `human`.
-4. Set `schema_version: 2` in `groundwork.pin`.
+4. Check that every `human_appeal_owner` reaches a holder typed `human`.
+5. Set `schema_version: 2` in `groundwork.pin`.
 
 A rule you cannot complete does not have to be forced: drop its `rung` and it is a draft
 again, with its gaps named as WARNs rather than guessed at — **except a `high-risk` rule**,

@@ -2337,11 +2337,13 @@ class TestRoster(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             self._roster(d, ROSTER_OK + "\n```\n| Ghost Role | Ghost Holder | human |\n```\n")
             findings = validate.check_roles(d)
-            # Asserted on BEHAVIOUR, not wording: the mechanism behind this has
-            # changed three times (bounded table -> masking -> restricted
-            # grammar) and a message assertion broke each time while the
-            # property under test never did.
-            self.assertTrue(any(f.level == "ERROR" for f in findings), findings)
+            # Asserted on the CLASS of error, not one wording: the mechanism has
+            # changed three times and a wording assertion broke on each change.
+            # Codex r4 was right that bare any(ERROR) is weaker than what it
+            # replaced — an unrelated ERROR would satisfy it — so the assertion
+            # names the construct instead.
+            self.assertTrue(any(f.level == "ERROR" and "fence" in f.message
+                                for f in findings), findings)
             roster, _f = validate._load_roster(d, d)
             self.assertEqual(validate._resolve_owner(roster, "Ghost Role"), [])
             self.assertEqual(validate._resolve_owner(roster, "Ghost Holder"), [])
@@ -2379,7 +2381,8 @@ class TestRoster(unittest.TestCase):
                 "| Role | Holder | Type |\n|---|---|---|\n| CISO | Ghost | human |\n" + (ch * 4) + "\n"
             with tempfile.TemporaryDirectory() as d:
                 self._roster(d, head + body)
-                self.assertTrue(any(f.level == "ERROR" for f in validate.check_roles(d)), ch)
+                self.assertTrue(any(f.level == "ERROR" and "fence" in f.message
+                                    for f in validate.check_roles(d)), ch)
                 roster, _f = validate._load_roster(d, d)
                 self.assertEqual(validate._resolve_owner(roster, "CISO"), [], ch)
                 self.assertEqual(validate._resolve_owner(roster, "Ghost"), [], ch)
@@ -2393,7 +2396,8 @@ class TestRoster(unittest.TestCase):
                        ("| Role | Holder | Type |", "|---|---|---|", "| CISO | Ghost | human |"))
         with tempfile.TemporaryDirectory() as d:
             self._roster(d, head + body)
-            self.assertTrue(any(f.level == "ERROR" for f in validate.check_roles(d)))
+            self.assertTrue(any(f.level == "ERROR" and "angle-bracket" in f.message
+                                for f in validate.check_roles(d)))
             roster, _f = validate._load_roster(d, d)
             self.assertEqual(validate._resolve_owner(roster, "CISO"), [])
             self.assertEqual(validate._resolve_owner(roster, "Ghost"), [])
@@ -2403,9 +2407,48 @@ class TestRoster(unittest.TestCase):
         body = "<div hidden>\n| Role | Holder | Type |\n|---|---|---|\n| CISO | Ghost | human |\n</div>\n"
         with tempfile.TemporaryDirectory() as d:
             self._roster(d, head + body)
-            self.assertTrue(any(f.level == "ERROR" for f in validate.check_roles(d)))
+            self.assertTrue(any(f.level == "ERROR" and "angle-bracket" in f.message
+                                for f in validate.check_roles(d)))
             roster, _f = validate._load_roster(d, d)
             self.assertEqual(validate._resolve_owner(roster, "CISO"), [])
+
+    def test_no_html_block_opener_can_hide_a_table(self):
+        """Codex r4, BLOCKER: the round-3 pattern matched only '<' + letter or
+        '/', so `<?`, `<!DOCTYPE ...>` and `<![CDATA[` wrapped a canonical table
+        with zero findings and a resolving ghost holder."""
+        table = "| Role | Holder | Type |\n|---|---|---|\n| CISO | Ghost | human |\n"
+        for opener, closer in (("<?php", "?>"), ("<!DOCTYPE html>", ""),
+                               ("<![CDATA[", "]]>"), ("<div hidden>", "</div>")):
+            head = ROSTER_OK.split("# Roles")[0] + "# Roles\n\n"
+            with tempfile.TemporaryDirectory() as d:
+                self._roster(d, head + opener + "\n" + table + closer + "\n")
+                self.assertTrue(any(f.level == "ERROR" and "angle-bracket" in f.message
+                                    for f in validate.check_roles(d)), opener)
+                roster, _f = validate._load_roster(d, d)
+                self.assertEqual(validate._resolve_owner(roster, "CISO"), [], opener)
+                self.assertEqual(validate._resolve_owner(roster, "Ghost"), [], opener)
+
+    def test_an_autolink_is_refused_and_that_is_documented(self):
+        """Codex r4: an autolink is Markdown, not HTML, so refusing it is
+        over-catching. It is refused deliberately — one checkable rule beats a
+        grammar that has been wrong twice — and both docs say to write a plain
+        URL instead. Pinned so the choice cannot drift into an accident."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("# Roles — who holds what",
+                                              "# Roles — who holds what\n\nSee <https://example.com>."))
+            self.assertTrue(any(f.level == "ERROR" and "angle-bracket" in f.message
+                                for f in validate.check_roles(d)))
+        for doc in ("governance/README.md", "MIGRATIONS.md"):
+            text = (REPO / doc).read_text(encoding="utf-8")
+            self.assertIn("angle-bracket", text.lower(), doc)
+
+    def test_a_pipe_in_prose_outside_the_table_errors(self):
+        """Newly documented in governance/README.md and MIGRATIONS.md, so it is
+        pinned: explanatory prose carrying a '|' reads as a second table."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK + "\nRead this as role | holder pairs.\n")
+            self.assertTrue(any(f.level == "ERROR" and "one table" in f.message
+                                for f in validate.check_roles(d)))
 
     def test_an_empty_roster_is_legitimate(self):
         """Codex r2: a draft-only instance whose mapping nobody has confirmed has
@@ -2432,7 +2475,8 @@ class TestRoster(unittest.TestCase):
     def test_a_commented_out_row_is_not_a_holder(self):
         with tempfile.TemporaryDirectory() as d:
             self._roster(d, ROSTER_OK + "\n<!-- | Ghost | Ghost Holder | human | -->\n")
-            self.assertTrue(any(f.level == "ERROR" for f in validate.check_roles(d)))
+            self.assertTrue(any(f.level == "ERROR" and "angle-bracket" in f.message
+                                for f in validate.check_roles(d)))
             roster, _f = validate._load_roster(d, d)
             self.assertEqual(validate._resolve_owner(roster, "Ghost"), [])
             self.assertEqual(validate._resolve_owner(roster, "Ghost Holder"), [])

@@ -2026,10 +2026,16 @@ ROSTER_REL = ("governance", "roles.md")
 ROSTER_FIELDS = ("valid_at", "review_by", "source")
 HOLDER_TYPES = {"human", "agent"}
 ROSTER_HEADER = ["role", "holder", "type"]
-# An opening or closing HTML tag: '<' then a letter or '/'. Deliberately coarse —
-# a roster has no legitimate use for one, so over-catching costs a clear ERROR
-# while under-catching hides a holder.
-_HTML_TAGGISH = re.compile(r"<[A-Za-z/]")
+# Any angle-bracket construct: '<' then a letter, '/', '!' or '?'. That is every
+# CommonMark HTML-block opener — a tag, a closing tag, a comment, `<!DOCTYPE`,
+# `<![CDATA[`, and a `<?` processing instruction — all of which can hide a table
+# (Codex r4 wrapped one in the last three). It also catches an autolink such as
+# `<https://example.com>`, which is Markdown rather than HTML: that is
+# DELIBERATE, not collateral. Drawing the line at "no angle brackets in a roster
+# body" is one rule a reader can check, where "HTML but not autolinks" is a
+# grammar that has already been wrong twice. Write a plain URL or a
+# `[text](url)` link instead; governance/README.md says so.
+_ANGLE_CONSTRUCT = re.compile(r"<[A-Za-z/!?]")
 
 # roles: {role -> [holder, ...]}, where [] is a declared-but-unheld role.
 # holders: {holder -> "human" | "agent"}.
@@ -2116,11 +2122,13 @@ def _parse_roster(text, rel):
                                     "a roster carries no code fence — its one table must be "
                                     "the text a reader sees, and a fence can hide one", 2))
             return Roster(roles, holders), findings
-        if "<!--" in ln or "-->" in ln or _HTML_TAGGISH.search(ln):
+        if "-->" in ln or _ANGLE_CONSTRUCT.search(ln):
             findings.append(Finding("ERROR", rel, n + 1,
-                                    "a roster carries no HTML comment or tag — hidden text "
-                                    "must never supply a holder, and removing it can invent "
-                                    "a row the file never had", 2))
+                                    "a roster body carries no angle-bracket construct — an "
+                                    "HTML comment, tag, doctype, CDATA section or processing "
+                                    "instruction can hide a table, and an autolink is "
+                                    "refused with them so the rule stays one a reader can "
+                                    "check; write a plain URL or an ordinary Markdown link", 2))
             return Roster(roles, holders), findings
 
     pipe = [n for n in range(body_start, len(lines)) if "|" in lines[n]]

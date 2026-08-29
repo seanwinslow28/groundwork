@@ -59,6 +59,23 @@ source: <where this org map came from: an interview layer, an HR system, the fou
 - `valid_at` is a **snapshot**, deliberately narrower than org-memory's
   when-the-fact-became-true `valid_at`.
 
+**The body is a restricted grammar, and the restrictions are whole-file.** Below the
+frontmatter a roster carries **one** table and nothing that could be mistaken for another:
+
+- **No code fence** (``` or `~~~`), anywhere. A fence can hide a table, and a fence's own
+  length rules are a place to be subtly wrong.
+- **No angle-bracket construct** — no HTML tag, comment, doctype, CDATA section or
+  processing instruction, and **no autolink** (`<https://example.com>`) either. An autolink
+  is Markdown rather than HTML, so refusing it is deliberately over-strict: one rule a
+  reader can check beats a grammar that must decide what renders. Write a plain URL, or an
+  ordinary bracket-and-parenthesis Markdown link.
+- **No `|` outside the table.** A pipe in explanatory prose reads as a second table, so it
+  is refused rather than guessed at.
+
+Each of these is an ERROR naming its own line. They exist because non-rendered text must
+never supply a holder: an owner that resolves against something a reader cannot see is the
+exact failure held-to-activate is here to prevent.
+
 Changing the roster in a governed root is an escalating change (#17): it decides who holds
 every active rule's owners, and where its human appeal terminates.
 
