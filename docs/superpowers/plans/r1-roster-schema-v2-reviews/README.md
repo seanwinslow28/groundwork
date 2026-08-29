@@ -17,12 +17,14 @@ keep changing.
 | 2 | `4bee0a7` | does not approve | 7 (1 BLOCKER, 1 HIGH, 3 MEDIUM, 2 LOW) | `87817ae` |
 | 3 | `fae6858` | does not approve | 6 (2 BLOCKER, 1 MEDIUM, 3 LOW) | `65fed7d` |
 | 4 | `1d45659` | does not approve | 4 (1 BLOCKER, 1 MEDIUM, 2 LOW) | `243adb7` |
+| 5 | `e3efe16` | does not approve | 5 (1 BLOCKER, 1 MEDIUM, 3 LOW) | `153aa65` |
 
-Twenty-eight findings across four rounds. Twenty-seven fixed; one rejected with grounds.
+Thirty-three findings across five rounds. Thirty-two fixed; one rejected with grounds.
 
 **Corrections to earlier entries live in later ones**, per rule 9: `round-03.md` corrects
 `round-02.md`'s axis split, and `round-04.md` corrects `round-03.md`'s claim that two changed
-test assertions were "strictly stronger" — one of them was not.
+test assertions were "strictly stronger" — one of them was not; and `round-05.md` corrects
+two false narrative summaries in `round-04.md`.
 
 ## Open findings
 
