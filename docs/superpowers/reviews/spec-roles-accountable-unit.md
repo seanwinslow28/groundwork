@@ -36,3 +36,21 @@ and the correction verified against the cited source.
 Also verified clean by the round: the validator comments at `scripts/validate.py:1811`
 and `:1852` match exactly; the three honesty-plan phrases match verbatim; r3 and r9
 are indeed absent from the `fix(build): Codex r…` sequence.
+
+## Round 2 — 2026-08-28, task-mtdqqmhp-0wvkcp, verdict: does not approve (7 findings)
+
+Reviewed: commit `1626d6c` (spec after round-1 fixes, plus this log). All 7 findings
+accepted; fixed in the following commit. Two highs show round-1 fixes that were
+incomplete — the partial-fix failure mode this branch's kickoff predicted. Round-1
+rows 1, 2, 7, 9, and 13 are **amended** by rows 1–5 below (append-and-supersede;
+round 1's table stays as written).
+
+| # | Sev | Finding (compressed) | Verdict | Disposition |
+|---|---|---|---|---|
+| 1 | high | The S3-supersession fix kept "live practice" — the correction leaves company practice unestablished; S3's basis is the confirmed record | CONFIRMED | Fixed at all three sites: "a practice its confirmed record carries at hard-block with an owner nobody claims", liveness explicitly unestablished. Amends round-1 row 1 |
+| 2 | high | Appeal-human checked only at activation lets a high-risk draft with an agent-resolving appeal owner stay green — the spine forbids that verbatim | CONFIRMED | Fixed: agent-only resolution ERRORs on high-risk drafts too (affirmatively wrong, not incomplete); unresolved-on-draft stays decision 5's WARN. Decision 3 and the validator bullet both updated. Amends round-1 row 2 |
+| 3 | med | Two-way resolution is ambiguous when a string is both a Role and a Holder; no precedence or collision rule existed | CONFIRMED | Fixed: roster integrity — Role/Holder namespace collision ERRORs, conflicting holder types ERROR; no precedence rule by design. Amends round-1 row 7 |
+| 4 | med | `interview/README.md:149` ("a person, not a role?") is a third explicit contradiction, not person language | CONFIRMED | Fixed: three explicit contradictions, five person-language sites. Amends round-1 row 9 |
+| 5 | med | "No round's severity grades survive anywhere" is false — `f5ab4b6` carries "Two HIGH findings, both correct" | CONFIRMED | Fixed: narrowed to "no complete round output exists; what survives is what each commit chose to quote", with the counterexample cited. Amends round-1 row 13 |
+| 6 | low | Decision 5 listed `sunset` among owner fields — it is not one, and its WARN already exists today outside the rung branch | CONFIRMED | Fixed: sunset removed from the new-WARN list, existing check noted unchanged |
+| 7 | low | `reviews/<branch>.md` with a slashed branch name names a different path than this file's | CONFIRMED | Fixed: convention now states `/` → `-` normalization, which this file already follows |

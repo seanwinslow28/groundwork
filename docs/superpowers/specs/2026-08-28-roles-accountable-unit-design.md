@@ -21,14 +21,15 @@ field with a role title (`owner: Head of IT`, `value_owner: CISO`,
 those same role-shaped values as producing zero ERRORs (the fixture is a synthetic
 twin of that rule, not a read of the file — verified against both, this session).
 
-The prose disagrees. Two sites contradict roles-as-owners explicitly:
-`interview/questions.md:93` — "A role is not an owner" — and
-`interview/protocol.md:247` — "an owner who is a **person**, not a role". Six more
-carry person language that must be reviewed against the new semantics, though none of
-them states that a role is invalid (a "named person" can be the person holding a
-role): `README.md:22` and `:102`, `interview/generate.md:142` and `:149`,
-`interview/questions.md:96` ("The person who answers for it existing"), and
-`interview/README.md:149`. The rewrite slice re-greps; this list is the floor.
+The prose disagrees. Three sites contradict roles-as-owners explicitly:
+`interview/questions.md:93` — "A role is not an owner" —
+`interview/protocol.md:247` — "an owner who is a **person**, not a role" — and
+`interview/README.md:149` — "a person, not a role?". Five more carry person language
+that must be reviewed against the new semantics, though none of them states that a
+role is invalid (a "named person" can be the person holding a role): `README.md:22`
+and `:102`, `interview/generate.md:142` and `:149`, and `interview/questions.md:96`
+("The person who answers for it existing"). The rewrite slice re-greps; this list is
+the floor.
 
 Accepting roles as owners reopens the S3 void one level up. Run 1's record carried
 `runtime_check_owner: "Delivery coordination — the function, no person named"`, and it
@@ -40,9 +41,11 @@ it rejects only placeholders. The quad-check correction
 distinction this way: *"`Head of IT` names an accountable office, while "the function,
 no person named" disclaims one, and the check cannot tell them apart."* If any role
 string is a valid owner, *enforced, but nobody owns it* comes back wearing a role
-title. If only filled roles are valid, the schema again cannot express the true state
-run 1 found — a live practice nobody claims — and generators are pushed back to the S3
-corner: refuse to ship, or invent.
+title. If only filled roles are valid, the schema again cannot express the state
+run 1 found — a practice its confirmed record carries at `Rung: hard-block` with an
+owner nobody claims, while company-wide practice stays unestablished (the
+correction's bounded reading) — and generators are pushed back to the S3 corner:
+refuse to ship, or invent.
 
 This design also settles the two confirmed enforcement holes recorded in
 `quad-check-correction.md` and the durable-review-record rule, because all three take
@@ -68,7 +71,9 @@ their shape from the holding semantics.
    with no appeal path must not leave the gate green" stays true verbatim.
    **On S3:** this decision supersedes S3's requested outcome rather than delivering
    it. S3 asked for a representable third state so the machine layer stops reading
-   *draft* for a confirmed-but-unowned live practice; the maintainer instead chose the
+   *draft* for a practice the confirmed record carries as enforced with no owner
+   (whether the practice is live is what the correction leaves unestablished); the
+   maintainer instead chose the
    declared draft as the designed encoding of that state, with decision 5's named
    WARNs making the gaps legible. A structural consumer will still read "draft" there
    — by design now, not by accident — and the cost S3 measured (two drafts, zero
@@ -81,10 +86,16 @@ their shape from the holding semantics.
 
 3. **Holders are typed, and the human appeal must reach a human.** A holder is a
    person or an agent, and the roster marks which. The one per-object constraint: the
-   `human_appeal_owner` of an active rule must resolve to at least one **human**
-   holder — an appeal path that terminates in a model is not an appeal path. (The
-   existing high-risk draft ERROR checks that the appeal fields are answered; this
-   adds, at activation, that the answer reaches a human.) Value, rule, and
+   `human_appeal_owner` must resolve to at least one **human** holder — an appeal
+   path that terminates in a model is not an appeal path. This constraint rides the
+   tiers that already exist: on an active rule it is part of activation resolution;
+   on a **high-risk draft** it joins the safety spine that already runs draft-time
+   (the existing ERROR checks that the appeal fields are answered; an answered
+   appeal owner that resolves to agent-only holders is affirmatively wrong, not
+   merely incomplete, so it ERRORs on a high-risk draft too — otherwise a high-risk
+   draft with a model for an appeal path would leave the gate green, which the spine
+   forbids verbatim). An appeal owner that resolves to *nothing* on a draft stays in
+   decision 5's WARN tier — unheld is the drafting state. Value, rule, and
    runtime-check owners may be agent-held.
    *Counter-argument, recorded:* per-object holder-type rules add a distinction the
    schema could not previously see, and the smallest adopter — one human holding
@@ -101,10 +112,12 @@ their shape from the holding semantics.
    lookup; it is one more required file; the interview must now elicit it.
 
 5. **Hole (a), the drafting gate: WARN, naming each gap.** A draft rule raises one
-   WARN per missing or unresolvable owner field — rule owner, appeal owner, sunset,
-   an owner value with no roster match — each named specifically. Today an absent rule
-   owner and appeal owner on a draft raise nothing at all (the safety-spine ERRORs
-   above are the exception, and they stay ERRORs). Blocking more would contradict
+   WARN per missing or unresolvable owner field — rule owner, appeal owner, an owner
+   value with no roster match — each named specifically. (A missing sunset already
+   WARNs today, draft or active, outside the rung branch; that check is unchanged.)
+   Today an absent rule owner and appeal owner on a draft raise nothing at all (the
+   safety-spine ERRORs above are the exception, and they stay ERRORs). Blocking more
+   would contradict
    decision 2's premise that the draft state is where incompleteness legitimately
    lives; silence is how run 1's "two drafts and zero active rules" stayed illegible.
    *Counter-argument, recorded:* WARNs are ignorable, and this one guards the
@@ -136,14 +149,17 @@ their shape from the holding semantics.
    the final approve — are committed in the repository:
    `docs/superpowers/plans/<slice>-reviews.md`, appended per round on the branch, so
    the merge carries the record. Plan-less work uses
-   `docs/superpowers/reviews/<branch>.md`.
+   `docs/superpowers/reviews/<branch>.md`, with any `/` in the branch name written
+   as `-` so the log stays a single file directly under `reviews/`.
    The evidence: the prior session ran twenty-five review rounds — sixteen on the
    groundwork branch, nine on the persona-company correction, per the merge commit
    `df6df21` — and what survives is what its commits chose to carry. Fix commits
-   preserve the accepted findings and their dispositions in their bodies; but rounds
-   whose numbers left no commit (r3 and r9 in the `fix(build): Codex r…` sequence)
-   are unrecoverable, and no round's verdict text, severity grades, or rejected
-   findings survive anywhere. The honesty plan paid for the same loss earlier: its
+   preserve the accepted findings and their dispositions in their bodies — sometimes
+   with severities, as `f5ab4b6`'s "Two HIGH findings, both correct" — but what
+   survives is only what each commit chose to quote: no complete round output
+   exists, rejected findings and full verdict text appear nowhere, and rounds whose
+   numbers left no commit (r3 and r9 in the `fix(build): Codex r…` sequence) are
+   unrecoverable. The honesty plan paid for the same loss earlier: its
    header says its three rounds' "review outputs were not retained", leaving the
    merge commit as "the durable record of the approval" with "no inspectable
    artifact" dating round 3 itself. The pattern data this rule exists to keep — the
@@ -179,8 +195,14 @@ by exact string, two ways:** an owner value matching a Role cell resolves to tha
 row's holders; an owner value matching a Holder cell resolves to that holder
 directly. The second form is what keeps person-named owners valid (decision 1) — the
 demo's `owner: Ruth Okafor` resolves because Ruth Okafor appears as a holder. A role
-with no row, or a row with no holder, is unheld. The roster is content, so it is
-checked wherever it lives, per the instance rule.
+with no row, or a row with no holder, is unheld.
+
+Two-way resolution requires **roster integrity**, checked as part of R1: a string
+appearing both as a Role and as a Holder is a namespace collision and ERRORs — every
+owner reference to it would be ambiguous, and no precedence rule is defined because
+none should be needed; a holder appearing in multiple rows with conflicting types
+also ERRORs. The roster is content, so it is checked wherever it lives, per the
+instance rule.
 
 ### The validator (the one code slice)
 
@@ -195,8 +217,11 @@ checked wherever it lives, per the instance rule.
   bump candidate; this is that bump happening.
 - **Activation resolution** (`since: 2`): an active rule with an owner field that
   resolves to nothing in the roster → ERROR (WARN under a v1 pin).
-- **Appeal-human** (`since: 2`): an active rule whose `human_appeal_owner` resolves
-  to agent holders only → ERROR (WARN under a v1 pin).
+- **Appeal-human** (`since: 2`): a rule whose `human_appeal_owner` resolves to
+  agent-only holders → ERROR on any active rule, and on a **high-risk draft** too
+  (the safety-spine tier decision 3 defines) — WARN under a v1 pin. On a non-high-risk
+  draft, or where the appeal owner resolves to nothing, decision 5's WARN tier
+  applies instead.
 - **Draft visibility (hole a)** (`since: 2`): a draft rule missing any owner field,
   or carrying one that does not resolve → one WARN per gap, named. The existing
   draft-time safety-spine ERRORs are untouched.
@@ -255,8 +280,8 @@ review:
   the world. A stale roster produces exactly the S1 class of confident error, one
   level up. This lands in `docs/known-limitations.md` in R1, as a limitation, never
   softened into a claim.
-- **It does not deliver S3's requested encoding.** A confirmed-but-unowned live
-  practice still reads as a draft in the machine layer; the maintainer chose that as
+- **It does not deliver S3's requested encoding.** A record-confirmed practice with
+  no owner still reads as a draft in the machine layer; the maintainer chose that as
   the designed encoding, with named WARNs, over a third state.
 - **It does not resolve owner fields outside the constitution.** Deep records, owner
   cards, and memory records keep unresolved owner strings in R1 — a named remaining
