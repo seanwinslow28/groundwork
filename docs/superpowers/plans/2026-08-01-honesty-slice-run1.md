@@ -4,6 +4,48 @@
 > superpowers:subagent-driven-development) to implement this plan task-by-task. Steps use
 > checkbox (`- [ ]`) syntax for tracking.
 
+## Post-execution corrections — read before transcribing anything below
+
+> **Status: executed 2026-08-01** — the plan's six implementation and fix commits, including
+> the two answering Codex findings, all carry that author date. Three adversarial review
+> rounds ran, ending in `approve` with no material findings; those review outputs were not
+> retained, so the merge to `main` — `153cbbf`, 2026-08-28 — is the durable record of the
+> approval, and no inspectable artifact dates round 3 itself. The pre-made blocks below are
+> left **exactly as they were executed**, so this file stays a record of what was planned.
+> Five defects are recorded below. Three of them also reach text outside those blocks:
+> defect 1 is a verification instruction, defect 2 includes the Goal, and defect 3 includes
+> Task 2's heading and a commit message. Defects 4 and 5 are confined to blocks. Each row
+> names its own locations. What shipped differs, and this section is authoritative where
+> they disagree.
+
+| # | Where | Defect | What shipped instead |
+|---|---|---|---|
+| 1 | Task 3, Step 4 | The verification `grep -c "enforced, but nobody owns it"` **can never return 1** — Task 3 Step 3's replacement block wraps that phrase across a line break. | Verified with the unwrapped head, `grep -c "but nobody owns it"` → `1`, the convention this plan already uses in Task 5 Step 2. |
+| 2 | The **Goal** paragraph below; Task 1 Step 1; Task 2 Step 1 | **Backdated the run.** All three date the end-to-end run to 2026-07-31, which is the run *directory label* — including the Goal's "run 1 (2026-07-31, the persona-company end-to-end test)", which this section supersedes in place: the correct chronology is the two-day one below. `timing.md` records that date as the **interview phase only**; generation ran 2026-08-01 08:39–08:58, with grading and the audit the same day. | `4f5545c`. README: "as of 2026-08-01". known-limitations: "on 2026-07-31 and 2026-08-01 … the interview on the first day, generation, blind grading, and the audit on the second". |
+| 3 | Task 2 Step 1; Task 3 Step 2; Task 2's own heading ("the executed-twice bullet"), superseded in place; and Task 2 Step 4's commit-message text, now in git history as `bbdced9` and unamendable | **Overcounted interview executions.** "The protocols have been executed twice" counts a generation-only dry run as a second interview run. `timing.md` calls run 1 the interview protocol's *first* end-to-end execution. | `8479480`. known-limitations: "generation both times, the interview once, and never with a real company". roadmap: "a generation-only dry run … and one full end-to-end run, the interview protocol's first". |
+| 4 | Task 3, Step 3 | **Asserted a persona surface as company fact.** "a rule the simulated company enforces today as a hard gate" is contradicted by `plants.md`, field by field: P1-a's *Truth* is that its carriers **believe** the grid still runs, while its *Yield condition* and *Pass* are what record that it was **not used on one known delivery — the last that its carriers, Lena and Nora, worked on**; P1-b's *Truth* is Julian-only approval, and its *Yield condition* is that its carriers have never seen the grid used. Both plants FAILED — P1-a's surface accepted despite one known skipped delivery, P1-b's conflicting account never elicited at all — so **uniform** hard-gate practice is disproved and company-wide enforcement is left **unestablished**. Neither is the same as the grid never being practised, which the run did not measure. The claim states as settled company fact something the run did not establish. | `8479480`. roadmap now attributes the status to the record: "That run's confirmed interview record carried a rule at `hard-block` whose ownership nobody claimed". (The same bullet's *only honest encoding* absolute is defect 5, below.) |
+| 5 | Task 3, Step 3 | **An absolute the source contradicts.** "the schema's only honest encoding was a draft" — `generation-report.md` records **three considered outcomes**: omit the rule, ship it and let the gate fail, or ship it as a declared draft. Only omission complies with the pinned generation contract, under which an artifact missing a required field does not ship; the draft is the one that shipped. Found on this branch, after the slice had already merged, by the Codex round that checked the shipped roadmap against the run record. | This branch. roadmap now names the three outcomes considered, says the generation contract permits only omission, and records that the gate accepting the shipped draft is itself a finding. |
+
+**Where defects 2–5 came from, and the lesson.** They do not share an origin, and the
+difference is the whole lesson. **Defects 2, 3 and 5 first appear here** — the run record
+is right on all three points: `timing.md` marks 2026-07-31 as "**Interview phase only**",
+separating generation, grading and the audit onto the following day; it calls run 1 "the
+first end-to-end execution of groundwork's interview protocol"; and `generation-report.md`
+records three outcomes rather than the "only honest encoding" absolute. None of the wrong
+date, the two-execution framing, or that absolute appears in any run record; all three
+originate in this plan. **Defect 4 was already in the run record before this plan was
+written** — the hard gate is asserted as company fact in four passages, the earliest *of
+those four* in the generating session's own report (`ffa4ff7`, 09:09) and the last in
+`findings.md` (`a9369c7`, 15:32). That is not where the claim began: the conversion from
+persona account to company practice happened at the interview freeze (`a93d601`,
+2026-07-31 21:41), before generation ran. Which of the four the plan author read is not
+recoverable; no artifact records the copy. All four now carry a pointer to `quad-check-correction.md`. **Pre-made text is not
+pre-verified** — transcription fidelity protects the wording a review approved, it does not
+make the claims true. That is now
+standing rule 8 in [`../../agents/build-sessions.md`](../../agents/build-sessions.md).
+
+---
+
 **Goal:** Amend groundwork's product content so it stops claiming the pre-run world —
 run 1 (2026-07-31, the persona-company end-to-end test) falsified two present-tense
 status claims and made the pre-committed persona-cooperativeness limitation due — while
