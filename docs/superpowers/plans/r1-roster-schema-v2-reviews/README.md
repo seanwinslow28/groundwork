@@ -22,8 +22,13 @@ keep changing.
 | 7 | `b8f94b4` | does not approve | 6 (2 BLOCKER, 1 HIGH, 1 MEDIUM, 2 LOW) | `df99dc5` |
 | 8 | `37e449b` | does not approve | 6 (2 BLOCKER, 2 MEDIUM, 2 LOW) | `63211e4` |
 | 9 | `2bc94ce` | does not approve | 6 (1 BLOCKER, 1 HIGH, 2 MEDIUM, 2 LOW) | `a5ba199` |
+| 10 | — | maintainer decision, not a review round | — | — |
 
 Fifty-five findings across nine rounds. Fifty-four fixed; one rejected with grounds.
+
+**The review loop ended at the maintainer's instruction after round 9, without an approving
+verdict.** `round-10.md` records that decision, what the last verdict actually said, and
+which commits no round ever reviewed.
 
 **Corrections to earlier entries live in later ones**, per rule 9: `round-03.md` corrects
 `round-02.md`'s axis split, and `round-04.md` corrects `round-03.md`'s claim that two changed
@@ -49,7 +54,8 @@ disagreeing with it is visible without reading every entry.
   and `_changelog_append_only` treats every committed line, preamble included, as an
   immutable prefix. The edit was made, `--diff main` went red on
   *"the governance changelog is append-only"*, and the edit was reverted. Observed, not
-  predicted. See maintainer item 5.
+  predicted. See the section "Maintainer item raised by round 2 — prose inside an
+  append-only file" below; there is no numbered item 5.
 
 ## Maintainer items
 
@@ -126,6 +132,16 @@ Whether `demo/governance/roles.md` should carry **Role rows** for the five offic
 of People). None of the demo's three rules names an office, so nothing requires them, and
 Role rows are R2's elicitation work — so they were not added. Adding them would be true to
 canon and would make a future role-named owner resolve.
+
+## Status
+
+**The record rule 9 requires is complete**, and landing is the maintainer's (rule 3). Rounds
+1–9 each have an immutable entry carrying every finding, its reviewer's severity word
+verbatim, and its disposition; `round-10.md` records the decision to stop. No finding is
+open. One is rejected with grounds. **The last verdict does not approve, and no approving
+verdict exists on this branch** — rule 9 allows a merge over that, with the grounds recorded
+in the merge commit. `round-10.md` names the facts those grounds would rest on, and the six
+things still the maintainer's to decide.
 
 ## Verification the builder ran, before round 1
 
