@@ -80,9 +80,10 @@ generated against (`git -C <engine clone> rev-parse --short HEAD`) and
 `schema_version: 1`. The pin is a frontmatter-fenced file — the two keys between two
 `---` lines, exactly as [../MIGRATIONS.md](../MIGRATIONS.md) shows; bare `key: value`
 lines with no fences fail the gate. Write the file at the end: once it is **committed** the
-repo is a governed root, and every skill and rule you add in a later commit is an
-escalating change wanting a proposal (#18). Generate under a pin an earlier commit already
-carries and you will write a proposal per file.
+repo is a governed root. Whether a rule or skill then counts as an escalating change
+wanting a proposal (#18) turns on the base you diff against — it escalates when that base
+does not already hold it — not on the order you wrote the files in. Generate into a repo
+whose base already carries the pin and you will write a proposal per file.
 
 **2. `ontologies/` first.** Every function gets an `_executive-view.md` listing every
 activity with a Direction — that is the whole executive tier, and most activities never
@@ -193,33 +194,31 @@ which adds the stateful modes: org-memory immutability, frozen interview layers,
 blast-radius pass — the #18 consent gate on escalating changes, the append-only changelog,
 and WARNs for a governed deletion or a missing changelog line.
 
-**The base is the generation commit** — the one you wrote the OS in. Precondition 3
-guarantees there is a history to name it against: the layers were committed, in this same
-repo, before you generated. So the temptation is to reach one commit further back and diff
-against the pre-generation state. Do not.
+**The base is the generation commit.** Precondition 3 guarantees there is a history to name
+it against: the layers were committed, in this same repo, before you generated. So the
+temptation is to reach back past generation and diff against the pre-generation state.
+Do not.
 
 **The commit that creates the governed root is not subject to the consent gate.** #18
 routes an escalating change through a reviewable proposal, and generation cannot be its
 own proposal — it leaves nothing pending in `proposals/` for the gate to match a generated
 rule or skill against. Name the pre-generation commit as the base and you ask the gate to
 review the act that created the thing it governs: every generated constitution rule comes
-back as an escalating change with no pending proposal, so any OS carrying one is red on a
-correct repo. Measured on the OS generated in the 2026-07-31 persona-company run, which
-carries two constitution rules: the pre-generation base returns
-**2 errors, exit 1**, one per rule; the generation commit returns **0**. Writing the pin
-last is not a way out — the validator discovers `groundwork.pin` from the working tree as
-well as the base tree, so a rule committed alongside it is classified exactly as one
-committed after it.
+back as an escalating change with no pending proposal, so every generated OS carrying a
+constitution rule goes red against that base, correct or not. Measured on the OS generated
+in the 2026-07-31 persona-company run, which carries two constitution rules: the
+pre-generation base returns **2 errors, exit 1**, one per rule; the generation commit
+returns **0**. Writing the pin last is not a way out — the validator discovers
+`groundwork.pin` from the working tree as well as the base tree, so a rule committed
+alongside it is classified exactly as one committed after it.
 
-**What this run proves, and what it does not.** The comparison is the base tree against
-the working filesystem, not one commit against another, and the scan does not honour
-`.gitignore` — whatever sits in the directory is read, tracked or not. Straight after
-generation the base is the tree you just committed, so a clean result says the stateful
+**What this run proves, and what it does not.** The comparison is the base tree against the
+working filesystem, not one commit against another. A clean result here says the stateful
 modes ran and found nothing; it does not say they were exercised. Later work exercises
 them: a new rule or skill is the #18 consent gate's case, while the frozen-layer and memory
-guards read from the base, so what they catch is a layer or a record that the base already
-held being edited or deleted — and for a layer, the base must hold its interview manifest
-too.
+guards read from the base, so what they catch is a layer the base already held being
+edited or deleted — its interview manifest too, or the layer is not covered — and a
+base-held memory record deleted or edited in a way the schema forbids.
 
 **Say what you generated and what you could not.** A list of the activities that got deep
 records, the skills that shipped `provisioned: no` and why, and every question still
