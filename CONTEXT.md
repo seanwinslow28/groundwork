@@ -54,7 +54,7 @@ _Avoid_: manual fields, human override
 ### Improvement proposals (three-bucket routing — ticket #17)
 
 **Improvement proposal**:
-An agent-authored proposed change to a skill, a constitution rule, or the roles roster — the three artifact kinds the three buckets route. Memory records, Owner's Cards, and ontology worksheets keep their own governance; a memory enters this routing only at the moment it graduates into a proposed rule/skill change.
+An agent-authored proposed change to a skill, a constitution rule, or the roles roster — the three artifact kinds the three buckets route. Memory records, Owner's Cards, and ontology worksheets keep their own governance; a memory enters this routing only at the moment it graduates into a proposed change to one of the three.
 _Avoid_: suggestion, self-improvement (the ungated kind is banned)
 
 **Blast-radius boundary**:

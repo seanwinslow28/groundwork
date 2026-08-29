@@ -46,7 +46,7 @@ status: pending
 
 Proposals route **skills, rules, and the roster.** Org-memory, Owner's Cards, and
 ontology worksheets keep their own governance; a memory enters this routing only when it
-graduates into a proposed skill/rule change.
+graduates into a proposed change to one of the three.
 
 The roster joined at schema v2: `governance/roles.md` decides who holds every active
 rule's owners and where its human appeal terminates, so editing it is governance rather

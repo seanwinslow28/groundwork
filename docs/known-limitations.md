@@ -272,8 +272,9 @@ Honest limits of the current build. This file grows as the product does (brief Â
   baseline) and `known_failure_modes` (what has gone wrong), but no field for the thing
   that must not get worse while the standard is met. The answer is recorded in prose on
   the Owner's Card and the ontology record instead. Adding a field is a `SCHEMA_VERSION`
-  bump now that `demo/` carries a pin, so it is named here as the **first candidate for a
-  v2 schema change** rather than spending the first migration on one field.
+  bump now that `demo/` carries a pin. The first bump has since been spent on the roles
+  roster (v2), so this is named here as a candidate for a **later** bump, not the next
+  thing to happen.
 - **Nothing checks interview prose.** `check_interview_state` validates the *shape* of
   what an interview captured, not whether the interview was any good â€” whether the role
   was defined first, whether questions came one at a time, whether a confirmed fact was

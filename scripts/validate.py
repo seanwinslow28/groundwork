@@ -2026,6 +2026,10 @@ ROSTER_REL = ("governance", "roles.md")
 ROSTER_FIELDS = ("valid_at", "review_by", "source")
 HOLDER_TYPES = {"human", "agent"}
 ROSTER_HEADER = ["role", "holder", "type"]
+# An opening or closing HTML tag: '<' then a letter or '/'. Deliberately coarse —
+# a roster has no legitimate use for one, so over-catching costs a clear ERROR
+# while under-catching hides a holder.
+_HTML_TAGGISH = re.compile(r"<[A-Za-z/]")
 
 # roles: {role -> [holder, ...]}, where [] is a declared-but-unheld role.
 # holders: {holder -> "human" | "agent"}.
@@ -2038,12 +2042,19 @@ def _parse_roster(text, rel):
     The table grammar is _canonical_row — the SAME one the executive view uses.
     A second table grammar in this repo is a decision nobody should make twice.
 
-    The scan starts after the frontmatter block and ignores every line inside a
-    code fence or an HTML comment, so non-rendered text can never supply a
-    holder (Codex r1 and r2). Those lines are BLANKED rather than removed, which
-    keeps every reported line number the file's own. A '|' outside the one table
-    block still ERRORs, computed against the RAW lines, so a fenced example is
-    reported rather than silently tolerated.
+    The scan starts after the frontmatter block, and the body is a RESTRICTED
+    GRAMMAR: one table, and no fence, HTML comment, or HTML tag anywhere. That
+    is the executive view's doctrine (parse_exec_table), and it is here because
+    the alternative failed three times. Round 1 scanned every canonical-looking
+    line, so a fenced example row was a live holder. Round 2 bounded the table,
+    but a table living entirely inside a fence still parsed. Round 3's masking
+    fix then broke two ways at once (Codex r3): normalizing a fence opener to
+    three characters let ``` close a ```` fence, and splicing a comment out of a
+    line MANUFACTURED a canonical row from source that was never a table row.
+
+    Forbidding the constructs outright removes the whole class rather than
+    handling it — there is nothing to hide a table inside, and nothing whose
+    removal can synthesize a row. Every line is read exactly as written.
 
     Every finding here carries since=2. The roster does not exist below v2, so a
     v1-pinned repo could not have met any of these requirements."""
@@ -2094,39 +2105,25 @@ def _parse_roster(text, rel):
                 body_start = k + 1
                 break
 
-    # Blank every line that renders as nothing — inside a fence, or inside an
-    # HTML comment. Round 1 bounded the table but still parsed one living
-    # ENTIRELY inside a fence, which made example content a live holder (Codex
-    # r2, BLOCKER). Blanking preserves indices, so line numbers stay honest.
-    masked, fence, in_comment = list(lines), None, False
+    # Nothing a reader does not see. A fence can hide a whole table; an HTML
+    # comment or tag can hide one, and stripping one out of a line can invent a
+    # row that was never in the source. Forbid all three outright rather than
+    # emulate what renders (Codex r3, two BLOCKERs).
     for n in range(body_start, len(lines)):
         ln = lines[n]
-        if fence is not None:
-            masked[n] = ""
-            m = _fence_match(ln)
-            if m and m.group(1)[0] * 3 == fence and not m.group(2).strip():
-                fence = None
-        elif in_comment:
-            if "-->" in ln:
-                masked[n], in_comment = ln.split("-->", 1)[1], False
-            else:
-                masked[n] = ""
-        else:
-            m = _fence_match(ln)
-            if m:
-                fence, masked[n] = m.group(1)[0] * 3, ""
-                continue
-            rest = ln
-            while "<!--" in rest:
-                before, _sep, after = rest.partition("<!--")
-                if "-->" in after:
-                    rest = before + after.split("-->", 1)[1]
-                else:
-                    rest, in_comment = before, True
-                    break
-            masked[n] = rest
+        if _fence_match(ln):
+            findings.append(Finding("ERROR", rel, n + 1,
+                                    "a roster carries no code fence — its one table must be "
+                                    "the text a reader sees, and a fence can hide one", 2))
+            return Roster(roles, holders), findings
+        if "<!--" in ln or "-->" in ln or _HTML_TAGGISH.search(ln):
+            findings.append(Finding("ERROR", rel, n + 1,
+                                    "a roster carries no HTML comment or tag — hidden text "
+                                    "must never supply a holder, and removing it can invent "
+                                    "a row the file never had", 2))
+            return Roster(roles, holders), findings
 
-    pipe = [n for n in range(body_start, len(lines)) if "|" in masked[n]]
+    pipe = [n for n in range(body_start, len(lines)) if "|" in lines[n]]
     if not pipe:
         findings.append(Finding("ERROR", rel, None,
                                 "roster has no '| Role | Holder | Type |' table", 2))
@@ -2135,8 +2132,7 @@ def _parse_roster(text, rel):
     end = start
     while end + 1 < len(lines) and "|" in lines[end + 1]:
         end += 1
-    outside = [n for n in range(body_start, len(lines))
-               if "|" in lines[n] and not (start <= n <= end)]
+    outside = [n for n in pipe if not (start <= n <= end)]
     if outside:
         findings.append(Finding("ERROR", rel, outside[0] + 1,
                                 "a roster holds exactly one table; a block was read from "
@@ -2144,7 +2140,7 @@ def _parse_roster(text, rel):
                                 "it — an example row must never be readable as a holder"
                                 % (start + 1, end + 1), 2))
         return Roster(roles, holders), findings
-    header = _canonical_row(masked[start])
+    header = _canonical_row(lines[start])
     if header is None or [c.casefold() for c in header] != ROSTER_HEADER:
         findings.append(Finding("ERROR", rel, start + 1,
                                 "roster table header must be exactly "
@@ -2158,7 +2154,7 @@ def _parse_roster(text, rel):
         findings.append(Finding("ERROR", rel, start + 1,
                                 "roster table needs its delimiter row", 2))
         return Roster(roles, holders), findings
-    delim = _canonical_row(masked[start + 1])
+    delim = _canonical_row(lines[start + 1])
     if delim is None or not all(_EXEC_DELIM_CELL.match(c) for c in delim):
         findings.append(Finding("ERROR", rel, start + 2,
                                 "the row under the header must be the delimiter "
@@ -2167,7 +2163,7 @@ def _parse_roster(text, rel):
         return Roster(roles, holders), findings
 
     for lineno in range(start + 2, end + 1):
-        cells = _canonical_row(masked[lineno])
+        cells = _canonical_row(lines[lineno])
         if cells is None:
             findings.append(Finding("ERROR", rel, lineno + 1,
                                     "roster row is not canonical — exactly three cells "
@@ -4110,7 +4106,10 @@ def blast_radius_diff_findings(root, base):
 
         new, rd = _read_utf8(abspath, rel)
         if new is None:
-            findings += rd
+            # Codex r3: the round-2 tagging covered the symlink and base-read
+            # branches but not this one, so an unreadable v2-only roster stayed
+            # an undemoted ERROR beside the migration-boundary ERROR.
+            findings += [f._replace(since=path_since) for f in rd]
             continue
 
         for g, cls in pairs:

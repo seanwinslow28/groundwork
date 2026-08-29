@@ -84,5 +84,5 @@ document moved, not the code.
   call them carry the severity.
 - **Anything CONTEXT.md requires that nothing enforces.** There is one, and it is
   recorded in [known-limitations.md](known-limitations.md) rather than here: the
-  interview's health-metrics answer has no schema field, so it lands in prose and is the
-  named first candidate for a v2 schema change.
+  interview's health-metrics answer has no schema field, so it lands in prose and is a named
+  candidate for a later schema bump — v2 was spent on the roles roster.

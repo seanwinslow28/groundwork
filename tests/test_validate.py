@@ -2337,8 +2337,11 @@ class TestRoster(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             self._roster(d, ROSTER_OK + "\n```\n| Ghost Role | Ghost Holder | human |\n```\n")
             findings = validate.check_roles(d)
-            self.assertTrue(any(f.level == "ERROR" and "exactly one table" in f.message
-                                for f in findings), findings)
+            # Asserted on BEHAVIOUR, not wording: the mechanism behind this has
+            # changed three times (bounded table -> masking -> restricted
+            # grammar) and a message assertion broke each time while the
+            # property under test never did.
+            self.assertTrue(any(f.level == "ERROR" for f in findings), findings)
             roster, _f = validate._load_roster(d, d)
             self.assertEqual(validate._resolve_owner(roster, "Ghost Role"), [])
             self.assertEqual(validate._resolve_owner(roster, "Ghost Holder"), [])
@@ -2362,6 +2365,44 @@ class TestRoster(unittest.TestCase):
             "| Role | Holder | Type |\n|---|---|---|\n| CISO | Sean Winslow | human |\n-->\n"
         with tempfile.TemporaryDirectory() as d:
             self._roster(d, commented)
+            self.assertTrue(any(f.level == "ERROR" for f in validate.check_roles(d)))
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "CISO"), [])
+
+    def test_a_longer_fence_cannot_be_closed_by_a_shorter_one(self):
+        """Codex r3, BLOCKER: round 2's masker normalized every fence opener to
+        three characters, so ``` closed a ```` fence and exposed the table inside
+        it — which CommonMark still renders as code."""
+        for ch in ("`", "~"):
+            head = ROSTER_OK.split("# Roles")[0] + "# Roles\n\n"
+            body = (ch * 4) + "\n" + (ch * 3) + "\n" + \
+                "| Role | Holder | Type |\n|---|---|---|\n| CISO | Ghost | human |\n" + (ch * 4) + "\n"
+            with tempfile.TemporaryDirectory() as d:
+                self._roster(d, head + body)
+                self.assertTrue(any(f.level == "ERROR" for f in validate.check_roles(d)), ch)
+                roster, _f = validate._load_roster(d, d)
+                self.assertEqual(validate._resolve_owner(roster, "CISO"), [], ch)
+                self.assertEqual(validate._resolve_owner(roster, "Ghost"), [], ch)
+
+    def test_stripping_a_comment_cannot_manufacture_a_row(self):
+        """Codex r3, BLOCKER: round 2 spliced comments out of a line, so
+        '<!-- t -->| a | b | c |' — which is not a table row in the source —
+        became a canonical row after masking."""
+        head = ROSTER_OK.split("# Roles")[0] + "# Roles\n\n"
+        body = "".join("<!-- template -->" + ln + "\n" for ln in
+                       ("| Role | Holder | Type |", "|---|---|---|", "| CISO | Ghost | human |"))
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, head + body)
+            self.assertTrue(any(f.level == "ERROR" for f in validate.check_roles(d)))
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "CISO"), [])
+            self.assertEqual(validate._resolve_owner(roster, "Ghost"), [])
+
+    def test_a_table_inside_an_html_block_is_not_a_holder(self):
+        head = ROSTER_OK.split("# Roles")[0] + "# Roles\n\n"
+        body = "<div hidden>\n| Role | Holder | Type |\n|---|---|---|\n| CISO | Ghost | human |\n</div>\n"
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, head + body)
             self.assertTrue(any(f.level == "ERROR" for f in validate.check_roles(d)))
             roster, _f = validate._load_roster(d, d)
             self.assertEqual(validate._resolve_owner(roster, "CISO"), [])
@@ -2391,8 +2432,10 @@ class TestRoster(unittest.TestCase):
     def test_a_commented_out_row_is_not_a_holder(self):
         with tempfile.TemporaryDirectory() as d:
             self._roster(d, ROSTER_OK + "\n<!-- | Ghost | Ghost Holder | human | -->\n")
-            self.assertTrue(any(f.level == "ERROR" and "exactly one table" in f.message
-                                for f in validate.check_roles(d)))
+            self.assertTrue(any(f.level == "ERROR" for f in validate.check_roles(d)))
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "Ghost"), [])
+            self.assertEqual(validate._resolve_owner(roster, "Ghost Holder"), [])
 
     def test_a_row_missing_its_trailing_pipe_errors_rather_than_vanishing(self):
         """The other half: a visible operative row that silently disappeared."""
@@ -4254,6 +4297,18 @@ class TestRosterIsGoverned(unittest.TestCase):
             self._repo(d)
             os.symlink(os.path.join(d, "governance", "constitution", "access.md"),
                        os.path.join(d, "governance", "roles.md"))
+            findings = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                        if "roles.md" in f.path]
+            self.assertTrue(findings)
+            self.assertTrue(all(f.since == 2 for f in findings), findings)
+
+    def test_an_unreadable_roster_finding_demotes_behind_a_v1_pin(self):
+        """Codex r3: the round-2 tagging covered the symlink branch but not the
+        working-tree read failure, so a non-UTF-8 roster stayed an undemoted
+        ERROR beside the migration-boundary ERROR."""
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write_bytes(d, "governance/roles.md", b"---\nvalid_at: 2026-01-01\n---\n\xff\xfe")
             findings = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
                         if "roles.md" in f.path]
             self.assertTrue(findings)
