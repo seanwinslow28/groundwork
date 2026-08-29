@@ -249,3 +249,17 @@ row 1 (per row 6 below).
 | 4 | med | The rewrite preamble still said "the person holding one," excluding legal holder-only rows | CONFIRMED | Fixed: "a role or a named holder", with the holder-only case stated. Amends round-15 row 5 |
 | 5 | med | The generated roster's `review_by` had no source — no question elicits it, and R1 must not invent | CONFIRMED | Fixed: C10's derivation pattern — a stated 90-day interim default, recorded as derived-not-answered, elicited from R2 on |
 | 6 | low | Round-15 row 4's amendment inventory omitted round-10 row 1, whose "R2 keeps the contract amendment" it changed | CONFIRMED | Recorded here: round-15 row 4 also amends round-10 row 1 |
+
+## Round 17 — 2026-08-29, task-mtdwsf0g-yk7ejh, verdict: does not approve (5 findings, 1 high)
+
+Reviewed: commit `7ccfa2c` (spec after round-16 fixes, plus this log). All 5 accepted
+(one PLAUSIBLE-only accepted as an unstated divergence); fixed in the following
+commit. Rows amended: round-16 rows 3 and 5.
+
+| # | Sev | Finding (compressed) | Verdict | Disposition |
+|---|---|---|---|---|
+| 1 | high | The roster decides activation and appeal resolution but its mutation was ungoverned — an edit could redirect an active rule's appeal without a proposal | CONFIRMED | Fixed: a roles.md change in a governed root is an escalating change under the #18 gate, `--diff` mode, `since: 2` — a design addition flagged for the maintainer |
+| 2 | med | R1's draft condition tested only unresolved owners — an all-resolved rule with a recorded dispute bypassed decision 6 | CONFIRMED | Fixed: the condition tests all three decision-6 gap classes. Amends round-16 row 3 |
+| 3 | med | The 90-day default was miscited as "the C10 pattern" — C10 derived from an elicited cadence; this has none | CONFIRMED | Fixed: named a policy default, default-not-answered, C10's weaker cousin. Amends round-16 row 5 |
+| 4 | med | The roster's `valid_at` (generation date) silently diverged from org-memory's became-true semantics | PLAUSIBLE-only | Fixed: snapshot semantics (when the mapping was last confirmed) stated deliberately, in the spec and the file |
+| 5 | low | The sketch example's review_by was 92 days from valid_at, not the mandated 90 | CONFIRMED | Fixed: 2026-11-26 |

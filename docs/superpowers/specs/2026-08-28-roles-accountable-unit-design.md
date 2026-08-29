@@ -243,7 +243,7 @@ at `governance/roles.md`. Sketch; the implementation plan owns the exact format:
 ```markdown
 ---
 valid_at: 2026-08-28
-review_by: 2026-11-28
+review_by: 2026-11-26
 source: <where this org map came from — interview layer, HR system, founder's word>
 ---
 | Role | Holder | Type |
@@ -318,6 +318,13 @@ biting. This is flagged for the maintainer at R1 plan review.
   change with its own trade-offs (an ontology owner is descriptive; a rule owner is
   enforcement). The unresolved remainder is a **named remaining hole**, recorded in
   `docs/known-limitations.md` in R1, until a later slice decides it.
+- **Roster mutations are governed** (`--diff` mode, `since: 2`): a change to
+  `governance/roles.md` in a governed root is an **escalating change requiring a
+  matching proposal**, exactly as a constitution rule's is — the roster decides
+  who holds every active rule's owners and where its human appeal terminates, so
+  editing it is governance, not bookkeeping. Without this, an ungoverned roster
+  edit could redirect an active rule's appeal endpoint silently, hollowing out
+  the #18 gate from underneath.
 - **No reality check:** nothing verifies a roster row against the world. The
   disclaiming-owner problem ("the function, no person named") is caught at
   activation by failed resolution, not by prose analysis — provided no roster entry
@@ -379,22 +386,27 @@ review:
   humanity, and nothing forbids a role-shaped backup — so it is not entered.
   Person-confirmed owners are entered as **holder-only rows** (the Role cell
   empty; those questions yield a person's name, not a role). The roster's
-  `valid_at` is the generation date — a fact — and its `review_by`, which no
-  current question elicits, follows the C10 pattern already worked in run 1: a
-  derived date (a stated interim default of 90 days from generation), recorded in
-  the file as derived-not-answered, replaced by an elicited answer from R2 on. Every other owner
+  `valid_at` records when the mapping was last confirmed — for an R1-window
+  roster, the generation date — snapshot semantics, deliberately narrower than
+  org-memory's when-the-fact-became-true `valid_at`, and stated as such in the
+  file. Its `review_by`, which no current question elicits, is a stated interim
+  **policy default** (90 days from generation), recorded in the file as
+  default-not-answered — a weaker cousin of C10's derivation, which had an
+  elicited cadence to derive from where this has none — replaced by an elicited
+  answer from R2 on. Every other owner
   value (a constitution rule's owners may be roles or disclaimers; run 1's
   `runtime_check_owner` proves it) is **not entered at all** — writing it as a
   Role row would assert a role the record never confirmed, a disclaimer least of
   all; the roster asserts nothing about it, it fails resolution by absence —
   unless the same string coincides with an entered holder, the documented
   intent-blind blind spot, in which case it resolves as that person. Where at
-  least one owner remains unresolved, the rule ships rungless as a declared draft
+  least one decision-6 gap remains — an owner unresolved, a required field
+  missing, or a recorded dispute — the rule ships rungless as a declared draft
   under decision 6 — subject to its full safety-spine exception: a rule carrying
   any rung-independent gate ERROR (a high-risk appeal gap in any of its three
   forms, or the orphan prohibition unsatisfied) does not ship at all — with its
-  unresolved owners named as the gaps; a rule whose owners all resolve,
-  coincidence included, proceeds by the ordinary path. The minimal edits carry
+  declared gaps named; a rule with no decision-6 gap at all, coincidental
+  resolution included, proceeds by the ordinary path. The minimal edits carry
   the declared-draft permission **together with its paired accountability
   condition** — the generation report must name every constitution rule that
   shipped incomplete and why — because landing the permission without the
