@@ -116,8 +116,13 @@ established here.
    agent-only holders, and resolves-to-nothing on a high-risk draft — are `since: 2`
    and demote to WARN on v1-pinned content, necessarily so: a v1 repo has no roster
    to resolve against, so a resolution check cannot bind content pinned before
-   rosters existed. The resolution-strengthened form of the spine therefore holds in
-   full from v2. Value, rule, and runtime-check owners may be agent-held.
+   rosters existed. Those demoted WARNs never mean a green gate: a v1 pin on the v2
+   engine is already red at the single migration-boundary ERROR (skew ≥ 1,
+   `scripts/validate.py`'s pin check), and the WARNs are the finger-pointing behind
+   it that the migration contract promises — one clean boundary error, never a
+   scatter. The resolution-strengthened form of the spine therefore binds at full
+   ERROR strength from a v2 pin, and no pinned state runs it as WARN-only with a
+   green gate. Value, rule, and runtime-check owners may be agent-held.
    *Counter-argument, recorded:* per-object holder-type rules add a distinction the
    schema could not previously see, and the smallest adopter — one human holding
    everything — carries typing machinery built for the multi-agent case.
@@ -158,11 +163,13 @@ established here.
    disputed class is visible only in prose — a recorded dispute binds the generation
    contract and its in-file declaration, never a validator check, which does not
    read dispute prose. Run 1's central case, the populated-but-unresolvable
-   `runtime_check_owner`, is the second class; its disputed action class the
-   third.) An undeclared incomplete shipment stays prohibited. The other artifact
-   kinds' no-ship rules — a deep record missing its Gate answer, a memory record
-   missing its owner, a skill missing human-only answers — stand unchanged: they have
-   no draft state to ship into, and this design does not invent one.
+   `runtime_check_owner`, is the second class; the intake gate's disputed action
+   class the third.) An undeclared incomplete shipment stays prohibited. The other artifact
+   kinds stand unchanged: a deep record missing its Gate answer and a memory record
+   missing its owner do not ship — those kinds have no draft state to ship into, and
+   this design does not invent one — while a skill missing human-only answers
+   already ships as `provisioned: no`, the work-package convention's own drafting
+   state, which this design leaves as it is.
    Under decision 2 this is not a concession — the declared draft is the designed
    encoding of *confirmed but incomplete or unheld*. Run 1 already practiced this
    contract for the gaps it recognized as gaps: each shipped rule declares its own
@@ -263,11 +270,15 @@ biting. This is flagged for the maintainer at R1 plan review.
   content a permissive reader accepts that a stricter one would reject — and
   `MIGRATIONS.md` is explicit that any such change "is from here on a v2 change with
   a migration note"; the no-adopters exception "was used exactly once, on the record,
-  and is now spent." So R1 **is** the first `SCHEMA_VERSION` bump: the new checks
-  carry `since: 2`, repos pinned to v1 receive the new-requirement demotion (WARN,
-  "new since your pin") instead of ERRORs, and `MIGRATIONS.md` gains the v1→v2 note
-  (add a roster; ensure active-rule owners resolve). S3 was already the second-named
-  bump candidate; this is that bump happening.
+  and is now spent." So R1 **is** the first `SCHEMA_VERSION` bump: v1-pinned repos
+  hit the single migration-boundary ERROR the pin check already emits at skew ≥ 1,
+  `MIGRATIONS.md` gains the v1→v2 note (add a roster; ensure active-rule owners
+  resolve), and the per-check `since:` mechanism — documented intent today, scheduled
+  by `MIGRATIONS.md` to be wired "when the first breaking bump to v2 is authored" —
+  is wired in this slice: the new checks carry `since: 2` and demote to WARN behind
+  the boundary ERROR, so migration guidance is precise finger-pointing rather than a
+  scatter of field ERRORs. S3 was already the second-named bump candidate; this is
+  that bump happening.
 - **Activation resolution** (`since: 2`): an active rule with an owner field that
   resolves to nothing in the roster → ERROR (WARN under a v1 pin).
 - **Appeal-human** (`since: 2`): a rule whose `human_appeal_owner` resolves to
@@ -328,8 +339,18 @@ review:
   instance carrying an active rule, so without its own roster R1 would turn
   groundwork's own gate red), the demo roster rows naming its existing person-owners
   as holders, tests, and the `docs/rule-map.md`, `docs/known-limitations.md`, and
-  `MIGRATIONS.md` entries.
-- **R2** — the `generate.md` contract amendment (hole b) and the prose rewrite.
+  `MIGRATIONS.md` entries. **R1 also carries the minimal `generate.md` workflow
+  edits** — the pin writes `schema_version: 2`, and a `governance/roles.md` is
+  generated from the confirmed owner answers (each named owner enters as a holder;
+  the interview's existing human-only markers supply the type) — because without
+  them the documented generation workflow is broken for exactly the window between
+  R1 and R2: today's `generate.md` instructs `schema_version: 1`, which the R1
+  engine ERRORs at the migration boundary, and writing `2` without a roster fails
+  the missing-roster check on any active rule. A generation run on the R1 engine
+  must produce a passing repo.
+- **R2** — the `generate.md` contract amendment (hole b) and the prose rewrite,
+  including the full roster elicitation (typed holders asked for directly, rather
+  than derived from the human-only markers).
 - **C1–C13** grouped into slices after that; C13 stays held for the S6 decision.
 
 ## What this does not do

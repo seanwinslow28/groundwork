@@ -147,3 +147,24 @@ recorded in session memory, not here — it is apparatus, not spec.)
 |---|---|---|---|---|
 | 1 | low | Round 3's amendment inventory omits round-2 row 2, which round-3 row 3 explicitly amends | CONFIRMED | Recorded here (append-and-supersede): round 3's inventory also includes round-2 row 2 |
 | 2 | low | "All three take their shape from the holding semantics" — the review-record rule does not; it shares only the session | CONFIRMED | Fixed: the sentence now separates the two holes (shaped by the semantics) from the review rule (settled alongside, on its own evidence) |
+
+## Round 10 — 2026-08-28, task-mtdtdsz6-ynnx9t, verdict: does not approve (4 findings, 1 major)
+
+Reviewed: commit `8d68396` (spec after round-9 fixes, plus this log). All 4 findings
+accepted; fixed in the following commit. The major is a real sequencing defect in the
+landing order. Rows amended: round-4 row 1 (again — the v1-pin story), round-1 rows
+11 and 16, round-7 row 2.
+
+| # | Sev | Finding (compressed) | Verdict | Disposition |
+|---|---|---|---|---|
+| 1 | major | Between R1 (v2 engine) and R2 (generate.md rewrite), the documented generation workflow produces a failing repo either way — `schema_version: 1` hits the migration boundary; `2` without a roster fails the roster check | CONFIRMED | Fixed: R1 carries the minimal generate.md edits (pin v2 + roster generated from confirmed owner answers); R2 keeps the contract amendment, prose rewrite, and full roster elicitation |
+| 2 | minor | "No draft state to ship into" is false for skills — `provisioned: no` is the work-package convention's own drafting state, and generate.md ships such skills | CONFIRMED | Fixed: deep records and memory records keep the no-draft claim; skills named as already having one. Amends round-1 row 11 |
+| 3 | minor | "Its disputed action class" bound the dispute to the quad-check; it belongs to the intake gate | CONFIRMED | Fixed: "the intake gate's disputed action class" |
+| 4 | bookkeeping | Round-6 row 4's `_answered()` correction amended round-1 row 16, but no amendment pointer said so | CONFIRMED | Recorded here: round-6 row 4 amends round-1 row 16 |
+
+Also corrected in the same commit, prompted by finding 1's evidence: the v1-pin story
+at decision 3 and the schema-bump bullet. The earlier "WARN under a v1 pin" phrasing
+implied a green gate; in fact skew ≥ 1 fires the single migration-boundary ERROR, and
+the `since: 2` demotions are the finger-pointing behind that red gate (the pull
+promise's one-clean-error form). This supersedes the tier wording in round-4 row 1
+and round-7 row 2 a second time.
