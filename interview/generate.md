@@ -81,9 +81,9 @@ generated against (`git -C <engine clone> rev-parse --short HEAD`) and
 `---` lines, exactly as [../MIGRATIONS.md](../MIGRATIONS.md) shows; bare `key: value`
 lines with no fences fail the gate. Write the file at the end: once it exists the repo is a governed
 root, and every skill and rule you add after that is an escalating change wanting a
-proposal (#18). Generate under the pin and you will write a proposal per file. What
-keeps the generation commit itself clear of that gate is not the write order but the
-base you name when you run `--diff` — see "Then prove it".
+proposal (#18). Generate under the pin and you will write a proposal per file. What the
+root-creating commit is itself measured against, and why the write order does not
+decide it, is in "Then prove it".
 
 **2. `ontologies/` first.** Every function gets an `_executive-view.md` listing every
 activity with a Direction — that is the whole executive tier, and most activities never
@@ -184,44 +184,45 @@ From the engine clone:
 python3 scripts/validate.py ../<company>-os
 ```
 
-Exit 0 with no ERRORs. Not "looks right" — run it. Then, once the generation commit
-exists:
+Exit 0 with no ERRORs. Not "looks right" — run it. Then, once the root exists as a commit:
 
 ```
-python3 scripts/validate.py ../<company>-os --diff <generation commit>
+python3 scripts/validate.py ../<company>-os --diff <root-creating commit>
 ```
 
 which adds the stateful modes: org-memory immutability, frozen interview layers, and the
 #18 consent gate on every governed change.
 
-**The base is the generation commit** — the commit you just wrote everything in.
-Precondition 3 guarantees there is a history to reach into: the layers were committed
-before you generated. So the temptation is to reach one commit further back and diff
-against the pre-generation state. Do not.
+**The base is the commit that creates the governed root** — the one that adds
+`groundwork.pin` alongside the generated content. Land generation as a single commit and
+there is no ambiguity about which commit that is; if it takes more than one, that commit
+is still the base, and anything committed after it is an ordinary governed change wanting
+a proposal, exactly as the pin bullet above says. Precondition 3 guarantees there is a
+history to name it against — the layers were committed, in this same repo, before you
+generated. So the temptation is to reach one commit further back and diff against the
+pre-generation state. Do not.
 
 **The commit that creates the governed root is not subject to the consent gate.** #18
 routes an escalating change through a reviewable proposal, and generation cannot be its
-own proposal — every rule and skill in the repo arrives in that one commit, into a
+own proposal — every rule and skill is present by the time the root exists, in a
 `proposals/` this document specifies as empty at generation. Name the pre-generation
 commit as the base and you ask the gate to review the act that created the thing it
 governs: every generated constitution rule comes back as an escalating change with no
 pending proposal, and the gate is red on a correct repo. Measured on the OS generated in
 the 2026-07-31 persona-company run, which carries two constitution rules: the
-pre-generation base returns **2 errors, exit 1**, one per rule; the generation commit
-returns **0**. Write order is not a way out —
-the validator reads `groundwork.pin` from the working tree as well as the base tree, so
-putting the pin last does not keep the rules beside it out of the changeset.
+pre-generation base returns **2 errors, exit 1**, one per rule; the root-creating commit
+returns **0**. Within a single commit the write order is not a way out — the validator
+discovers `groundwork.pin` from the working tree as well as the base tree, so putting the
+pin last does not keep the rules beside it out of the changeset.
 
-Later runs use whatever base the change is proposed against — the main line, as
-[../README.md](../README.md) and [../delivery/README.md](../delivery/README.md) show.
-Every such base is the generation commit or a descendant of it, so that commit is never
-inside a changeset the gate examines.
-
-**What this first run proves, and what it does not.** Straight after generation the
-working tree *is* the generation commit, so the diff examines an empty changeset: it
-shows the stateful modes run clean, not that they caught anything. They bind on the
-first change after generation — the first new rule, the first skill, the first memory
-record — and that is the run that exercises them.
+**What this run proves, and what it does not.** The comparison is the base tree against
+the working filesystem, not one commit against another, and that scan does not honour
+`.gitignore` — an untracked or ignored governed file is still read. Run it straight after
+generation, with nothing in the tree the base does not already hold, and there is nothing
+to compare: it shows the stateful modes run clean, not that they caught anything. Later
+work is what exercises them, and not all of it — a new rule or skill is the #18 consent
+gate's case; memory immutability needs a record that existed at the base to be edited or
+deleted, since adding one is always fine; and a change touching neither exercises neither.
 
 **Say what you generated and what you could not.** A list of the activities that got deep
 records, the skills that shipped `provisioned: no` and why, and every question still
