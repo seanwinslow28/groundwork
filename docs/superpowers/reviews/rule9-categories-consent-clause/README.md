@@ -28,14 +28,15 @@ answered, in the directories that raised them:
 | `round-01.md` | `85211b4` | 1 minor finding, 0 spec findings (no approval word given) | `74369a5` |
 | `round-02.md` | `74369a5` | 2 minor findings (reported once per axis; no approval word given) | `4dc7bc6` |
 | `round-03.md` | `4dc7bc6` | 1 minor finding (reported once per axis; no approval word given) | `c27257e` — a record-only correction, no product file changed |
-| `round-04.md` | `c27257e` | not clean: 3 Standards, 2 Spec, "three unique defects overall" | see the next entry |
+| `round-04.md` | `c27257e` | not clean: 3 Standards, 2 Spec, "three unique defects overall" | `933f1fc` |
+| `round-05.md` | `933f1fc` | not clean: 2 Minor Standards, 2 Minor Spec, "two unique Minor defects" | see the next entry |
 
 ## Open findings
 
-None. Every finding from rounds 1–3 is fixed or corrected.
+None. Every finding in every entry above is fixed or corrected.
 
-**Two corrections to earlier entries, each carried by a later one** — the entries themselves
-are immutable, as rule 9 requires:
+**Corrections to earlier entries, each carried by a later one** — the entries themselves are
+immutable, as rule 9 requires:
 
 - **`round-02.md` corrects `round-01.md`:** its scope note says seven disclosed items where
   the list holds six. Six is right.
@@ -51,6 +52,9 @@ are immutable, as rule 9 requires:
   its claim that rounds 1–3 each found their defect in the previous round's repair is false
   of round 1, which reviewed the slice's first commit. Round 4 also **overturned round 3's
   judgment** that the split citation should stand: it is now two inline relative links.
+- **`round-05.md` corrects `round-04.md`:** its four cited line numbers in
+  `build-sessions.md` are as at `c27257e`, the revision round 4 reviewed; round 4's own fix
+  moved the last of them, so from `933f1fc` on they read 40, 45, 61 and 82.
 
 ## Rejected findings
 
