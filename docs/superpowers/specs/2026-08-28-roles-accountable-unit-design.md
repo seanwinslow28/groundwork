@@ -247,9 +247,12 @@ established here.
    unapproved change resting on a false S2 analogy): a roster addition is not
    escalating when the same diff moves the root's pin from v1 to v2, because
    every v1→v2 migration necessarily adds its roster — the exemption is exactly
-   the migration boundary, the sanctioned crossing mechanism — and a generated
-   repo's first commit has no base at all, which the S2 root-creation rule
-   already covers. A roster added to a root already at v2 — a re-add after
+   the migration boundary, the sanctioned crossing mechanism. A freshly generated
+   repo is covered by S2's baseline convention, not by base-absence: the
+   interview layers are committed before generation, so a base exists, and S2's
+   approved fix names the **generation commit itself as the base** for subsequent
+   `--diff` runs — the commit that creates the roster is therefore never inside a
+   changeset the gate examines. A roster added to a root already at v2 — a re-add after
    deletion included — is gated like any other escalating change, which closes
    the delete-then-re-add route: deletion still only WARNs, but with active rules
    the deleted state is red at the missing-roster ERROR, and the re-add needs a

@@ -337,3 +337,12 @@ superseded by the re-decision).
 | 1 | major | Modifications-only was an unapproved narrowing of the maintainer's "adds/mods" choice, resting on a false S2 analogy (S2 exempts root creation; demo is already a governed root) | CONFIRMED | Fixed by re-decision: additions and modifications gated; the one exemption is an addition in the same diff that moves the pin v1→v2 (or a generated first commit, which has no base). Supersedes round-22 row 1 |
 | 2 | major | The drafts-only leg of the r22 analysis was itself wrong — a high-risk draft's appeal resolving to nothing ERRORs, so that leg was not uniformly green | CONFIRMED | Dissolved by the re-decision: re-adds at v2 are gated for every root, so the split-by-contents analysis is gone. Supersedes round-22 row 2 |
 | 3 | major | The "reviewed against the then-current roster" visibility claim was not contractually provided by the proposal schema | PLAUSIBLE-only | Dissolved with the same analysis's removal; no contract now leans on that visibility |
+
+## Round 24 — 2026-08-29, task-mte7y4kj-93kzlf, verdict: does not approve (1 finding)
+
+Reviewed: commit `41ee443` (spec after round-23 fixes, plus this log). Accepted; fixed
+in the following commit. Rows amended: round-23 row 1's generated-first-commit clause.
+
+| # | Sev | Finding (compressed) | Verdict | Disposition |
+|---|---|---|---|---|
+| 1 | major | "A generated repo's first commit has no base" is false — layers are committed before generation; S2's mechanism is the generation commit as baseline, reproduced live by the reviewer | CONFIRMED | Fixed: decision 8 states S2's baseline convention — the generation commit is the base for subsequent diffs, so the roster-creating commit is never in an examined changeset. Amends round-23 row 1 |
