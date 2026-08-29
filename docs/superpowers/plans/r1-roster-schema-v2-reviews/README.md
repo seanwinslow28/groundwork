@@ -24,13 +24,16 @@ keep changing.
 | 9 | `2bc94ce` | does not approve | 6 (1 BLOCKER, 1 HIGH, 2 MEDIUM, 2 LOW) | `a5ba199` |
 | 10 | — | maintainer decision, not a review round | — | — |
 | 11 | — | maintainer decisions, not a review round | — | — |
+| 12 | — | maintainer decisions, not a review round | — | — |
 
 Fifty-five findings across nine rounds. Fifty-four fixed; one rejected with grounds.
 
 **The review loop ended at the maintainer's instruction after round 9, without an approving
 verdict.** `round-10.md` records that decision, what the last verdict actually said, and
 which commits no round ever reviewed. `round-11.md` records the maintainer's answers to six
-of the items it left open; three remain open and are listed there.
+of the items it left open, and `round-12.md` the last three. **No item is open.** Two of the
+final three imply edits to governance documents; entry 12 records why those belong to a
+short follow-up slice rather than to this branch.
 
 **Corrections to earlier entries live in later ones**, per rule 9: `round-03.md` corrects
 `round-02.md`'s axis split, and `round-04.md` corrects `round-03.md`'s claim that two changed
@@ -137,9 +140,11 @@ canon and would make a future role-named owner resolve.
 
 ## Status
 
-**The record rule 9 requires is complete**, and landing is the maintainer's (rule 3). Six of
-entry 10's open items were decided in `round-11.md`, all of them "keep what is in the tree";
-5a, 5b and 5c stay open. Rounds
+**The record rule 9 requires is complete**, and landing is the maintainer's (rule 3). All of entry
+10's open items are now decided — six in `round-11.md`, the last three in `round-12.md`. Two
+carry implementation owed to a follow-up slice (rule 9's category list in
+`docs/agents/build-sessions.md`, and a qualifying clause at `CONTEXT.md:105`); neither is a
+condition of this merge. Rounds
 1–9 each have an immutable entry carrying every finding, its reviewer's severity word
 verbatim, and its disposition; `round-10.md` records the decision to stop. No finding is
 open. One is rejected with grounds. **The last verdict does not approve, and no approving
