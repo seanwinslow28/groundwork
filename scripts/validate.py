@@ -1815,6 +1815,9 @@ def _substantive_line(ln):
 # its own message). Required in full once a rule is active (rung-placed).
 _RULE_OBJECT_FIELDS = ["value", "value_owner", "runtime_check", "runtime_check_owner",
                        "human_appeal", "human_appeal_owner"]
+# The four owner fields decision 2 requires to resolve once a rule is active.
+# `owner` is checked with its own message and is not in _RULE_OBJECT_FIELDS.
+_RULE_OWNER_FIELDS = ["owner", "value_owner", "runtime_check_owner", "human_appeal_owner"]
 _H1 = re.compile(r"^# \S", re.MULTILINE)
 
 
@@ -1839,6 +1842,10 @@ def _check_constitution_instance(inst, root, ignore=()):
     if _ignored("governance", ignore) or _ignored("constitution", ignore):
         return findings
     today = datetime.date.today()
+    # The roster resolves owner values. Its OWN findings belong to check_roles,
+    # so they are discarded here — one malformed roster is reported once.
+    roster, _rf = _load_roster(inst, root)
+    rules_seen = active_seen = False
     for name in sorted(os.listdir(base)):
         if not name.endswith(".md") or name in {"README.md", "_index.md"} \
                 or _ignored(name, ignore):
@@ -1858,6 +1865,8 @@ def _check_constitution_instance(inst, root, ignore=()):
         # with no appeal path must not leave the gate green.
         rung = data.get("rung")
         active = not _blank(rung)
+        rules_seen = True
+        active_seen = active_seen or active
         if not active:
             findings.append(Finding("WARN", rel, None, "rule not yet placed on a rung (draft)"))
         else:
@@ -1883,6 +1892,19 @@ def _check_constitution_instance(inst, root, ignore=()):
                 elif not _answered(v):
                     findings.append(Finding("ERROR", rel, None,
                                             "'%s' is a placeholder, not an answer" % field))
+            # Decision 2: held-to-activate. Only when a roster exists — with none,
+            # the single missing-roster ERROR below is the whole message, never a
+            # scatter of four.
+            if roster is not None:
+                for field in _RULE_OWNER_FIELDS:
+                    v = data.get(field)
+                    if not (isinstance(v, str) and _answered(v)):
+                        continue  # already ERRORed as missing or a placeholder
+                    if not _resolve_owner(roster, v):
+                        findings.append(Finding("ERROR", rel, None,
+                                                "active rule's '%s' (%s) does not resolve in "
+                                                "the roster — a role must be held to activate"
+                                                % (field, v.strip()), 2))
             # the rule statement is the H1 plus a substantive body, not a bare
             # title over placeholders, separators, or comments
             rendered = _HTML_COMMENT.sub("", body)
@@ -1933,6 +1955,18 @@ def _check_constitution_instance(inst, root, ignore=()):
                 findings.append(Finding("ERROR", rel, None,
                                         "orphan-prohibition: a repealed ritual's surviving job must be "
                                         "reassigned ('surviving_job' + 'reassigned_to') before the repeal ships"))
+
+    if rules_seen and roster is None:
+        rel_roster = os.path.relpath(os.path.join(inst, *ROSTER_REL), root)
+        if active_seen:
+            findings.append(Finding("ERROR", rel_roster, None,
+                                    "an active constitution rule needs a roster — "
+                                    "governance/roles.md must say who holds every owner "
+                                    "it names (a role must be held to activate)", 2))
+        else:
+            findings.append(Finding("WARN", rel_roster, None,
+                                    "no governance/roles.md — a draft rule's owners resolve "
+                                    "against nothing until the roster exists", 2))
     return findings
 
 

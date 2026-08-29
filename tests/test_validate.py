@@ -1860,6 +1860,20 @@ class TestDiffCLIWiring(unittest.TestCase):
             self.assertEqual(code, 0)
 
 
+ROSTER_OK = """---
+valid_at: 2026-08-01
+review_by: 2099-01-01
+source: The maintainer's own statement
+---
+# Roles — who holds what
+
+| Role | Holder | Type |
+|---|---|---|
+| Head of IT | Sean Winslow | human |
+| CISO | Sean Winslow | human |
+"""
+
+
 RULE_OK = """---
 owner: Head of IT
 rung: human-decision
@@ -1882,8 +1896,13 @@ An agent may propose a grant; a named human approves it and is logged.
 
 
 class TestConstitution(unittest.TestCase):
-    def _rule(self, d, text=RULE_OK, name="access.md"):
+    def _rule(self, d, text=RULE_OK, name="access.md", roster=ROSTER_OK):
+        """RULE_OK's owners are the two roles ROSTER_OK holds, so the fixture
+        writes both: from v2 on, a valid ACTIVE rule is one whose owners resolve.
+        Pass roster=None for the no-roster case."""
         _write(d, "governance/constitution/%s" % name, text)
+        if roster is not None:
+            _write(d, "governance/roles.md", roster)
 
     def test_valid_rule_clean(self):
         with tempfile.TemporaryDirectory() as d:
@@ -2158,20 +2177,6 @@ class TestConstitutionProvenance(unittest.TestCase):
             self.assertEqual(validate.check_constitution(d), [])
 
 
-ROSTER_OK = """---
-valid_at: 2026-08-01
-review_by: 2099-01-01
-source: The maintainer's own statement
----
-# Roles — who holds what
-
-| Role | Holder | Type |
-|---|---|---|
-| Head of IT | Sean Winslow | human |
-| CISO | Sean Winslow | human |
-"""
-
-
 class TestRoster(unittest.TestCase):
     """governance/roles.md: the file that decides who holds every owner an active
     rule names. Its own schema and integrity live here; resolving owner VALUES
@@ -2334,6 +2339,99 @@ class TestRoster(unittest.TestCase):
             self.assertEqual(validate._resolve_owner(roster, "head of it"), [])
             self.assertEqual(validate._resolve_owner(roster, "Ada Byron"), [])
             self.assertEqual(validate._resolve_owner(None, "Head of IT"), [])
+
+
+class TestRosterResolution(unittest.TestCase):
+    """Decision 2, held-to-activate: a rule with a rung must have every owner
+    field resolve against the roster. A draft may not. The safety-spine checks
+    that already run on drafts are untouched."""
+
+    def _inst(self, d, rule=RULE_OK, roster=ROSTER_OK):
+        _write(d, "governance/constitution/access.md", rule)
+        if roster is not None:
+            _write(d, "governance/roles.md", roster)
+
+    def test_active_rule_with_resolving_owners_is_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d)
+            self.assertEqual([f for f in validate.check_constitution(d)
+                              if f.level == "ERROR"], [])
+
+    def test_active_rule_with_an_unheld_owner_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, roster=ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                                   "| CISO |  |  |"))
+            errs = [f for f in validate.check_constitution(d) if f.level == "ERROR"]
+            self.assertTrue(any("does not resolve" in f.message and "value_owner" in f.message
+                                for f in errs), errs)
+
+    def test_active_rule_with_an_absent_owner_row_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, roster=ROSTER_OK.replace("| Head of IT | Sean Winslow | human |\n", ""))
+            errs = [f for f in validate.check_constitution(d) if f.level == "ERROR"]
+            self.assertTrue(any("does not resolve" in f.message and "'owner'" in f.message
+                                for f in errs), errs)
+
+    def test_person_named_owner_resolves_through_a_holder_only_row(self):
+        """Decision 1 is ADDITIVE: a person's name stays a valid owner."""
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d,
+                       rule=RULE_OK.replace("Head of IT", "Ruth Okafor").replace("CISO", "Ruth Okafor"),
+                       roster=ROSTER_OK.replace("| Head of IT | Sean Winslow | human |\n"
+                                                "| CISO | Sean Winslow | human |\n",
+                                                "|  | Ruth Okafor | human |\n"))
+            self.assertEqual([f for f in validate.check_constitution(d)
+                              if f.level == "ERROR"], [])
+
+    def test_active_rule_and_no_roster_is_one_error_not_a_scatter(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, roster=None)
+            errs = [f for f in validate.check_constitution(d) if f.level == "ERROR"]
+            self.assertEqual(len(errs), 1, errs)
+            self.assertIn("governance/roles.md", errs[0].path)
+            self.assertEqual(errs[0].since, 2)
+
+    def test_drafts_only_and_no_roster_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, rule=RULE_OK.replace("rung: human-decision\n", ""), roster=None)
+            findings = validate.check_constitution(d)
+            self.assertFalse(any(f.level == "ERROR" and "roles.md" in f.path for f in findings))
+            self.assertTrue(any(f.level == "WARN" and "roles.md" in f.path for f in findings))
+
+    def test_no_rules_at_all_needs_no_roster(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/constitution/README.md", "# rules\n")
+            self.assertEqual(validate.check_constitution(d), [])
+
+    def test_resolution_errors_carry_since_two(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, roster=ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                                   "| CISO |  |  |"))
+            errs = [f for f in validate.check_constitution(d)
+                    if f.level == "ERROR" and "does not resolve" in f.message]
+            self.assertTrue(errs)
+            self.assertTrue(all(f.since == 2 for f in errs))
+
+    def test_v1_pinned_content_demotes_to_a_warn_behind_the_boundary(self):
+        """The whole point of the since: mechanism: a v1 repo has no roster, so
+        the resolution ERROR must not scatter — the pin's boundary ERROR is the
+        one red line, and this is the finger-pointing behind it."""
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "co/groundwork.pin", "---\nschema_version: 1\n---\n")
+            _write(d, "co/governance/constitution/access.md", RULE_OK)
+            findings = validate.validate(d)
+            roster_errs = [f for f in findings
+                           if f.level == "ERROR" and "roles.md" in f.path]
+            self.assertEqual(roster_errs, [])
+            demoted = [f for f in findings
+                       if f.level == "WARN" and "roles.md" in f.path]
+            self.assertTrue(demoted)
+            self.assertIn("new since schema v2", demoted[0].message)
+
+    def test_the_engine_root_resolves_its_own_active_rule(self):
+        """R1 without an engine-root roster would turn groundwork's own gate red."""
+        errs = [f for f in validate.check_constitution(str(REPO)) if f.level == "ERROR"]
+        self.assertEqual(errs, [])
 
 
 class TestActionClassGate(unittest.TestCase):
@@ -5356,6 +5454,10 @@ class TestNestedInstanceGovernance(unittest.TestCase):
     def test_clean_nested_rule_is_silent(self):
         with tempfile.TemporaryDirectory() as d:
             _write(d, "demo/governance/constitution/r.md", RULE_OK)
+            # From v2 on, "clean" for an ACTIVE rule includes owners that
+            # resolve — and resolution follows the instance, so the nested
+            # instance needs its OWN roster (the point this class exists to pin).
+            _write(d, "demo/governance/roles.md", ROSTER_OK)
             self.assertEqual([f for f in validate.check_constitution(d)
                               if f.level == "ERROR"], [])
 
