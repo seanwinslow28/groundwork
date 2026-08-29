@@ -38,15 +38,24 @@ the maintainer's at merge.
 | 12 | `7f327ab` | does not approve | 3 | `42ebcd8` |
 | 13 | — | record correction, not a review round | — | `42ebcd8` |
 | 14 | `42ebcd8` | does not approve | 5 | `a3740d0` |
-| 15 | `a3740d0` | does not approve | 1 | see round-16 |
+| 15 | `a3740d0` | does not approve | 1 | `d38852b` |
+| 16 | `d38852b` | **approve** | 0 | terminal |
 
 Eighty-five findings across thirteen review rounds, all accepted, none rejected. Across all
-of them the supersession chain leaves **seventy-nine fixed and six open**. **Seventeen**
+of them the supersession chain leaves **seventy-nine fixed and six open**, every open one
+listed below. **Seventeen**
 rows that had been escalated rather than closed are dispositioned across `round-09.md`,
 `round-10.md` and `round-11.md` — each table superseding the last, the seventeenth row found
 only at round 11. `round-13.md` reclassifies two rows recorded as "standing" rather than
 open, and `round-14.md` carries the final tally: **fourteen fixed, three open, none
 rejected**.
+
+## Status
+
+**Ready to merge.** Round 16 approved with no findings — 0 major, 0 minor — and its own
+words: "the record is complete and accurate enough to merge. Rule 9 requires committed
+verdicts, not closed findings." The open findings below and the one open maintainer item
+block nothing; the rule-1 departure is disclosed and reserved for the maintainer.
 
 ## Rejected findings
 
