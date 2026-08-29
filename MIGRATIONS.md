@@ -37,18 +37,62 @@ generated_by_commit: <sha>     # provenance only — never used for skew math
 
 It lives at the company-repo root, independent of `interview/`.
 
-## Deferred: per-check `since:` demotion
+## Per-check `since:` demotion
 
-At `SCHEMA_VERSION = 1` there is no older schema to be lenient toward, so the
-per-check `since:` mechanism (demoting a genuinely-new requirement to a "new since
-your pin" warning) is **not yet wired**. When the first breaking bump to v2 is authored,
-each new check declares the `since:` version it was introduced at, and a new-requirement
-check demotes to WARN for content pinned before it. Until then this is documented intent,
-not code.
+Each check declares the `SCHEMA_VERSION` it was introduced at. A finding from a check
+introduced at v*N* **demotes from ERROR to WARN** for content pinned below *N*: a v1 repo
+has no roster, so a v2 resolution check cannot bind content pinned before rosters existed.
 
-## Current schema version: 1
+This is not leniency. Such a repo is already red at the **one** migration-boundary ERROR
+above, and the demoted WARNs are the precise finger-pointing that error promises — which
+files, which fields — rather than a scatter of ERRORs a reader has to triage. Content under
+no pin, the engine's own tree included, is never demoted.
 
-Schema **v1** is the first released schema. There are no migrations yet.
+Wired at the v1→v2 bump (`apply_since_demotion` in `scripts/validate.py`), as this document
+scheduled it.
+
+## Current schema version: 2
+
+Schema **v1** was the first released schema.
+
+### v1 → v2 — roles are the accountable unit
+
+**What changed.** An owner is a role or a named holder, and a role must be **held** to
+activate. Every instance now carries a roster at `governance/roles.md` naming each role, its
+holder(s), and each holder's type (`human` or `agent`). A rule that carries a rung (active)
+must have all four owner fields — `owner`, `value_owner`, `runtime_check_owner`,
+`human_appeal_owner` — resolve against it, and `human_appeal_owner` must resolve to at least
+one **human**: an appeal path that terminates in a model is not an appeal path. A draft rule
+may still carry unheld or absent owners; its gaps are named WARNs. The roster also joins the
+consent gate as a third governed artifact family — changing it in a governed root is an
+escalating change wanting a proposal.
+
+**What to change.**
+
+1. Write `governance/roles.md`. Frontmatter: `valid_at` (when this mapping was last
+   confirmed — a snapshot, not when a fact became true), `review_by`, and `source` (where the
+   org map came from). Then one table, `| Role | Holder | Type |`, plain-text cells.
+2. Make every **active** rule's four owner values resolve. Two ways, by exact string: a value
+   matching a **Role** cell resolves to that row's holders; a value matching a **Holder** cell
+   resolves to that holder. A person-named owner therefore resolves through a **holder-only
+   row** — the Role cell left empty, which asserts a holder without asserting a role. A role
+   with no row, or a row with no holder, is unheld.
+3. Check that every `human_appeal_owner` reaches a holder typed `human`.
+4. Set `schema_version: 2` in `groundwork.pin`.
+
+A rule you cannot complete does not have to be forced: drop its `rung` and it is a draft
+again, with its gaps named as WARNs rather than guessed at.
+
+**Why.** A rule the machine enforces with an owner nobody claims is *enforced, but nobody
+owns it* — the failure a persona-company run actually produced, where an owner field read
+"the function, no person named" and the gate stayed green. Resolution against a roster is
+what tells an accountable office apart from a disclaimer, and the check could not be added
+without rejecting content a v1 reader accepted.
+
+**What it does not do.** Nothing verifies a roster row against the world; a stale roster is a
+confident error one level up ([docs/known-limitations.md](docs/known-limitations.md)). Owner
+fields outside the constitution — deep records, Owner's Cards, memory records — are not
+resolved in v2.
 
 ### Why the executive-view grammar tightened without a bump
 

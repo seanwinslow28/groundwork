@@ -31,7 +31,7 @@ SKIP_DIRS = {".git", ".remember", "__pycache__"}
 # Everything else is checked at full strictness.
 SKIP_RELPATHS = {"tests", os.path.join("docs", "superpowers")}
 
-SCHEMA_VERSION = 1  # bumped ONLY on a breaking schema change (#21). Never on additive commits.
+SCHEMA_VERSION = 2  # bumped ONLY on a breaking schema change (#21). Never on additive commits.
 
 
 def parse_frontmatter(text, path="<unknown>"):

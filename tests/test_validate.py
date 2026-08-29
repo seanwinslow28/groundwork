@@ -2945,13 +2945,34 @@ class TestHooks(unittest.TestCase):
 
 
 PIN_OK = """---
-schema_version: 1
+schema_version: 2
 generated_by_commit: 0123456789abcdef0123456789abcdef01234567
 ---
 """
 
 
 class TestVersionPin(unittest.TestCase):
+    def test_schema_version_is_two(self):
+        self.assertEqual(validate.SCHEMA_VERSION, 2)
+
+    def test_v1_pin_hits_one_migration_boundary_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "groundwork.pin", "---\nschema_version: 1\n---\n")
+            errs = [f for f in validate.check_version_pin(d) if f.level == "ERROR"]
+            self.assertEqual(len(errs), 1, errs)
+            self.assertIn("v1->v2", errs[0].message)
+
+    def test_the_boundary_error_never_demotes(self):
+        """It carries no since:, so it binds under every pin — it IS the boundary."""
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "groundwork.pin", "---\nschema_version: 1\n---\n")
+            errs = [f for f in validate.validate(d) if f.level == "ERROR"]
+            self.assertTrue(any("v1->v2" in f.message for f in errs), errs)
+
+    def test_the_demo_pin_is_migrated(self):
+        text = (REPO / "demo" / "groundwork.pin").read_text(encoding="utf-8")
+        self.assertIn("schema_version: 2", text)
+
     def test_current_pin_is_exactly_silent(self):
         with tempfile.TemporaryDirectory() as d:
             _write(d, "your-company/groundwork.pin", PIN_OK)
@@ -2959,14 +2980,14 @@ class TestVersionPin(unittest.TestCase):
 
     def test_skew_forward_is_exactly_one_migration_error(self):
         with tempfile.TemporaryDirectory() as d:
-            _write(d, "your-company/groundwork.pin", PIN_OK.replace("schema_version: 1", "schema_version: 0"))
+            _write(d, "your-company/groundwork.pin", PIN_OK.replace("schema_version: 2", "schema_version: 0"))
             errs = [f for f in validate.check_version_pin(d) if f.level == "ERROR"]
             self.assertEqual(len(errs), 1)
             self.assertIn("MIGRATIONS", errs[0].message)
 
     def test_reverse_skew_warns_not_errors(self):
         with tempfile.TemporaryDirectory() as d:
-            _write(d, "your-company/groundwork.pin", PIN_OK.replace("schema_version: 1", "schema_version: 2"))
+            _write(d, "your-company/groundwork.pin", PIN_OK.replace("schema_version: 2", "schema_version: 3"))
             findings = validate.check_version_pin(d)
             self.assertTrue(any(f.level == "WARN" and "pull the engine" in f.message for f in findings))
             self.assertFalse(any(f.level == "ERROR" for f in findings))
@@ -2980,7 +3001,7 @@ class TestVersionPin(unittest.TestCase):
 
     def test_non_integer_schema_version_errors(self):
         with tempfile.TemporaryDirectory() as d:
-            _write(d, "your-company/groundwork.pin", PIN_OK.replace("schema_version: 1", "schema_version: v1"))
+            _write(d, "your-company/groundwork.pin", PIN_OK.replace("schema_version: 2", "schema_version: v1"))
             self.assertTrue(any(f.level == "ERROR" and "integer" in f.message
                                 for f in validate.check_version_pin(d)))
 
@@ -3017,14 +3038,14 @@ class TestVersionPin(unittest.TestCase):
 
     def test_missing_commit_warns(self):
         with tempfile.TemporaryDirectory() as d:
-            _write(d, "your-company/groundwork.pin", "---\nschema_version: 1\n---\n")
+            _write(d, "your-company/groundwork.pin", "---\nschema_version: 2\n---\n")
             findings = validate.check_version_pin(d)
             self.assertTrue(any(f.level == "WARN" and "generated_by_commit" in f.message for f in findings))
             self.assertFalse(any(f.level == "ERROR" for f in findings))
 
     def test_validate_wires_pin(self):
         with tempfile.TemporaryDirectory() as d:
-            _write(d, "your-company/groundwork.pin", PIN_OK.replace("schema_version: 1", "schema_version: 0"))
+            _write(d, "your-company/groundwork.pin", PIN_OK.replace("schema_version: 2", "schema_version: 0"))
             self.assertTrue(any(f.level == "ERROR" and "MIGRATIONS" in f.message for f in validate.validate(d)))
 
 
@@ -3075,6 +3096,14 @@ class TestSinceDemotion(unittest.TestCase):
         f = validate.Finding("ERROR", "co/inner/governance/roles.md", None, "m", 2)
         out = validate.apply_since_demotion([f], {"co": 1, "co/inner": 2})
         self.assertEqual(out[0].level, "ERROR")
+
+    def test_migrations_documents_the_mechanism_as_wired(self):
+        """MIGRATIONS.md scheduled this for 'when the first breaking bump to v2 is
+        authored'. This is that bump; the deferral text must not survive it."""
+        text = (REPO / "MIGRATIONS.md").read_text(encoding="utf-8")
+        self.assertNotIn("Deferred: per-check", text)
+        self.assertIn("Current schema version: 2", text)
+        self.assertIn("v1 → v2", text)
 
     def test_warns_and_untagged_findings_pass_through_unchanged(self):
         warn = validate.Finding("WARN", "co/x.md", None, "m", 2)
@@ -3556,7 +3585,7 @@ class TestChangelogAppendOnly(unittest.TestCase):
         self.assertTrue(validate._changelog_append_only(self.BASE.replace("\n", "\r\n"), self.BASE))
 
 
-PIN_OK = "---\nschema_version: 1\ngenerated_by_commit: abc1234\n---\n"
+PIN_OK = "---\nschema_version: 2\ngenerated_by_commit: abc1234\n---\n"
 
 CHANGELOG_OK = ("# Governance changelog\n\n## Entries\n\n"
                 "<!-- appended by the auto-apply track; none yet -->\n")
