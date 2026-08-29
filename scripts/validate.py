@@ -2117,12 +2117,32 @@ def _parse_roster(text, rel):
     # emulate what renders (Codex r3, two BLOCKERs).
     for n in range(body_start, len(lines)):
         ln = lines[n]
-        if _fence_match(ln):
+        # A fence inside a blockquote still hides what follows it, and
+        # _fence_match only sees top-level syntax, so the marker chain is
+        # stripped first (Codex r5). That makes "no code fence anywhere" —
+        # which governance/README.md already claimed — actually true.
+        if _fence_match(re.sub(r"^[ \t>]+", "", ln)):
             findings.append(Finding("ERROR", rel, n + 1,
                                     "a roster carries no code fence — its one table must be "
                                     "the text a reader sees, and a fence can hide one", 2))
             return Roster(roles, holders), findings
-        if "-->" in ln or _ANGLE_CONSTRUCT.search(ln):
+        # A link reference definition renders NOTHING and its title may span
+        # lines, so a whole table can live inside one (Codex r5, BLOCKER). The
+        # executive view forbids these already, for a neighbouring reason; ']:'
+        # is that same signature, and here it is refused without the exec
+        # view's pipe-free carve-out, because the hiding case is precisely a
+        # definition whose title contains pipes.
+        if _LINK_REF_SIG in ln:
+            findings.append(Finding("ERROR", rel, n + 1,
+                                    "a roster body carries no link reference definition — it "
+                                    "renders nothing and its title can span lines, so a whole "
+                                    "table can hide inside one", 2))
+            return Roster(roles, holders), findings
+        # No standalone '-->' check: a comment must OPEN with '<!--', which the
+        # pattern below catches on an earlier line, and the early return means
+        # the opener is always reached first. Checking the closer as well only
+        # ERRORed on prose containing an ASCII arrow (Codex r5).
+        if _ANGLE_CONSTRUCT.search(ln):
             findings.append(Finding("ERROR", rel, n + 1,
                                     "a roster body carries no angle-bracket construct — an "
                                     "HTML comment, tag, doctype, CDATA section or processing "
@@ -2732,8 +2752,12 @@ def _pin_versions(root, ignore=()):
         if os.path.basename(abspath) != "groundwork.pin":
             continue
         rel = os.path.relpath(abspath, root)
-        data, _f = _load_frontmatter(abspath, rel)
-        if data is None:
+        data, fm = _load_frontmatter(abspath, rel)
+        # Fail CLOSED on a malformed pin (Codex r5): parse_frontmatter still
+        # returns a value beside its ERROR — a duplicate key keeps the first —
+        # so trusting the value would let a broken pin grant leniency, which is
+        # exactly what this docstring promises it does not.
+        if data is None or any(f.level == "ERROR" for f in fm):
             continue
         sv = data.get("schema_version")
         if not isinstance(sv, str):
@@ -3810,7 +3834,11 @@ def _pin_dirs(root, base_files, scope, wt_files):
 def _pin_version_text(text):
     """The integer schema_version in a pin file's text, or None. Parsing only —
     check_version_pin owns the findings."""
-    data, _f = parse_frontmatter(text or "", "<pin>")
+    data, fm = parse_frontmatter(text or "", "<pin>")
+    # Fail closed, as _pin_versions does: a malformed pin must not authorize
+    # decision 8's bootstrap exemption (Codex r5).
+    if any(f.level == "ERROR" for f in fm):
+        return None
     sv = (data or {}).get("schema_version")
     if not isinstance(sv, str):
         return None

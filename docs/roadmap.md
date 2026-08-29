@@ -76,10 +76,12 @@ carried a schema cost.
   layer — by design now, with named WARNs, rather than by accident. The roles design records
   that choice and its cost in full. Any further addition is another bump with its own
   migration note; the pull promise has been binding since 2026-07-29.
-- **Per-check `since:` tags** and scatter-suppression, the other half of the version-skew
-  policy. **Wired at the v1→v2 bump**, as planned: a check declares the version it was
-  introduced at, and its ERROR demotes to a finger-pointing WARN behind an older pin's single
-  migration-boundary error.
+- **`since:` tags** and scatter-suppression, the other half of the version-skew policy.
+  **Wired at the v1→v2 bump**, as planned. The tag turned out to belong on a **finding**
+  rather than on a check: an untagged finding binds every pin, and a check that gained new
+  requirements at v2 tags only those — the high-risk appeal spine keeps ERRORing on its
+  original condition under any pin while its new resolution-based conditions demote to a
+  finger-pointing WARN behind an older pin's single migration-boundary error.
 - **The Classify, Consent, Enforce compliance pack:** a consent registry with approved and
   forbidden uses and expiry, CODEOWNERS on sensitive generated folders, a Gitleaks
   profile, an erasure runbook, and a data-protection impact template.

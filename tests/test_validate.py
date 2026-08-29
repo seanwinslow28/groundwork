@@ -2450,6 +2450,36 @@ class TestRoster(unittest.TestCase):
             self.assertTrue(any(f.level == "ERROR" and "one table" in f.message
                                 for f in validate.check_roles(d)))
 
+    def test_a_link_reference_definition_cannot_hide_a_table(self):
+        """Codex r5, BLOCKER: a link reference definition renders nothing and its
+        title may span lines, so the whole table lived inside one — zero
+        findings, and CISO resolved to a human."""
+        head = ROSTER_OK.split("# Roles")[0] + "# Roles\n\n"
+        body = '[x]: /url "\n| Role | Holder | Type |\n|---|---|---|\n| CISO | Ghost | human |\n"\n'
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, head + body)
+            self.assertTrue(any(f.level == "ERROR" and "link reference" in f.message
+                                for f in validate.check_roles(d)))
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "CISO"), [])
+            self.assertEqual(validate._resolve_owner(roster, "Ghost"), [])
+
+    def test_a_blockquoted_fence_is_a_fence(self):
+        """Codex r5: the docs said 'no code fence anywhere' while _fence_match
+        saw only top-level syntax, so a blockquoted fence passed."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK + "\n> ```\n> hidden\n> ```\n")
+            self.assertTrue(any(f.level == "ERROR" and "fence" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_an_ascii_arrow_in_prose_is_not_an_html_comment(self):
+        """Codex r5: checking for a bare '-->' ERRORed on ordinary prose. A
+        comment must OPEN with '<!--', which is caught on an earlier line."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("# Roles — who holds what",
+                                              "# Roles — who holds what\n\nEscalation runs support --> security."))
+            self.assertEqual([f for f in validate.check_roles(d) if f.level == "ERROR"], [])
+
     def test_an_empty_roster_is_legitimate(self):
         """Codex r2: a draft-only instance whose mapping nobody has confirmed has
         a header and a delimiter and no rows. Generation must invent no entries,
@@ -4357,6 +4387,24 @@ class TestRosterIsGoverned(unittest.TestCase):
                         if "roles.md" in f.path]
             self.assertTrue(findings)
             self.assertTrue(all(f.since == 2 for f in findings), findings)
+
+    def test_a_malformed_base_pin_does_not_authorize_the_bootstrap(self):
+        """Codex r5: parse_frontmatter returns a value beside its ERROR — a
+        duplicate key keeps the first — so a broken v1 pin still read as 1 and
+        bought decision 8's proposal-free exemption."""
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "groundwork.pin", "---\nschema_version: 1\nschema_version: 9\n---\n")
+            _write(d, "governance/constitution/access.md", RULE_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "base")
+            _write(d, "governance/roles.md", ROSTER_OK)
+            _write(d, "groundwork.pin", "---\nschema_version: 2\n---\n")
+            errs = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                    if f.level == "ERROR" and "roles.md" in f.path]
+            self.assertTrue(errs, "a malformed base pin authorized the bootstrap exemption")
 
     def test_a_matching_proposal_clears_a_roster_change(self):
         with tempfile.TemporaryDirectory() as d:

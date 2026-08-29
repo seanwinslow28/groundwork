@@ -62,13 +62,16 @@ source: <where this org map came from: an interview layer, an HR system, the fou
 **The body is a restricted grammar, and the restrictions are whole-file.** Below the
 frontmatter a roster carries **one** table and nothing that could be mistaken for another:
 
-- **No code fence** (``` or `~~~`), anywhere. A fence can hide a table, and a fence's own
-  length rules are a place to be subtly wrong.
+- **No code fence** (``` or `~~~`), anywhere — inside a blockquote included. A fence can
+  hide a table, and a fence's own length rules are a place to be subtly wrong.
 - **No angle-bracket construct** — no HTML tag, comment, doctype, CDATA section or
   processing instruction, and **no autolink** (`<https://example.com>`) either. An autolink
   is Markdown rather than HTML, so refusing it is deliberately over-strict: one rule a
   reader can check beats a grammar that must decide what renders. Write a plain URL, or an
   ordinary bracket-and-parenthesis Markdown link.
+- **No link reference definition** — no `]:` in the body. One renders nothing at all and
+  its title may run across lines, so an entire table can live inside one. The executive
+  view refuses them too.
 - **No `|` outside the table.** A pipe in explanatory prose reads as a second table, so it
   is refused rather than guessed at.
 

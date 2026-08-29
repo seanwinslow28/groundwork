@@ -81,9 +81,10 @@ escalating change wanting a proposal.
    confirmed — a snapshot, not when a fact became true), `review_by`, and `source` (where the
    org map came from). Then one table, `| Role | Holder | Type |`, plain-text cells.
 2. Write it as one table and nothing else: below the frontmatter a roster carries no code
-   fence, no angle-bracket construct (HTML tag, comment, doctype, CDATA, processing
-   instruction, or autolink), and no `|` outside the table. Non-rendered text must never
-   supply a holder. See `governance/README.md`.
+   fence (blockquoted ones included), no angle-bracket construct (HTML tag, comment,
+   doctype, CDATA, processing instruction, or autolink), no link reference definition, and
+   no `|` outside the table. Non-rendered text must never supply a holder. See
+   `governance/README.md`.
 3. Make every **active** rule's four owner values resolve. Two ways, by exact string: a value
    matching a **Role** cell resolves to that row's holders; a value matching a **Holder** cell
    resolves to that holder. A person-named owner therefore resolves through a **holder-only
