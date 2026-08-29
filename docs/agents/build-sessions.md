@@ -5,7 +5,7 @@
 ## Session shape
 1. **One increment per session.** Build it, `validate` green, Codex-review, record what it revealed, stop. The pull to keep going is the signal to stop.
 2. **One increment ends green:** `python3 scripts/validate.py` passes (zero ERRORs) before a session is done.
-3. **Review gate:** Fable 5 builds; the Codex plugin reviews at session end (`/codex` review or `codex:codex-rescue`); the maintainer (Sean) lands the merge — the commit bit is the governance teeth (#18).
+3. **Review gate:** Fable 5 builds; the Codex plugin reviews at session end (`/codex` review or `codex:codex-rescue`); the maintainer (Sean) lands the merge — the commit bit is the governance teeth (#18). Rule 9 governs the record those rounds must leave.
 4. **Claim before work:** branch before touching the tree (never build on `main`).
 
 ## Standing rules (carried from charting)
@@ -21,6 +21,31 @@
    wrong. Codex review caught three on the branch, before `main`'s product files carried
    them; the fourth surfaced only after the slice had merged, and it did reach `main`'s
    roadmap. Assume the ones you have not found yet are already shipped.
+
+## Standing rules (added during build)
+9. **Durable review verdicts.** A slice may not merge unless the verdicts of every Codex
+   review round run against it — findings, severities, and dispositions (fixed in commit X /
+   rejected with grounds), not just the final approve — are committed in the repository. A
+   slice with a plan stores them beside it, at `docs/superpowers/plans/<slice>-reviews.md`;
+   plan-less work uses `docs/superpowers/reviews/<branch>.md`, with any `/` in the branch
+   name written as `-` so the log stays a single file directly under `reviews/`. The log is
+   appended per round, on the branch, so the merge carries the record: a later round amends
+   an earlier row by superseding it, never by rewriting the earlier round's table.
+   *Evidence:* the session that landed rule 8 ran twenty-five rounds — sixteen on the
+   groundwork branch, nine on the persona-company correction, per merge commit `df6df21` —
+   and what survives is what its fix commits chose to quote. Two of the sixteen — r3 and r9 —
+   left no commit in the `fix(build): Codex r…` sequence, and nothing else in the repository
+   records them; no complete round output survives anywhere. The honesty plan paid the same cost
+   earlier: its header records that its three rounds' "review outputs were not retained",
+   leaving the merge as the durable record of the approval, with "no inspectable artifact"
+   dating round 3 itself. The non-gating rounds are where the pattern data lives — the
+   recurring parallel-site drift class, whose "seventh instance" `18fa805` names, and the
+   four factual defects rule 8 counts — so a log of approvals alone would keep none of it.
+   *Worked example:* `docs/superpowers/reviews/spec-roles-accountable-unit.md`, written
+   prospectively on the branch that proposed this rule — twenty-five rounds, 102 findings,
+   every disposition, one approving verdict. The rule and its counter-argument are locked as
+   decision 7 of the 2026-08-28 roles-as-the-accountable-unit design, under
+   `docs/superpowers/specs/`.
 
 ## Where the plan lives
 - Design: `docs/superpowers/specs/2026-07-22-groundwork-v1-build-sequence-design.md`
