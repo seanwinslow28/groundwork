@@ -84,3 +84,15 @@ Rows amended: round-3 rows 3 and 6.
 | 2 | med | Decision 5 named two owner fields where the validator section says "any" — four exist (owner, value_owner, runtime_check_owner, human_appeal_owner) | CONFIRMED | Fixed: decision 5 names all four |
 | 3 | med | "Both shipped rules declare their missing rule owner, appeal path, and sunset" misstates both files' actual gaps (quad-check has human_appeal; the intake gate has a rule owner) | CONFIRMED | Fixed: per-rule enumeration matching the files. Amends round-3 row 6 |
 | 4 | med | "Caught at activation by failed resolution" stated unconditionally — an erroneous roster row carrying the disclaimer string would resolve it | CONFIRMED | Fixed at both sites: conditional stated; the roster is trusted text |
+
+## Round 5 — 2026-08-28, task-mtdrwfmc-5s5wci, verdict: does not approve (3 findings)
+
+Reviewed: commit `7c4aaeb` (spec after round-4 fixes, plus this log). All 3 findings
+accepted; fixed in the following commit. Rows amended: round-1 row 16, round-3 row 6
+(second amendment), round-4 row 4.
+
+| # | Sev | Finding (compressed) | Verdict | Disposition |
+|---|---|---|---|---|
+| 1 | med | "Inspects owner fields only on active rules" is overbroad — the high-risk spine inspects appeal fields on drafts; this rule simply is not high-risk | CONFIRMED | Fixed: owner-completeness scoped, the exception named, and why it did not apply (action class `external-side-effect`). Amends round-1 row 16 |
+| 2 | med | The intake gate's gap enumeration omits its disputed, unresolved action class, which the file and the report both record | CONFIRMED | Fixed: the dispute joins the enumeration. Amends round-3 row 6 again |
+| 3 | med | Decision 6 still said "becomes unresolvable" unconditionally — a third occurrence the round-4 fix missed | CONFIRMED | Fixed: conditional added at the third site. Amends round-4 row 4 |

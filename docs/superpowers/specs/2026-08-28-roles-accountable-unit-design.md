@@ -34,10 +34,12 @@ the floor.
 
 Accepting roles as owners reopens the S3 void one level up. Run 1's record carried
 `runtime_check_owner: "Delivery coordination — the function, no person named"`, and it
-passed — because the rule shipped as a draft, and the validator inspects owner fields
-only on active rules (`scripts/validate.py`, the rung branch; verified this session).
-Had the rule been active, `_answered()` would have accepted the sentence anyway, since
-it rejects only placeholders. The quad-check correction
+passed — because the rule shipped as a draft, and the validator inspects
+owner-completeness fields only on active rules (`scripts/validate.py`, the rung
+branch; verified this session — the one exception, the high-risk safety spine that
+checks appeal fields on drafts too, did not apply: this rule's action class is
+`external-side-effect`, not `high-risk`). Had the rule been active, `_answered()`
+would have accepted the sentence anyway, since it rejects only placeholders. The quad-check correction
 (`~/Code-Brain/persona-company/runs/2026-07-31/quad-check-correction.md:114`) put the
 distinction this way: *"`Head of IT` names an accountable office, while "the function,
 no person named" disclaims one, and the check cannot tell them apart."* If any role
@@ -146,13 +148,15 @@ their shape from the holding semantics.
    contract for the gaps it recognized as gaps: each shipped rule declares its own
    missing fields in-file — the quad-check its rule owner, appeal owner, and sunset;
    the intake gate its value statement, value owner, appeal path and owner, and
-   sunset ("Each file names its own missing owners in its body rather than
-   pretending to be complete") — and the generation report names both incomplete
-   rules and those reasons under "What did not ship, and why"
-   (`generation-report.md:45–72`, verified this session). One gap
+   sunset, plus the action-class dispute its body records as unresolved ("Each file
+   names its own missing owners in its body rather than pretending to be complete")
+   — and the generation report names both incomplete rules and those reasons under
+   "What did not ship, and why" (`generation-report.md:45–72`, verified this
+   session). One gap
    it did not declare, because it was not yet one: the disclaiming
-   `runtime_check_owner` becomes unresolvable — and therefore a declared-draft
-   obligation — only under this design. The amendment makes the contract match the
+   `runtime_check_owner` becomes unresolvable (absent a roster row carrying its
+   exact string) — and therefore a declared-draft obligation — only under this
+   design. The amendment makes the contract match the
    observed declaration behavior instead of prohibiting it.
    *Counter-argument, recorded:* declaring may become cheaper than completing; the
    generation report obligation is the pressure against that, and a run 2 can measure
