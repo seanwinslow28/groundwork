@@ -14,16 +14,25 @@ keep changing.
 | Round | Reviewed | Verdict | Findings | Fix commit |
 |---|---|---|---|---|
 | 1 | `199b5bc` | does not approve | 11 (2 BLOCKER, 4 HIGH, 3 MEDIUM, 2 LOW) | `7eb0885` |
+| 2 | `4bee0a7` | does not approve | 7 (1 BLOCKER, 1 HIGH, 3 MEDIUM, 2 LOW) | `87817ae` |
 
-Eleven findings, all accepted and all fixed. None rejected, none left open.
+Eighteen findings across two rounds. Seventeen fixed; one rejected with grounds.
 
 ## Open findings
 
-None. Every round-1 finding is fixed in `7eb0885`.
+None.
 
 ## Rejected findings
 
-None.
+One, at round 2. Rule 9 requires it listed here so the one move that closes a finding by
+disagreeing with it is visible without reading every entry.
+
+- **Round 2, S5 (the `demo/governance/changelog.md` half)** — that file's preamble lists
+  what escalates and omits the roster. *Grounds:* the changelog is append-only under #17,
+  and `_changelog_append_only` treats every committed line, preamble included, as an
+  immutable prefix. The edit was made, `--diff main` went red on
+  *"the governance changelog is append-only"*, and the edit was reverted. Observed, not
+  predicted. See maintainer item 5.
 
 ## Maintainer items
 
@@ -56,6 +65,15 @@ None.
    consent invariant should carry the bootstrap qualification; whether a later `--diff` base
    must be proven to contain the generated root; and ratification of the rule-1 departure
    recorded in both merged logs.
+
+## Maintainer item raised by round 2 — prose inside an append-only file
+
+A governed append-only file carries explanatory prose that can go stale, and #17's
+append-only rule makes it uncorrectable. `demo/governance/changelog.md`'s preamble enumerates
+what escalates and now omits the roster; every available fix changes what the append-only
+guarantee means — exempting the preamble from the prefix check, supporting rotation (already
+a documented V1 gap), or routing the edit through a proposal, which the changelog is
+deliberately not a target for. Recorded rather than resolved.
 
 ## Maintainer question raised by round 1 — the demo's staleness WARN
 
