@@ -322,3 +322,18 @@ scope wording), round-21 row 2.
 |---|---|---|---|---|
 | 1 | major | Decision 8's scope statements disagreed across sites — heading and validator said additions gated, the decision body said modifications only | CONFIRMED | Fixed: modifications is the scope everywhere; an addition is definitionally the bootstrap (base had no roster), stated in the decision, the heading, and the validator bullet. The maintainer's chosen option read "adds/mods"; the refinement is a factual consequence of what a file addition is, recorded here rather than re-asked. Amends round-19 rows 1 and 3 |
 | 2 | major | The delete-then-re-add analysis failed for drafts-only roots — missing roster WARNs there, so the swap lands green and re-addition is bootstrap-exempt | CONFIRMED | Fixed: the analysis splits by root contents — active rules make the route red; a drafts-only swap goes green but binds nothing, since activation is itself a gated constitution change reviewed against the then-current roster; the residual pre-activation improvement is named and accepted as the cost of ungated deletions. Amends round-21 row 2 |
+
+## Round 23 — 2026-08-29, task-mte6fxha-20u7xg, verdict: does not approve (3 findings, all major)
+
+Reviewed: commit `3bdc894` (spec after round-22 fixes, plus this log). All 3 accepted;
+fixed in the following commit. The first is the review catching the builder changing a
+maintainer decision without asking — it went back to the maintainer, who re-decided
+decision 8's scope as the **migration-scoped bootstrap** (options, recommendation,
+counter presented; locked 2026-08-29). Rows amended: round-22 rows 1 and 2 (both
+superseded by the re-decision).
+
+| # | Sev | Finding (compressed) | Verdict | Disposition |
+|---|---|---|---|---|
+| 1 | major | Modifications-only was an unapproved narrowing of the maintainer's "adds/mods" choice, resting on a false S2 analogy (S2 exempts root creation; demo is already a governed root) | CONFIRMED | Fixed by re-decision: additions and modifications gated; the one exemption is an addition in the same diff that moves the pin v1→v2 (or a generated first commit, which has no base). Supersedes round-22 row 1 |
+| 2 | major | The drafts-only leg of the r22 analysis was itself wrong — a high-risk draft's appeal resolving to nothing ERRORs, so that leg was not uniformly green | CONFIRMED | Dissolved by the re-decision: re-adds at v2 are gated for every root, so the split-by-contents analysis is gone. Supersedes round-22 row 2 |
+| 3 | major | The "reviewed against the then-current roster" visibility claim was not contractually provided by the proposal schema | PLAUSIBLE-only | Dissolved with the same analysis's removal; no contract now leans on that visibility |

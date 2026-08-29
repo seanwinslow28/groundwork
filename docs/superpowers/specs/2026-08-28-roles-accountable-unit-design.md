@@ -235,30 +235,27 @@ established here.
    two of them approving, in that session), and appending during review adds a step
    to every round.
 
-8. **The roster joins the consent gate: a third governed artifact family, for
-   modifications.** (Maintainer, 2026-08-29 — the one decision made
+8. **The roster joins the consent gate: a third governed artifact family —
+   additions and modifications, with a migration-scoped bootstrap.** (Maintainer, 2026-08-29 — the one decision made
    after the original brainstorm, when review round 17 found that an ungoverned
    roster edit could redirect an active rule's appeal endpoint silently.) A change
    to `governance/roles.md` in a governed root is an escalating change requiring a
    matching proposal, extending locked #17's routing contract from two artifact
-   families to three. The gated form is exactly **modification**: a file addition
-   is by definition a root whose base had no roster, which is the bootstrap — the
-   commit that creates the governed artifact, ungovernable by the gate it brings
-   into being (the S2-approved principle) — so additions are never escalating,
-   and every statement of this decision means modifications when it says
-   "change". **Deletions keep the existing WARN-only limitation** that
-   `docs/known-limitations.md` already documents for rules and skills — so the
-   roster is governed exactly as they are, ungated deletion included. The
-   delete-then-re-add route around the gate splits by what the root holds. With
-   **active rules**, the intermediate state is red at the missing-roster ERROR
-   and a single diff spanning both steps is a modification the gate catches. With
-   **only drafts**, the two-commit swap does go green — missing roster is a WARN
-   there — but it gains nothing the gate protects: a drafts-only roster binds no
-   active rule, and activation itself is an escalating constitution change whose
-   proposal is reviewed against the roster as it then stands. The residue — a
-   swap that quietly improves how a high-risk draft's appeal resolves before a
-   later, gated activation — is visible to that activation's reviewer, and is
-   accepted as the cost of ungated deletions, recorded here.
+   families to three — addition and modification both. The one exemption is the
+   **migration-scoped bootstrap** (re-decided by the maintainer 2026-08-29, after
+   review round 23 showed an earlier modifications-only narrowing was an
+   unapproved change resting on a false S2 analogy): a roster addition is not
+   escalating when the same diff moves the root's pin from v1 to v2, because
+   every v1→v2 migration necessarily adds its roster — the exemption is exactly
+   the migration boundary, the sanctioned crossing mechanism — and a generated
+   repo's first commit has no base at all, which the S2 root-creation rule
+   already covers. A roster added to a root already at v2 — a re-add after
+   deletion included — is gated like any other escalating change, which closes
+   the delete-then-re-add route: deletion still only WARNs, but with active rules
+   the deleted state is red at the missing-roster ERROR, and the re-add needs a
+   proposal regardless of what the root holds. **Deletions keep the existing
+   WARN-only limitation** that `docs/known-limitations.md` already documents for
+   rules and skills.
    *Counter-argument, recorded:* deletion is an attacker's cheapest move against a
    roster, and it stays loud-after-the-fact rather than gated; and every #17
    extension grows the surface the two-family promise was meant to keep small.
@@ -350,10 +347,12 @@ biting. This is flagged for the maintainer at R1 plan review.
   change with its own trade-offs (an ontology owner is descriptive; a rule owner is
   enforcement). The unresolved remainder is a **named remaining hole**, recorded in
   `docs/known-limitations.md` in R1, until a later slice decides it.
-- **Roster mutations are governed** (decision 8; `--diff` mode, `since: 2`): a
-  **modification** of `governance/roles.md` in a governed root is an **escalating
-  change requiring a matching proposal**, exactly as a constitution rule's is —
-  an addition is the bootstrap, exempt by decision 8's own scope — the roster decides who holds every active rule's owners and where
+- **Roster mutations are governed** (decision 8; `--diff` mode, `since: 2`): an
+  addition or modification of `governance/roles.md` in a governed root is an
+  **escalating change requiring a matching proposal**, exactly as a constitution
+  rule's is — except an addition in the same diff that moves the root's pin from
+  v1 to v2, decision 8's migration-scoped bootstrap, which makes the tripwire
+  pin-motion-aware — the roster decides who holds every active rule's owners and where
   its human appeal terminates, so editing it is governance, not bookkeeping.
   Deletions keep the documented WARN-only limitation all governed families share.
   **This makes the roster a third governed artifact family**, and R1 changes
@@ -407,16 +406,14 @@ review:
   as holders, tests, and the `docs/rule-map.md`, `docs/known-limitations.md`, and
   `MIGRATIONS.md` entries, **and the demo pin migrated to `schema_version: 2`** —
   without that, the R1 engine's own gate goes red on `demo/groundwork.pin` at the
-  migration boundary. **The demo roster lands as a bootstrap, not an escalating
-  change:** the roster tripwire classifies a roster change as escalating only
-  when the base revision already carries a roster — the first introduction of one
-  is the commit that *creates* the governed artifact, and the S2-approved
-  principle already holds that such a commit cannot be governed by the gate it
-  brings into being (generation cannot be its own proposal). A carried pending
-  proposal was considered and is impossible: applied changes must not sit beside
-  their pending proposals — the build's own decision record rejects that state —
-  and removing the proposal would fail the very tripwire that demanded it. From
-  the first modification after bootstrap, decision 8 binds in full. **The engine-root roster is maintainer-authored content, and
+  migration boundary. **The demo roster lands under decision 8's
+  migration-scoped bootstrap:** its addition sits in the same diff that moves
+  `demo/groundwork.pin` from v1 to v2, so the tripwire does not classify it
+  escalating. (A carried pending proposal was considered and is impossible:
+  applied changes must not sit beside their pending proposals — the build's own
+  decision record rejects that state — and removing the proposal would fail the
+  very tripwire that demanded it.) From the first post-migration change on,
+  decision 8 binds in full. **The engine-root roster is maintainer-authored content, and
   R1's plan carries it as an explicit maintainer input:** the engine's own active
   rule names `Head of IT` and `CISO`, no file identifies who holds those roles for
   the groundwork instance, and the implementing agent must not invent the answer —
