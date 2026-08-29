@@ -56,9 +56,10 @@
    severity word kept verbatim, plus its disposition. A finding may be summarised rather
    than quoted in full. **Fixed** and **rejected with grounds** are the dispositions that
    close a finding. A finding that is neither is **open**: it stays recorded as open rather
-   than being dressed as something else, and the directory's `README.md` lists every open
-   and every rejected finding, so neither the work still owed nor the one move that closes a
-   finding by disagreeing with it can be buried inside an entry.
+   than being dressed as something else. **The builder may reject a finding**, and the
+   directory's `README.md` lists every open and every rejected finding, so neither the work
+   still owed nor the one move that closes a finding by disagreeing with it can be buried
+   inside an entry.
 
    **`README.md` carries what keeps changing** — the full branch name, a row per entry, the
    commit that carried each round's fixes, the open findings, the rejected findings, and any
