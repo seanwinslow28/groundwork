@@ -25,11 +25,16 @@ answered, in the directories that raised them:
 
 | Entry | Reviewed revision | Verdict | Fixes committed in |
 |---|---|---|---|
-| `round-01.md` | `85211b4` | 1 minor finding, 0 spec findings (no approval word given) | see the next entry |
+| `round-01.md` | `85211b4` | 1 minor finding, 0 spec findings (no approval word given) | `74369a5` |
+| `round-02.md` | `74369a5` | 2 minor findings (reported once per axis; no approval word given) | see the next entry |
 
 ## Open findings
 
-None. Round 1's one finding is fixed.
+None. Round 1's one finding and round 2's two are all fixed or corrected.
+
+**Correction carried by `round-02.md`:** `round-01.md`'s scope note says seven disclosed
+items where the list holds six. The entry is immutable, so the correction lives in the later
+entry, as rule 9 requires.
 
 ## Rejected findings
 
