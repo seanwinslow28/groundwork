@@ -1869,6 +1869,20 @@ def _check_constitution_instance(inst, root, ignore=()):
         active_seen = active_seen or active
         if not active:
             findings.append(Finding("WARN", rel, None, "rule not yet placed on a rung (draft)"))
+            # Decision 5, hole (a): a draft's gaps are named, not silent. Two
+            # classes here — a missing owner field, and one that does not resolve.
+            # The third (a resolvable but agent-only appeal owner) is below, with
+            # the rest of the appeal tiering.
+            for field in _RULE_OWNER_FIELDS:
+                v = data.get(field)
+                if not (isinstance(v, str) and _answered(v)):
+                    findings.append(Finding("WARN", rel, None,
+                                            "draft rule has no answered '%s' — an owner field "
+                                            "with no answer" % field, 2))
+                elif roster is not None and not _resolve_owner(roster, v):
+                    findings.append(Finding("WARN", rel, None,
+                                            "draft rule's '%s' (%s) does not resolve in the "
+                                            "roster (unheld)" % (field, v.strip()), 2))
         else:
             if not (isinstance(rung, str) and rung in RUNGS):
                 findings.append(Finding("ERROR", rel, None,
@@ -1935,6 +1949,30 @@ def _check_constitution_instance(inst, root, ignore=()):
             findings.append(Finding("ERROR", rel, None,
                                     "high-risk rule must carry a human-appeal path with an owner "
                                     "(there is no rung six)"))
+
+        # Decision 3: the human appeal must reach a HUMAN. Tiering, by the tiers
+        # that already exist: ERROR on any active rule, ERROR on a high-risk
+        # draft (the safety spine runs draft-time), WARN on a plain draft
+        # (decision 5's third class). The 'resolves to nothing' case is NOT
+        # repeated here for an active rule (the activation ERROR names it) or for
+        # a plain draft (decision 5's second class names it) — only a high-risk
+        # draft needs it, where neither of those fires as an ERROR.
+        high_risk = isinstance(ac, str) and ac == "high-risk"
+        hao = data.get("human_appeal_owner")
+        if roster is not None and isinstance(hao, str) and _answered(hao):
+            held = _resolve_owner(roster, hao)
+            if not held:
+                if high_risk and not active:
+                    findings.append(Finding("ERROR", rel, None,
+                                            "high-risk rule's 'human_appeal_owner' (%s) reaches "
+                                            "no human — it resolves to nobody, and an appeal "
+                                            "that reaches nobody is not an appeal path"
+                                            % hao.strip(), 2))
+            elif not any(t == "human" for _h, t in held):
+                findings.append(Finding("ERROR" if (active or high_risk) else "WARN", rel, None,
+                                        "'human_appeal_owner' (%s) resolves only to agent "
+                                        "holders — an appeal path that terminates in a model "
+                                        "is not an appeal path" % hao.strip(), 2))
         sunset = data.get("sunset")
         if _blank(sunset):
             findings.append(Finding("WARN", rel, None, "missing sunset date"))

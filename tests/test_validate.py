@@ -2434,6 +2434,103 @@ class TestRosterResolution(unittest.TestCase):
         self.assertEqual(errs, [])
 
 
+class TestAppealReachesAHuman(unittest.TestCase):
+    """Decision 3: the human_appeal_owner must resolve to at least one HUMAN
+    holder — an appeal path that terminates in a model is not an appeal path.
+    Decision 5: a draft's gaps are named WARNs, not silence."""
+
+    AGENT_ROSTER = ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                     "| CISO | triage agent | agent |")
+
+    def _inst(self, d, rule=RULE_OK, roster=ROSTER_OK):
+        _write(d, "governance/constitution/access.md", rule)
+        if roster is not None:
+            _write(d, "governance/roles.md", roster)
+
+    def test_active_rule_with_an_agent_only_appeal_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, roster=self.AGENT_ROSTER)
+            errs = [f for f in validate.check_constitution(d) if f.level == "ERROR"]
+            self.assertTrue(any("terminates in a model" in f.message for f in errs), errs)
+
+    def test_high_risk_draft_with_an_agent_only_appeal_errors(self):
+        """The safety spine runs draft-time: an appeal owner that resolves to a
+        model is affirmatively wrong, not merely incomplete."""
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, rule=RULE_OK.replace("rung: human-decision\n", ""),
+                       roster=self.AGENT_ROSTER)
+            errs = [f for f in validate.check_constitution(d) if f.level == "ERROR"]
+            self.assertTrue(any("terminates in a model" in f.message for f in errs), errs)
+
+    def test_high_risk_draft_with_an_appeal_resolving_to_nobody_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, rule=RULE_OK.replace("rung: human-decision\n", ""),
+                       roster=ROSTER_OK.replace("| CISO | Sean Winslow | human |", "| CISO |  |  |"))
+            errs = [f for f in validate.check_constitution(d) if f.level == "ERROR"]
+            self.assertTrue(any("reaches no human" in f.message for f in errs), errs)
+
+    def test_non_high_risk_draft_with_an_agent_only_appeal_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, rule=RULE_OK.replace("rung: human-decision\n", "")
+                       .replace("action_class: high-risk", "action_class: reversible-write"),
+                       roster=self.AGENT_ROSTER)
+            findings = validate.check_constitution(d)
+            self.assertFalse(any(f.level == "ERROR" for f in findings), findings)
+            self.assertTrue(any(f.level == "WARN" and "terminates in a model" in f.message
+                                for f in findings))
+
+    def test_non_high_risk_draft_with_an_unresolved_appeal_warns_once(self):
+        """Decision 5's three classes do not overlap: 'does not resolve' is one
+        class, 'resolvable but wrongly typed' is another. An unresolved appeal
+        owner on a plain draft is the FIRST, and must not also raise the second."""
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, rule=RULE_OK.replace("rung: human-decision\n", "")
+                       .replace("action_class: high-risk", "action_class: reversible-write"),
+                       roster=ROSTER_OK.replace("| CISO | Sean Winslow | human |", "| CISO |  |  |"))
+            appeal = [f for f in validate.check_constitution(d)
+                      if "human_appeal_owner" in f.message]
+            self.assertEqual(len(appeal), 1, appeal)
+            self.assertEqual(appeal[0].level, "WARN")
+
+    def test_draft_missing_owner_fields_warn_by_name(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, rule=RULE_OK.replace("rung: human-decision\n", "")
+                       .replace("owner: Head of IT\n", "", 1)
+                       .replace("value_owner: CISO\n", ""))
+            warns = [f.message for f in validate.check_constitution(d) if f.level == "WARN"]
+            self.assertTrue(any("'owner'" in m for m in warns), warns)
+            self.assertTrue(any("'value_owner'" in m for m in warns), warns)
+
+    def test_draft_unresolved_owner_warns_by_name(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, rule=RULE_OK.replace("rung: human-decision\n", ""),
+                       roster=ROSTER_OK.replace("| Head of IT | Sean Winslow | human |\n", ""))
+            warns = [f.message for f in validate.check_constitution(d) if f.level == "WARN"]
+            self.assertTrue(any("does not resolve" in m and "'owner'" in m for m in warns), warns)
+
+    def test_the_existing_draft_spine_error_is_untouched(self):
+        """decision 2's verbatim guarantee: a high-risk draft with no appeal path
+        must not leave the gate green — the ANSWERED-fields check, unchanged."""
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, rule=RULE_OK.replace("rung: human-decision\n", "")
+                       .replace("human_appeal: A denied or delayed grant escalates to the "
+                                "CISO, who decides within one business day\n", "")
+                       .replace("human_appeal_owner: CISO\n", ""))
+            errs = [f for f in validate.check_constitution(d) if f.level == "ERROR"]
+            self.assertTrue(any("rung six" in f.message for f in errs))
+            self.assertIsNone([f for f in errs if "rung six" in f.message][0].since,
+                              "the pre-existing v1 spine ERROR must NOT carry since=2 — it "
+                              "keeps firing under any pin")
+
+    def test_appeal_findings_carry_since_two(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, roster=self.AGENT_ROSTER)
+            new = [f for f in validate.check_constitution(d)
+                   if "terminates in a model" in f.message]
+            self.assertTrue(new)
+            self.assertTrue(all(f.since == 2 for f in new))
+
+
 class TestActionClassGate(unittest.TestCase):
     def test_destructive_delete_blocked(self):
         cat, _ = action_class_gate.classify("rm -rf /var/data")
