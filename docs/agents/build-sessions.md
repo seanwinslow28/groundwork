@@ -17,10 +17,10 @@
    that source *before* transcribing. Transcription fidelity protects the wording a review
    approved; it does not make the claims true, and "the plan said so" is not a basis. Where
    the source is another record, check that record against *its* sources too — one of the
-   2026-08-01 slice's three factual defects was inherited from a run record that was itself
-   wrong, and Codex review caught all three on the branch, so `main`'s product files never
-   carried them. The defective plan text and one commit message are on `main` regardless —
-   preserved deliberately, and superseded in place by that plan's corrections section.
+   2026-08-01 slice's four factual defects was inherited from a run record that was itself
+   wrong. Codex review caught three on the branch, before `main`'s product files carried
+   them; the fourth surfaced only after the slice had merged, and it did reach `main`'s
+   roadmap. Assume the ones you have not found yet are already shipped.
 
 ## Where the plan lives
 - Design: `docs/superpowers/specs/2026-07-22-groundwork-v1-build-sequence-design.md`
