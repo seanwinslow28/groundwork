@@ -80,11 +80,12 @@ escalating change wanting a proposal.
 1. Write `governance/roles.md`. Frontmatter: `valid_at` (when this mapping was last
    confirmed — a snapshot, not when a fact became true), `review_by`, and `source` (where the
    org map came from). Then one table, `| Role | Holder | Type |`, plain-text cells.
-2. Write it as one table and nothing else: below the frontmatter a roster carries no code
-   fence (blockquoted ones included), no angle-bracket construct (HTML tag, comment,
-   doctype, CDATA, processing instruction, or autolink), no link reference definition, and
-   no `|` outside the table. Non-rendered text must never supply a holder. See
-   `governance/README.md`.
+2. Write it as one table and nothing else. Below the frontmatter a roster carries no
+   backtick, no run of three or more tildes, no angle-bracket construct (HTML tag, comment,
+   doctype, CDATA, processing instruction, or autolink), no link reference definition, no
+   character reference, and no `|` outside the table — each matched without regard for
+   context, so position inside a list or blockquote does not excuse one. Non-rendered text
+   must never supply a holder. See `governance/README.md`.
 3. Make every **active** rule's four owner values resolve. Two ways, by exact string: a value
    matching a **Role** cell resolves to that row's holders; a value matching a **Holder** cell
    resolves to that holder. A person-named owner therefore resolves through a **holder-only

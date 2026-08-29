@@ -2342,7 +2342,8 @@ class TestRoster(unittest.TestCase):
             # Codex r4 was right that bare any(ERROR) is weaker than what it
             # replaced — an unrelated ERROR would satisfy it — so the assertion
             # names the construct instead.
-            self.assertTrue(any(f.level == "ERROR" and "fence" in f.message
+            self.assertTrue(any(f.level == "ERROR" and ("fence" in f.message
+                                                        or "backtick" in f.message)
                                 for f in findings), findings)
             roster, _f = validate._load_roster(d, d)
             self.assertEqual(validate._resolve_owner(roster, "Ghost Role"), [])
@@ -2381,7 +2382,8 @@ class TestRoster(unittest.TestCase):
                 "| Role | Holder | Type |\n|---|---|---|\n| CISO | Ghost | human |\n" + (ch * 4) + "\n"
             with tempfile.TemporaryDirectory() as d:
                 self._roster(d, head + body)
-                self.assertTrue(any(f.level == "ERROR" and "fence" in f.message
+                self.assertTrue(any(f.level == "ERROR" and ("fence" in f.message
+                                                            or "backtick" in f.message)
                                     for f in validate.check_roles(d)), ch)
                 roster, _f = validate._load_roster(d, d)
                 self.assertEqual(validate._resolve_owner(roster, "CISO"), [], ch)
@@ -2469,7 +2471,8 @@ class TestRoster(unittest.TestCase):
         saw only top-level syntax, so a blockquoted fence passed."""
         with tempfile.TemporaryDirectory() as d:
             self._roster(d, ROSTER_OK + "\n> ```\n> hidden\n> ```\n")
-            self.assertTrue(any(f.level == "ERROR" and "fence" in f.message
+            self.assertTrue(any(f.level == "ERROR" and ("fence" in f.message
+                                                        or "backtick" in f.message)
                                 for f in validate.check_roles(d)))
 
     def test_an_ascii_arrow_in_prose_is_not_an_html_comment(self):
@@ -2479,6 +2482,57 @@ class TestRoster(unittest.TestCase):
             self._roster(d, ROSTER_OK.replace("# Roles — who holds what",
                                               "# Roles — who holds what\n\nEscalation runs support --> security."))
             self.assertEqual([f for f in validate.check_roles(d) if f.level == "ERROR"], [])
+
+    def test_a_character_reference_cannot_be_a_holder(self):
+        """Codex r6, BLOCKER: '&#32;' passes _is_plain_text and resolved as a
+        holder, while Markdown renders the cell blank — a human appeal reaching
+        a holder the reader cannot see."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO | &#32; | human |"))
+            self.assertTrue(any(f.level == "ERROR" and "character reference" in f.message
+                                for f in validate.check_roles(d)))
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "CISO"), [])
+
+    def test_a_multiline_code_span_cannot_hide_a_table(self):
+        """Codex r6, BLOCKER: a single-backtick span opened before the table and
+        closed after it renders the whole block as code, and the scan saw only
+        fenced regions."""
+        head = ROSTER_OK.split("# Roles")[0] + "# Roles\n\n"
+        body = "`\n| Role | Holder | Type |\n|---|---|---|\n| CISO | Ghost | human |\n`\n"
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, head + body)
+            self.assertTrue(any(f.level == "ERROR" and "backtick" in f.message
+                                for f in validate.check_roles(d)))
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "CISO"), [])
+            self.assertEqual(validate._resolve_owner(roster, "Ghost"), [])
+
+    def test_a_list_contained_fence_is_caught(self):
+        """Codex r6: container-aware fence matching let '- ```' through. The
+        patterns are now flat, so position cannot matter."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK + "\n- ```\n  hidden\n")
+            self.assertTrue(any(f.level == "ERROR" for f in validate.check_roles(d)))
+
+    def test_an_ampersand_that_is_not_a_reference_is_fine(self):
+        """The character-reference rule is precise, not a ban on '&'."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO | Smith & Jones | human |"))
+            self.assertEqual([f for f in validate.check_roles(d) if f.level == "ERROR"], [])
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "CISO"),
+                             [("Smith & Jones", "human")])
+
+    def test_the_engine_and_demo_rosters_obey_their_own_grammar(self):
+        """The rule is only credible if the two shipped rosters follow it."""
+        for rel in ("governance/roles.md", "demo/governance/roles.md"):
+            text = (REPO / rel).read_text(encoding="utf-8")
+            roster, findings = validate._parse_roster(text, rel)
+            self.assertEqual([f for f in findings if f.level == "ERROR"], [], rel)
+            self.assertTrue(roster.holders, rel)
 
     def test_an_empty_roster_is_legitimate(self):
         """Codex r2: a draft-only instance whose mapping nobody has confirmed has

@@ -13,7 +13,7 @@ recorded here.
 
 An owner value resolves against this table by exact string, two ways: a value matching a
 **Role** cell resolves to that row's holders, and a value matching a **Holder** cell
-resolves to that holder. `valid_at` is a snapshot — when this mapping was last confirmed,
+resolves to that holder. The valid_at date is a snapshot — when this mapping was last confirmed,
 not when a fact became true.
 
 | Role | Holder | Type |

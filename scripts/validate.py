@@ -2026,16 +2026,32 @@ ROSTER_REL = ("governance", "roles.md")
 ROSTER_FIELDS = ("valid_at", "review_by", "source")
 HOLDER_TYPES = {"human", "agent"}
 ROSTER_HEADER = ["role", "holder", "type"]
-# Any angle-bracket construct: '<' then a letter, '/', '!' or '?'. That is every
-# CommonMark HTML-block opener — a tag, a closing tag, a comment, `<!DOCTYPE`,
-# `<![CDATA[`, and a `<?` processing instruction — all of which can hide a table
-# (Codex r4 wrapped one in the last three). It also catches an autolink such as
-# `<https://example.com>`, which is Markdown rather than HTML: that is
-# DELIBERATE, not collateral. Drawing the line at "no angle brackets in a roster
-# body" is one rule a reader can check, where "HTML but not autolinks" is a
-# grammar that has already been wrong twice. Write a plain URL or a
-# `[text](url)` link instead; governance/README.md says so.
-_ANGLE_CONSTRUCT = re.compile(r"<[A-Za-z/!?]")
+# What a roster body may not contain, as flat line patterns. Five review rounds
+# argued for this shape: every attempt to decide what RENDERS — masking fenced
+# regions, measuring fence length, stripping blockquote markers — was wrong in
+# at least one direction, because that is CommonMark emulation and CommonMark is
+# large. These are checked against the raw line with no container semantics at
+# all, so there is nothing to be subtly wrong about. Over-catching is accepted
+# and documented in governance/README.md; a roster body is a few lines of prose
+# and one table, and none of these constructs belongs in it.
+_ROSTER_FORBIDDEN = (
+    (re.compile(r"`"),
+     "a backtick — a code span can run across lines and render a whole table as "
+     "code, and a backtick fence can hide one outright"),
+    (re.compile(r"~{3,}"),
+     "a code fence — it can hide a table"),
+    (re.compile(r"<[A-Za-z/!?]"),
+     "an angle-bracket construct — an HTML tag, comment, doctype, CDATA section "
+     "or processing instruction can hide a table, and an autolink is refused "
+     "with them so the rule stays one a reader can check; write a plain URL or "
+     "an ordinary Markdown link"),
+    (re.compile(re.escape(_LINK_REF_SIG)),
+     "a link reference definition — it renders nothing and its title can span "
+     "lines, so a whole table can hide inside one"),
+    (re.compile(r"&(#[0-9]+|#[xX][0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]*);"),
+     "a character reference — it renders as something other than what is "
+     "written, so a holder can be text the reader cannot see"),
+)
 
 # roles: {role -> [holder, ...]}, where [] is a declared-but-unheld role.
 # holders: {holder -> "human" | "agent"}.
@@ -2111,45 +2127,14 @@ def _parse_roster(text, rel):
                 body_start = k + 1
                 break
 
-    # Nothing a reader does not see. A fence can hide a whole table; an HTML
-    # comment or tag can hide one, and stripping one out of a line can invent a
-    # row that was never in the source. Forbid all three outright rather than
-    # emulate what renders (Codex r3, two BLOCKERs).
+    # Nothing a reader does not see may supply a holder. Forbidden constructs are
+    # refused outright rather than interpreted — see _ROSTER_FORBIDDEN.
     for n in range(body_start, len(lines)):
-        ln = lines[n]
-        # A fence inside a blockquote still hides what follows it, and
-        # _fence_match only sees top-level syntax, so the marker chain is
-        # stripped first (Codex r5). That makes "no code fence anywhere" —
-        # which governance/README.md already claimed — actually true.
-        if _fence_match(re.sub(r"^[ \t>]+", "", ln)):
-            findings.append(Finding("ERROR", rel, n + 1,
-                                    "a roster carries no code fence — its one table must be "
-                                    "the text a reader sees, and a fence can hide one", 2))
-            return Roster(roles, holders), findings
-        # A link reference definition renders NOTHING and its title may span
-        # lines, so a whole table can live inside one (Codex r5, BLOCKER). The
-        # executive view forbids these already, for a neighbouring reason; ']:'
-        # is that same signature, and here it is refused without the exec
-        # view's pipe-free carve-out, because the hiding case is precisely a
-        # definition whose title contains pipes.
-        if _LINK_REF_SIG in ln:
-            findings.append(Finding("ERROR", rel, n + 1,
-                                    "a roster body carries no link reference definition — it "
-                                    "renders nothing and its title can span lines, so a whole "
-                                    "table can hide inside one", 2))
-            return Roster(roles, holders), findings
-        # No standalone '-->' check: a comment must OPEN with '<!--', which the
-        # pattern below catches on an earlier line, and the early return means
-        # the opener is always reached first. Checking the closer as well only
-        # ERRORed on prose containing an ASCII arrow (Codex r5).
-        if _ANGLE_CONSTRUCT.search(ln):
-            findings.append(Finding("ERROR", rel, n + 1,
-                                    "a roster body carries no angle-bracket construct — an "
-                                    "HTML comment, tag, doctype, CDATA section or processing "
-                                    "instruction can hide a table, and an autolink is "
-                                    "refused with them so the rule stays one a reader can "
-                                    "check; write a plain URL or an ordinary Markdown link", 2))
-            return Roster(roles, holders), findings
+        for pattern, why in _ROSTER_FORBIDDEN:
+            if pattern.search(lines[n]):
+                findings.append(Finding("ERROR", rel, n + 1,
+                                        "a roster body carries no %s" % why, 2))
+                return Roster(roles, holders), findings
 
     pipe = [n for n in range(body_start, len(lines)) if "|" in lines[n]]
     if not pipe:

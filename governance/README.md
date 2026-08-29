@@ -62,22 +62,30 @@ source: <where this org map came from: an interview layer, an HR system, the fou
 **The body is a restricted grammar, and the restrictions are whole-file.** Below the
 frontmatter a roster carries **one** table and nothing that could be mistaken for another:
 
-- **No code fence** (``` or `~~~`), anywhere — inside a blockquote included. A fence can
-  hide a table, and a fence's own length rules are a place to be subtly wrong.
+- **No backtick.** A code span can run across lines and render a whole table as code, and
+  a backtick fence can hide one outright.
+- **No run of three or more tildes** — the other code fence.
 - **No angle-bracket construct** — no HTML tag, comment, doctype, CDATA section or
-  processing instruction, and **no autolink** (`<https://example.com>`) either. An autolink
-  is Markdown rather than HTML, so refusing it is deliberately over-strict: one rule a
-  reader can check beats a grammar that must decide what renders. Write a plain URL, or an
-  ordinary bracket-and-parenthesis Markdown link.
+  processing instruction, and no autolink either. An autolink is Markdown rather than HTML,
+  so refusing it is deliberately over-strict. Write a plain URL, or an ordinary
+  bracket-and-parenthesis Markdown link.
 - **No link reference definition** — no `]:` in the body. One renders nothing at all and
   its title may run across lines, so an entire table can live inside one. The executive
   view refuses them too.
+- **No character reference** — no `&#32;`, no `&amp;`. It renders as something other than
+  what is written, so a holder could be text nobody can see. A bare ampersand is fine.
 - **No `|` outside the table.** A pipe in explanatory prose reads as a second table, so it
   is refused rather than guessed at.
 
-Each of these is an ERROR naming its own line. They exist because non-rendered text must
-never supply a holder: an owner that resolves against something a reader cannot see is the
-exact failure held-to-activate is here to prevent.
+Each is an ERROR naming its own line, and each is matched against the raw line with **no
+regard for context** — a construct inside a list, a blockquote, or an indented block is
+refused exactly as one at the top level is. That bluntness is the point. Deciding what
+*renders* means emulating CommonMark, and five review rounds of trying produced a checker
+that was wrong in one direction or the other every time. Over-catching costs a clear error
+on a line you can see; under-catching lets an owner resolve against something a reader
+cannot see, which is the exact failure held-to-activate exists to prevent.
+
+Write the body plainly: a heading, a few sentences, and the table.
 
 Changing the roster in a governed root is an escalating change (#17): it decides who holds
 every active rule's owners, and where its human appeal terminates.
