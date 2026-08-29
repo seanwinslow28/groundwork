@@ -221,3 +221,16 @@ amended: round-12 row 1, round-13 rows 2 and 3.
 | 2 | med | Holder-wins dedup suppressed the very collision the integrity rule ERRORs, invisibly | PLAUSIBLE-only | Resolved by row 1's fix: generation writes no Role rows, so there is nothing to suppress; the residual person-name coincidence is the documented intent-blind blind spot. Amends round-13 row 2 (the dedup rule is withdrawn) |
 | 3 | high | A dispute whose accounts include high-risk could carry the lower class in the scalar and ship past the spine exception — S4 entering the contract | PLAUSIBLE-only | Fixed: the exception binds by the stricter reading of a recorded dispute; S4's full tie-break stays its own queued slice |
 | 4 | med | "The Role column fills with R2's elicitation" implied R2 reaches existing rosters — engine pulls never re-copy content | PLAUSIBLE-only | Fixed: R2 fills rosters for repos generated after it; R1-window repos keep valid holder-only rosters, enriched only by their own edits. Amends round-13 row 3 |
+
+## Round 15 — 2026-08-29, task-mtdw0l7k-4rwydx, verdict: does not approve (5 findings, 2 high)
+
+Reviewed: commit `faf8059` (spec after round-14 fixes, plus this log). All 5 accepted;
+fixed in the following commit. Rows amended: round-12 row 1 (again), round-14 row 1.
+
+| # | Sev | Finding (compressed) | Verdict | Disposition |
+|---|---|---|---|---|
+| 1 | high | Typing the backup owner human invents its type — its human-only marker denotes answer source, and a role-shaped backup is legal | CONFIRMED | Fixed: human typing restricted to the acted-on activity owner and skill owner (the "A role is not an owner" answers); the backup owner is not entered. Amends round-12 row 1 |
+| 2 | high | Decision 6's exception missed the rung-independent orphan prohibition — a repeal without its surviving job reassigned ERRORs and cannot ship | CONFIRMED | Fixed: the exception generalizes to every rung-independent gate ERROR, orphan prohibition named |
+| 3 | med | "Fails resolution by absence" is unconditional — a string coinciding with an entered holder resolves as that person | CONFIRMED | Fixed: the coincidence carve-out stated inline, tied to the documented blind spot. Amends round-14 row 1 |
+| 4 | med | R1's draft path invoked decision 6's permission while the landing order put that amendment in R2 | PLAUSIBLE-only | Fixed: the narrow declared-draft permission lands in R1's minimal edits; R2 carries the rest of the amendment |
+| 5 | med | The rewrite contract's target sentence ("an owner is a role, and the roster says who holds it") excluded person owners and holder-only rows | CONFIRMED | Fixed: "a role or a named holder, and the roster resolves it" — the additive form decision 1 requires |

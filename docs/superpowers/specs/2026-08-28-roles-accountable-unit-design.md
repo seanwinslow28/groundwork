@@ -168,8 +168,11 @@ established here.
    safety-spine exception:** a high-risk rule whose appeal fields are missing or
    unresolvable does not ship at all, declared or not — decisions 2 and 3 ERROR it
    even as a draft, so the declared-draft path cannot apply; the spine outranks the
-   contract. The exception covers every spine-ERROR form of the appeal gap:
-   missing, unresolvable, or resolving to no human holder. And it binds by the
+   contract — and the same logic covers every **rung-independent** gate ERROR, not
+   only the appeal gaps: a repealing rule without its orphan prohibition satisfied
+   (an answered surviving job, reassigned) ERRORs draft or not, so it cannot ship
+   as a declared draft either. The appeal-gap forms the exception names: missing,
+   unresolvable, or resolving to no human holder. And it binds by the
    **stricter reading of a disputed class**: where a recorded action-class dispute
    includes `high-risk` among the accounts, the exception applies as if the rule
    were high-risk, even when the scalar field carries the lower class — otherwise
@@ -330,8 +333,10 @@ holding one; a role must be held to activate; the interview elicits the roster (
 holds what, typed) and records where the org map came from. The three explicit
 contradictions carry the change: `questions.md:93`'s "A role is not an owner",
 `protocol.md:247`'s "a **person**, not a role", and `interview/README.md:149`'s
-"a person, not a role?" all become *an owner is a role, and the roster says who
-holds it* — and the owner rows in the section at `questions.md:93–98` gain the
+"a person, not a role?" all become *an owner is a role or a named holder, and the
+roster resolves it* — the additive form decision 1 requires, under which person
+owners and holder-only rows stay valid — and the owner rows in the section at
+`questions.md:93–98` gain the
 office-versus-disclaimer distinction the correction identified, as a question the
 interviewer actually asks. The rewrite is scoped from a fresh grep at execution time,
 not from this spec's list — the list above is the floor, not the ceiling.
@@ -366,13 +371,19 @@ review:
   workflow edits** — the pin writes `schema_version: 2`, and a `governance/roles.md`
   is generated from the confirmed owner answers, inventing neither holders nor
   types: a holder enters typed `human` only where the binding protocol guarantees a
-  person — the acted-on activity owner and the skill owner/backup, exactly its
-  human-only owner rows — entered as **holder-only rows** (the Role cell empty;
-  the human-only questions yield a person's name, not a role). Every other owner
+  person — the acted-on activity owner and the skill owner, the answers under the
+  row whose note reads "A role is not an owner" (`questions.md:93`) and
+  `protocol.md:247`'s person guarantee. The backup owner is **not** among them:
+  its `(human-only)` marker denotes the answer's source, not the holder's
+  humanity, and nothing forbids a role-shaped backup — so it is not entered.
+  Person-confirmed owners are entered as **holder-only rows** (the Role cell
+  empty; those questions yield a person's name, not a role). Every other owner
   value (a constitution rule's owners may be roles or disclaimers; run 1's
   `runtime_check_owner` proves it) is **not entered at all** — writing it as a
   Role row would assert a role the record never confirmed, a disclaimer least of
-  all; the roster asserts nothing about it, it fails resolution by absence, and
+  all; the roster asserts nothing about it, it fails resolution by absence —
+  unless the same string coincides with an entered holder, the documented
+  intent-blind blind spot, in which case it resolves as that person — and
   the rule ships rungless as a declared draft under decision 6 — subject to its
   safety-spine exception: a rule whose high-risk appeal gap takes any of the
   three ERROR forms does not ship at all — with its unresolved owners named as
@@ -386,9 +397,12 @@ review:
   migration boundary, and writing `2` without a roster fails the missing-roster
   check on any active rule. A generation run on the R1 engine must produce a
   passing repo.
-- **R2** — the `generate.md` contract amendment (hole b) and the prose rewrite,
-  including the full roster elicitation (typed holders asked for directly, rather
-  than derived from the human-only markers).
+- **R2** — the rest of the `generate.md` contract amendment (hole b) — the report
+  obligations' wording and the `provisioned: no` reconciliation — and the prose
+  rewrite, including the full roster elicitation (typed holders asked for
+  directly, rather than derived from the human-only markers). The narrow
+  declared-draft permission itself, with its exceptions, lands in R1's minimal
+  edits: the R1-window generation path depends on it, so it cannot wait for R2.
 - **C1–C13** grouped into slices after that; C13 stays held for the S6 decision.
 
 ## What this does not do
