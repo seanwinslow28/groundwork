@@ -54,3 +54,20 @@ round 1's table stays as written).
 | 5 | med | "No round's severity grades survive anywhere" is false — `f5ab4b6` carries "Two HIGH findings, both correct" | CONFIRMED | Fixed: narrowed to "no complete round output exists; what survives is what each commit chose to quote", with the counterexample cited. Amends round-1 row 13 |
 | 6 | low | Decision 5 listed `sunset` among owner fields — it is not one, and its WARN already exists today outside the rung branch | CONFIRMED | Fixed: sunset removed from the new-WARN list, existing check noted unchanged |
 | 7 | low | `reviews/<branch>.md` with a slashed branch name names a different path than this file's | CONFIRMED | Fixed: convention now states `/` → `-` normalization, which this file already follows |
+
+## Round 3 — 2026-08-28, task-mtdr6fzx-wp48xv, verdict: does not approve (8 findings)
+
+Reviewed: commit `7e24c6a` (spec after round-2 fixes, plus this log). All 8 findings
+accepted; fixed in the following commit. Rows 1 and 5 are again incomplete prior
+fixes; rows amended: round-2 rows 1 and 4, round-1 rows 5 and 7.
+
+| # | Sev | Finding (compressed) | Verdict | Disposition |
+|---|---|---|---|---|
+| 1 | high | "Record-confirmed practice" still overclaims — the record is confirmed, the practice is not; the third site's round-2 fix was partial | CONFIRMED | Fixed: the bullet now says "a practice the confirmed record carries as enforced", with the liveness caveat inline. Amends round-2 row 1 |
+| 2 | high | Intent-blind resolution: a forgotten role row whose title equals a Holder string silently resolves as that holder; the integrity check cannot see an absent row | CONFIRMED | Fixed as a stated design choice: blind spot documented (roster section + What-this-does-not-do), typed owner references recorded as the known alternative, flagged for maintainer at R1 plan review |
+| 3 | med | Decision 3 and this log said the high-risk-draft appeal check "ERRORs" without the v1-pin WARN demotion the validator section carries | CONFIRMED | Fixed: decision 3 names the `since: 2` demotion and its consequence — the spine's verbatim guarantee holds in full from v2. Amends round-2 row 2's wording |
+| 4 | med | The validator routed resolvable-but-agent-only appeal owners on non-high-risk drafts to "decision 5's WARN tier", which decision 5 did not define | CONFIRMED | Fixed: decision 5 now defines three named gap classes, wrongly-typed included |
+| 5 | med | The rewrite section still said "the two explicit contradictions" after the inventory became three | CONFIRMED | Fixed: three sites named in the rewrite contract. Amends round-2 row 4 (partial fix) |
+| 6 | med | Decision 6 claimed run 1 declared every gap — the disclaiming runtime_check_owner was never declared as one, in the rule or the report | CONFIRMED | Fixed: narrowed to "the gaps it recognized as gaps", with the new unresolvable class named as new. Amends round-1 row 5 |
+| 7 | med | "Refuse to ship, or invent" contradicts the three outcomes the run record weighs and the design's own declared-draft contract | CONFIRMED | Fixed: the sentence now carries the three weighed outcomes, omission-only compliance, and invention as the temptation |
+| 8 | low | Header said "six decisions"; the list has seven | CONFIRMED | Fixed: seven — one carried in from the kickoff, six brainstormed |

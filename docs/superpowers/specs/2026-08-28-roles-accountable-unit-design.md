@@ -2,8 +2,9 @@
 
 > **Workbench artifact, not product content.** The design settling the fork the
 > multi-agent decision opened: if a role is the accountable unit, must the role be held?
-> Brainstormed and decision-locked with the maintainer 2026-08-28, in one session, six
-> decisions — each presented with options, a recommendation, and the honest
+> Brainstormed and decision-locked with the maintainer 2026-08-28, in one session,
+> seven decisions — the first carried in from the maintainer's own kickoff decision,
+> the other six each presented with options, a recommendation, and the honest
 > counter-argument (build-sessions rule 5), and each chosen by the maintainer. The
 > decision list below is this session's own account; the durable record of the
 > maintainer's approval is the merge that lands this branch, the same way the honesty
@@ -44,8 +45,10 @@ string is a valid owner, *enforced, but nobody owns it* comes back wearing a rol
 title. If only filled roles are valid, the schema again cannot express the state
 run 1 found — a practice its confirmed record carries at `Rung: hard-block` with an
 owner nobody claims, while company-wide practice stays unestablished (the
-correction's bounded reading) — and generators are pushed back to the S3 corner:
-refuse to ship, or invent.
+correction's bounded reading) — and a generator is left with the outcomes run 1's
+report actually weighed — do not ship, ship with the gate red, or ship a declared
+draft — of which the then-pinned contract permitted only omission, with inventing an
+owner as the standing temptation.
 
 This design also settles the two confirmed enforcement holes recorded in
 `quad-check-correction.md` and the durable-review-record rule, because all three take
@@ -95,8 +98,11 @@ their shape from the holding semantics.
    merely incomplete, so it ERRORs on a high-risk draft too — otherwise a high-risk
    draft with a model for an appeal path would leave the gate green, which the spine
    forbids verbatim). An appeal owner that resolves to *nothing* on a draft stays in
-   decision 5's WARN tier — unheld is the drafting state. Value, rule, and
-   runtime-check owners may be agent-held.
+   decision 5's WARN tier — unheld is the drafting state. All of these ERRORs are
+   `since: 2` checks, so under a v1 pin the new-requirement demotion applies and they
+   fire as WARNs — on v1-pinned content the spine's verbatim guarantee is therefore
+   only as strong as the pull promise allows, and holds in full from v2. Value,
+   rule, and runtime-check owners may be agent-held.
    *Counter-argument, recorded:* per-object holder-type rules add a distinction the
    schema could not previously see, and the smallest adopter — one human holding
    everything — carries typing machinery built for the multi-agent case.
@@ -112,8 +118,10 @@ their shape from the holding semantics.
    lookup; it is one more required file; the interview must now elicit it.
 
 5. **Hole (a), the drafting gate: WARN, naming each gap.** A draft rule raises one
-   WARN per missing or unresolvable owner field — rule owner, appeal owner, an owner
-   value with no roster match — each named specifically. (A missing sunset already
+   WARN per gap in three named classes: a missing owner field (rule owner, appeal
+   owner), an owner value with no roster match, and an appeal owner that resolves
+   but to agent-only holders on a non-high-risk draft — resolvable, wrongly typed.
+   Each WARN names its gap specifically. (A missing sunset already
    WARNs today, draft or active, outside the rung branch; that check is unchanged.)
    Today an absent rule owner and appeal owner on a draft raise nothing at all (the
    safety-spine ERRORs above are the exception, and they stay ERRORs). Blocking more
@@ -133,12 +141,15 @@ their shape from the holding semantics.
    no draft state to ship into, and this design does not invent one.
    Under decision 2 this is not a concession — the declared draft is the designed
    encoding of *confirmed but incomplete or unheld*. Run 1 already practiced this
-   contract in substance: both shipped rules declare their gaps in-file ("Each file
-   names its own missing owners in its body rather than pretending to be complete")
-   and the generation report names both incomplete rules and every reason under "What
-   did not ship, and why" (`generation-report.md:45–72`, verified this session). The
-   amendment makes the contract match that observed behavior instead of prohibiting
-   it.
+   contract for the gaps it recognized as gaps: both shipped rules declare their
+   missing rule owner, appeal path, and sunset in-file ("Each file names its own
+   missing owners in its body rather than pretending to be complete") and the
+   generation report names both incomplete rules and those reasons under "What did
+   not ship, and why" (`generation-report.md:45–72`, verified this session). One gap
+   it did not declare, because it was not yet one: the disclaiming
+   `runtime_check_owner` becomes unresolvable — and therefore a declared-draft
+   obligation — only under this design. The amendment makes the contract match the
+   observed declaration behavior instead of prohibiting it.
    *Counter-argument, recorded:* declaring may become cheaper than completing; the
    generation report obligation is the pressure against that, and a run 2 can measure
    whether it holds.
@@ -204,6 +215,20 @@ none should be needed; a holder appearing in multiple rows with conflicting type
 also ERRORs. The roster is content, so it is checked wherever it lives, per the
 instance rule.
 
+**Resolution is intent-blind, and that has a stated blind spot.** An owner value is
+whatever it matches: nothing marks a string as meant-as-role versus meant-as-person.
+So a role title whose roster row was *forgotten* — and which happens to equal an
+existing Holder string — silently resolves as that holder instead of surfacing as
+unheld; the integrity check cannot see a row that is absent. The structural fix would
+be typed owner references in the rule itself (`role: Head of IT` / `person: Ruth
+Okafor`), which discriminates at the source but changes the rule frontmatter schema
+for every adopter. The recommendation is to accept intent-blind resolution and
+document the blind spot in `docs/known-limitations.md` — the collision requires an
+author to name a role identically to a person while also forgetting its row, and
+both halves are the repo author's own text — with typed references recorded here as
+the known alternative if R1's implementation or a later run shows the blind spot
+biting. This is flagged for the maintainer at R1 plan review.
+
 ### The validator (the one code slice)
 
 - **Schema bump, not a candidate.** The activation-resolution ERROR is a tightening —
@@ -243,10 +268,11 @@ instance rule.
 
 The sites above are rewritten to the new semantics: an owner is a role or the person
 holding one; a role must be held to activate; the interview elicits the roster (who
-holds what, typed) and records where the org map came from. The two explicit
-contradictions carry the change: `questions.md:93`'s "A role is not an owner" and
-`protocol.md:247`'s "a **person**, not a role" both become *an owner is a role, and
-the roster says who holds it* — and the owner rows in the section at `questions.md:93–98` gain the
+holds what, typed) and records where the org map came from. The three explicit
+contradictions carry the change: `questions.md:93`'s "A role is not an owner",
+`protocol.md:247`'s "a **person**, not a role", and `interview/README.md:149`'s
+"a person, not a role?" all become *an owner is a role, and the roster says who
+holds it* — and the owner rows in the section at `questions.md:93–98` gain the
 office-versus-disclaimer distinction the correction identified, as a question the
 interviewer actually asks. The rewrite is scoped from a fresh grep at execution time,
 not from this spec's list — the list above is the floor, not the ceiling.
@@ -280,12 +306,18 @@ review:
   the world. A stale roster produces exactly the S1 class of confident error, one
   level up. This lands in `docs/known-limitations.md` in R1, as a limitation, never
   softened into a claim.
-- **It does not deliver S3's requested encoding.** A record-confirmed practice with
-  no owner still reads as a draft in the machine layer; the maintainer chose that as
-  the designed encoding, with named WARNs, over a third state.
+- **It does not deliver S3's requested encoding.** A practice the confirmed record
+  carries as enforced, with an owner nobody claims, still reads as a draft in the
+  machine layer; the maintainer chose that as the designed encoding, with named
+  WARNs, over a third state. (The record is what is confirmed — whether the practice
+  is live is exactly what run 1 left unestablished.)
 - **It does not resolve owner fields outside the constitution.** Deep records, owner
   cards, and memory records keep unresolved owner strings in R1 — a named remaining
   hole.
 - **It does not verify that a holder accepted the role.** S5 stays open.
+- **It does not know what an owner string was meant to be.** Resolution is
+  intent-blind: a forgotten role row whose title equals an existing holder name
+  resolves as that holder instead of surfacing as unheld (the stated blind spot in
+  "The roster", flagged for the maintainer at R1 plan review).
 - **It does not analyze owner prose.** A disclaiming owner string fails at activation
   because it resolves to nothing, not because the validator understands disclaimers.
