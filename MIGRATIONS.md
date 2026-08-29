@@ -81,10 +81,12 @@ escalating change wanting a proposal.
    confirmed — a snapshot, not when a fact became true), `review_by`, and `source` (where the
    org map came from). Then one table, `| Role | Holder | Type |`, plain-text cells.
 2. Write it as one table and nothing else. Below the frontmatter a roster carries no
-   backtick, no run of three or more tildes, no angle-bracket construct (HTML tag, comment,
+   backtick, no run of two or more tildes, no angle-bracket construct (HTML tag, comment,
    doctype, CDATA, processing instruction, or autolink), no link reference definition, no
-   character reference, and no `|` outside the table — each matched without regard for
-   context, so position inside a list or blockquote does not excuse one. Non-rendered text
+   character reference, and no invisible or bidirectional control character — each matched
+   without regard for context, so position inside a list or blockquote does not excuse one.
+   Leave a blank line above the table; it runs to the next blank line, and every line until
+   then must be a canonical row. Non-rendered text
    must never supply a holder. See `governance/README.md`.
 3. Make every **active** rule's four owner values resolve. Two ways, by exact string: a value
    matching a **Role** cell resolves to that row's holders; a value matching a **Holder** cell

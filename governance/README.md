@@ -64,7 +64,8 @@ frontmatter a roster carries **one** table and nothing that could be mistaken fo
 
 - **No backtick.** A code span can run across lines and render a whole table as code, and
   a backtick fence can hide one outright.
-- **No run of three or more tildes** — the other code fence.
+- **No run of two or more tildes** — a code fence, and `~~` is strikethrough, which makes
+  a cell read as something other than what it stores.
 - **No angle-bracket construct** — no HTML tag, comment, doctype, CDATA section or
   processing instruction, and no autolink either. An autolink is Markdown rather than HTML,
   so refusing it is deliberately over-strict. Write a plain URL, or an ordinary
@@ -74,6 +75,9 @@ frontmatter a roster carries **one** table and nothing that could be mistaken fo
   view refuses them too.
 - **No character reference** — no `&#32;`, no `&amp;`. It renders as something other than
   what is written, so a holder could be text nobody can see. A bare ampersand is fine.
+- **No invisible or bidirectional control character** — a zero-width space, a word joiner,
+  a byte-order mark, a left-to-right or right-to-left override. A holder must be text a
+  reader can see, in the order it is written.
 - **No `|` outside the table.** A pipe in explanatory prose reads as a second table, so it
   is refused rather than guessed at.
 
@@ -85,7 +89,15 @@ that was wrong in one direction or the other every time. Over-catching costs a c
 on a line you can see; under-catching lets an owner resolve against something a reader
 cannot see, which is the exact failure held-to-activate exists to prevent.
 
-Write the body plainly: a heading, a few sentences, and the table.
+**The table runs to the next blank line, and needs one above it.** That is how Markdown
+itself delimits a table, and it is load-bearing here: a line without pipes directly under
+the table is still a **row** to a reader, and a table with prose directly above it is not a
+table at all but a continuation of that paragraph. So the roster requires a blank line
+above the table, treats every line until the next blank one as a row, and refuses the whole
+table if any of them is not canonical — a block the parser reads differently from the
+reader is a block neither can trust.
+
+Write the body plainly: a heading, a few sentences, a blank line, and the table.
 
 Changing the roster in a governed root is an escalating change (#17): it decides who holds
 every active rule's owners, and where its human appeal terminates.

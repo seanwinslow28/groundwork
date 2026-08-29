@@ -2534,6 +2534,52 @@ class TestRoster(unittest.TestCase):
             self.assertEqual([f for f in findings if f.level == "ERROR"], [], rel)
             self.assertTrue(roster.holders, rel)
 
+    def test_a_pipeless_continuation_row_is_not_invisible(self):
+        """Codex r7, BLOCKER: GFM continues a table across a pipe-less line, so a
+        trailing 'CISO' rendered as a Role cell while the parser stopped at the
+        last pipe — hiding a Role/Holder collision and resolving CISO as human."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| Head of IT | Sean Winslow | human |\n"
+                                              "| CISO | Sean Winslow | human |\n",
+                                              "|  | CISO | human |\nCISO\n"))
+            findings = validate.check_roles(d)
+            self.assertTrue(any(f.level == "ERROR" and "not canonical" in f.message
+                                for f in findings), findings)
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "CISO"), [])
+
+    def test_a_table_without_a_blank_line_above_it_errors(self):
+        """The other half of the block rule: with no blank line above, GFM reads
+        the table as a lazy continuation of the paragraph and renders prose."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("\n| Role | Holder | Type |",
+                                              "Who holds what:\n| Role | Holder | Type |"))
+            self.assertTrue(any(f.level == "ERROR" and "blank line" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_invisible_and_bidi_characters_cannot_be_a_holder(self):
+        """Codex r7, BLOCKER: a zero-width or bidi control as the sole Holder
+        passed _is_plain_text and resolved as a human."""
+        for ch in ("\u200b", "\u2060", "\ufeff", "\u200e", "\u202e"):
+            with tempfile.TemporaryDirectory() as d:
+                self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                                  "| CISO | %s | human |" % ch))
+                self.assertTrue(any(f.level == "ERROR" and "invisible" in f.message
+                                    for f in validate.check_roles(d)), repr(ch))
+                roster, _f = validate._load_roster(d, d)
+                self.assertEqual(validate._resolve_owner(roster, "CISO"), [], repr(ch))
+
+    def test_strikethrough_cannot_be_a_holder(self):
+        """Codex r7: '~~Ghost~~' renders struck through, so the stored identity
+        differs from what a reader sees."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO | ~~Ghost~~ | human |"))
+            self.assertTrue(any(f.level == "ERROR" and "tilde" in f.message
+                                for f in validate.check_roles(d)))
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "CISO"), [])
+
     def test_an_empty_roster_is_legitimate(self):
         """Codex r2: a draft-only instance whose mapping nobody has confirmed has
         a header and a delimiter and no rows. Generation must invent no entries,
@@ -4459,6 +4505,20 @@ class TestRosterIsGoverned(unittest.TestCase):
             errs = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
                     if f.level == "ERROR" and "roles.md" in f.path]
             self.assertTrue(errs, "a malformed base pin authorized the bootstrap exemption")
+
+    def test_a_symlinked_pin_does_not_authorize_the_bootstrap(self):
+        """Codex r7: the bootstrap followed a working-tree pin symlink, so a v1
+        root could point at v2 text and take the exemption without committing an
+        auditable v2 pin."""
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "elsewhere.pin", "---\nschema_version: 2\n---\n")
+            os.remove(os.path.join(d, "groundwork.pin"))
+            os.symlink(os.path.join(d, "elsewhere.pin"), os.path.join(d, "groundwork.pin"))
+            _write(d, "governance/roles.md", ROSTER_OK)
+            errs = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                    if f.level == "ERROR" and "roles.md" in f.path]
+            self.assertTrue(errs, "a symlinked pin authorized the bootstrap exemption")
 
     def test_a_matching_proposal_clears_a_roster_change(self):
         with tempfile.TemporaryDirectory() as d:

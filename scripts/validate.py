@@ -2038,8 +2038,14 @@ _ROSTER_FORBIDDEN = (
     (re.compile(r"`"),
      "a backtick — a code span can run across lines and render a whole table as "
      "code, and a backtick fence can hide one outright"),
-    (re.compile(r"~{3,}"),
-     "a code fence — it can hide a table"),
+    (re.compile(r"~{2,}"),
+     "a run of tildes — a code fence can hide a table, and '~~' is strikethrough, "
+     "which makes a cell read as something other than what it stores"),
+    (re.compile(r"[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u00ad"
+                r"\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u206f"
+                r"\ufeff\ufff9-\ufffb]"),
+     "an invisible or bidirectional control character — a holder must be text a "
+     "reader can see and read in the order it is written"),
     (re.compile(r"<[A-Za-z/!?]"),
      "an angle-bracket construct — an HTML tag, comment, doctype, CDATA section "
      "or processing instruction can hide a table, and an autolink is refused "
@@ -2142,8 +2148,19 @@ def _parse_roster(text, rel):
                                 "roster has no '| Role | Holder | Type |' table", 2))
         return Roster(roles, holders), findings
     start = pipe[0]
+    # A GFM table runs to the next BLANK line, and a pipe-less line inside it is
+    # still a row — so ending the block at the last pipe left rows a reader sees
+    # invisible to the parser, which is how a namespace collision slipped past
+    # (Codex r7, BLOCKER). The block is the contiguous non-blank run, and every
+    # line in it must be canonical.
+    if start > body_start and lines[start - 1].strip() != "":
+        findings.append(Finding("ERROR", rel, start + 1,
+                                "the roster table needs a blank line above it — without one "
+                                "it is a continuation of the paragraph before it, and renders "
+                                "as prose rather than as a table", 2))
+        return Roster(roles, holders), findings
     end = start
-    while end + 1 < len(lines) and "|" in lines[end + 1]:
+    while end + 1 < len(lines) and lines[end + 1].strip() != "":
         end += 1
     outside = [n for n in pipe if not (start <= n <= end)]
     if outside:
@@ -2178,10 +2195,17 @@ def _parse_roster(text, rel):
     for lineno in range(start + 2, end + 1):
         cells = _canonical_row(lines[lineno])
         if cells is None:
+            # FAIL CLOSED, not skip: a line in the block that is not a canonical
+            # row means the parser's idea of the table disagrees with the
+            # reader's, so no row in it can be trusted — that disagreement is
+            # exactly how a pipe-less continuation row hid a collision (Codex
+            # r7). A bad CELL below is localized and does not void the rest.
             findings.append(Finding("ERROR", rel, lineno + 1,
                                     "roster row is not canonical — exactly three cells "
-                                    "between a leading and a trailing '|'", 2))
-            continue
+                                    "between a leading and a trailing '|'; the table runs "
+                                    "to the next blank line, so every line until then is a "
+                                    "row", 2))
+            return Roster({}, {}), findings
         role, holder, htype = cells
         bad_cell = False
         for label, cell in (("Role", role), ("Holder", holder), ("Type", htype)):
@@ -3981,6 +4005,12 @@ def blast_radius_diff_findings(root, base):
             if any(_fold(r) in blocked for r in base_rels):
                 continue
             abspath = os.path.join(root, *pin_rel.split("/"))
+            # A symlinked pin is not an auditable committed v2 pin: the diff
+            # would show a link, and its target can change after review. Neither
+            # check_version_pin nor _governed_class covers the pin file, so the
+            # exemption must refuse it here (Codex r7).
+            if _has_symlink_component(root, pin_rel):
+                continue
             if not os.path.isfile(abspath):
                 continue
             new_pin, _rd = _read_utf8(abspath, pin_rel)
