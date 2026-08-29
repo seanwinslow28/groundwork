@@ -15,10 +15,14 @@ keep changing.
 |---|---|---|---|---|
 | 1 | `199b5bc` | does not approve | 11 (2 BLOCKER, 4 HIGH, 3 MEDIUM, 2 LOW) | `7eb0885` |
 | 2 | `4bee0a7` | does not approve | 7 (1 BLOCKER, 1 HIGH, 3 MEDIUM, 2 LOW) | `87817ae` |
-| 3 | `fae6858` | does not approve | 6 (2 BLOCKER, 3 LOW, 1 MEDIUM) | `65fed7d` |
+| 3 | `fae6858` | does not approve | 6 (2 BLOCKER, 1 MEDIUM, 3 LOW) | `65fed7d` |
+| 4 | `1d45659` | does not approve | 4 (1 BLOCKER, 1 MEDIUM, 2 LOW) | `243adb7` |
 
-Twenty-four findings across three rounds. Twenty-three fixed; one rejected with grounds.
-Round 2's axis split is corrected in `round-03.md`, not in `round-02.md`, which is immutable.
+Twenty-eight findings across four rounds. Twenty-seven fixed; one rejected with grounds.
+
+**Corrections to earlier entries live in later ones**, per rule 9: `round-03.md` corrects
+`round-02.md`'s axis split, and `round-04.md` corrects `round-03.md`'s claim that two changed
+test assertions were "strictly stronger" — one of them was not.
 
 ## Open findings
 
