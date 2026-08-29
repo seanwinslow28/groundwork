@@ -79,11 +79,14 @@ after twenty.
 generated against (`git -C <engine clone> rev-parse --short HEAD`) and
 `schema_version: 1`. The pin is a frontmatter-fenced file — the two keys between two
 `---` lines, exactly as [../MIGRATIONS.md](../MIGRATIONS.md) shows; bare `key: value`
-lines with no fences fail the gate. Write the file at the end: once it is **committed** the
-repo is a governed root. Whether a rule or skill then counts as an escalating change
-wanting a proposal (#18) turns on the base you diff against — it escalates when that base
-does not already hold it — not on the order you wrote the files in. Generate into a repo
-whose base already carries the pin and you will write a proposal per file.
+lines with no fences fail the gate. **Write the pin last, and commit it only in the final
+generation commit** — if generation takes more than one commit, the pin belongs in the last
+of them. That makes the commit creating the governed root and the last commit of generation
+the same commit, which is the one "Then prove it" names as the base. Once the pin is
+committed the repo is a governed root; whether a rule or skill then counts as an escalating
+change wanting a proposal (#18) turns on the base you diff against — it escalates when that
+base does not already hold it — not on the order you wrote files within a commit. Generate
+into a repo whose base already carries the pin and you will write a proposal per file.
 
 **2. `ontologies/` first.** Every function gets an `_executive-view.md` listing every
 activity with a Direction — that is the whole executive tier, and most activities never
@@ -194,8 +197,10 @@ which adds the stateful modes: org-memory immutability, frozen interview layers,
 blast-radius pass — the #18 consent gate on escalating changes, the append-only changelog,
 and WARNs for a governed deletion or a missing changelog line.
 
-**The base is the generation commit.** Precondition 3 guarantees there is a history to name
-it against: the layers were committed, in this same repo, before you generated. So the
+**The base is the generation commit** — the commit carrying `groundwork.pin`, which the
+ordering rule above puts last, so it is also the final commit of generation whether that
+took one commit or several. Precondition 3 guarantees there is a history to name it
+against: the layers were committed, in this same repo, before you generated. So the
 temptation is to reach back past generation and diff against the pre-generation state.
 Do not.
 
