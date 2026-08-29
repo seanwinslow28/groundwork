@@ -81,9 +81,7 @@ generated against (`git -C <engine clone> rev-parse --short HEAD`) and
 `---` lines, exactly as [../MIGRATIONS.md](../MIGRATIONS.md) shows; bare `key: value`
 lines with no fences fail the gate. Write the file at the end: once it exists the repo is a governed
 root, and every skill and rule you add after that is an escalating change wanting a
-proposal (#18). Generate under the pin and you will write a proposal per file. Which
-commit the gate measures *from*, and why the write order inside it does not change
-what the gate sees, is in "Then prove it".
+proposal (#18). Generate under the pin and you will write a proposal per file.
 
 **2. `ontologies/` first.** Every function gets an `_executive-view.md` listing every
 activity with a Direction — that is the whole executive tier, and most activities never
@@ -191,7 +189,8 @@ python3 scripts/validate.py ../<company>-os --diff <generation commit>
 ```
 
 which adds the stateful modes: org-memory immutability, frozen interview layers, and the
-#18 consent gate on escalating changes.
+blast-radius pass — the #18 consent gate on escalating changes, the append-only changelog,
+and WARNs for a governed deletion or a missing changelog line.
 
 **The base is the generation commit** — the one you wrote the OS in. Precondition 3
 guarantees there is a history to name it against: the layers were committed, in this same
@@ -203,9 +202,8 @@ routes an escalating change through a reviewable proposal, and generation cannot
 own proposal — every rule and skill in the repo arrives with the root, and generation
 leaves nothing pending in `proposals/` for the gate to match them against. Name the
 pre-generation commit as the base and you ask the gate to review the act that created the
-thing it governs: every generated
-constitution rule comes back as an escalating change with no pending proposal, and the
-gate is red on a correct repo. Measured on the OS generated in the 2026-07-31
+thing it governs: every generated constitution rule comes back as an escalating change
+with no pending proposal, and the gate is red on a correct repo. Measured on the OS generated in the 2026-07-31
 persona-company run, which carries two constitution rules: the pre-generation base returns
 **2 errors, exit 1**, one per rule; the generation commit returns **0**. The write order
 inside that commit is not a way out — the validator discovers `groundwork.pin` from the
@@ -215,12 +213,12 @@ beside it out of the changeset.
 **What this run proves, and what it does not.** The comparison is the base tree against
 the working filesystem, not one commit against another, and that scan does not honour
 `.gitignore` — an untracked or ignored governed file is still read. Run it straight after
-generation, with nothing yet touched that the base already holds, and there is nothing to
-compare: it shows the stateful modes run clean, not that they caught anything. Later work
-is what exercises them — a new rule or skill is the #18 consent gate's case, while the
-frozen-layer and memory guards both read from the base, so they need a layer or a record
-that was already there to be edited or deleted. Adding a new one is always fine, and
-invisible to them.
+generation, before you have changed anything, and it has nothing to work on: it shows the
+stateful modes run clean, not that they caught anything. Later work is what exercises them
+— a new rule or skill is the #18 consent gate's case, while the frozen-layer and memory
+guards both read from the base, so they need a layer or a record that was already there to
+be edited or deleted. A new one is invisible to those two guards, though the stateless
+checks still read it.
 
 **Say what you generated and what you could not.** A list of the activities that got deep
 records, the skills that shipped `provisioned: no` and why, and every question still
