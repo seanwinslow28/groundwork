@@ -88,6 +88,13 @@ edit to a committed layer is an ERROR, exactly as it is for an org-memory record
 If a confirmed fact turns out to be wrong, the next layer records the correction and says
 so; you do not go back and rewrite what a person approved.
 
+**What the guard reads, and the condition that follows.** It compares the working tree
+against the base you name, and it finds the layers through the `00-manifest.md` beside
+them — so a layer is covered where **the base holds both that layer and its manifest**.
+A layer added since the base is not protected by this run, and neither is one whose
+directory the base carries without the manifest. Which base you name therefore decides
+what this run covers; [generate.md](generate.md) names it for a generated repo.
+
 `provenance`, `source`, and the ERROR-vs-WARN split on them are #7's vocabulary, not a
 parallel one: `confirmed` means a human approved it at a checkpoint, and a confirmed fact
 without a source is an ERROR.

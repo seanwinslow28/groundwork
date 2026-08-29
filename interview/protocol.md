@@ -103,8 +103,9 @@ That commit is the approval record. The promote-and-commit protocol is specified
 
 **A layer is frozen once committed.** If a confirmed fact turns out to be wrong, the next
 layer records the correction and says what it corrects. You do not go back and rewrite
-what somebody approved — `--diff` will catch it, and more importantly it destroys the
-one thing the checkpoint was for.
+what somebody approved — `--diff` will catch it wherever the base you name holds both the
+layer and its `00-manifest.md` ([README.md](README.md) states the condition), and more
+importantly it destroys the one thing the checkpoint was for.
 
 ### 5. The evidence floor — ground every acted-on activity
 

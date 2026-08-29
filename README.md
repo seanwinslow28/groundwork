@@ -124,17 +124,26 @@ fail. To check the OS you generated, pass its path instead:
 
 ```
 python3 scripts/validate.py ../acme-os
-python3 scripts/validate.py ../acme-os --diff main
+python3 scripts/validate.py ../acme-os --diff <generation commit>
 ```
+
+**The base is the generation commit, not `main`.** The commit that created the governed
+root is not subject to the consent gate — generation cannot be its own proposal — so a
+base from before generation returns every generated rule as an escalating change with
+nothing pending to match it. [`interview/generate.md`](interview/generate.md) names the
+base and carries the measurement.
 
 The first run checks structure and referential integrity, the two ontology tiers, every
 Owner's Card against its ontology's owner and source of truth, every constitution rule
 against the safety invariant that no rule may end in automation, every memory record's
 provenance and supersession chain, a high-signal secrets floor, and the always-loaded
 context budget. The second adds the stateful rules: organizational memory is
-append-and-supersede rather than editable, confirmed interview layers are frozen, and a
-change to a rule, the roles roster, or a high-risk skill must carry a matching pending
-proposal or the gate ERRORs.
+append-and-supersede rather than editable; a confirmed interview layer is frozen wherever
+the base holds both the layer and its `00-manifest.md`; and the #18 consent gate
+classifies every changed constitution rule, roles roster, and skill-package file, ERRORing
+on an escalating change with no matching pending proposal. Deleting one of those governed
+files **WARNs** rather than ERRORs, and #17's changelog rules run alongside.
+[`proposals/README.md`](proposals/README.md) carries the full classification.
 
 **What it does not prove.** The secrets floor is high-signal, not exhaustive. No check
 reads prose for truth — the validator can confirm every required field is answered, and
