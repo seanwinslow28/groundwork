@@ -2526,6 +2526,24 @@ class TestRoster(unittest.TestCase):
             self.assertEqual(validate._resolve_owner(roster, "CISO"),
                              [("Smith & Jones", "human")])
 
+    def test_the_documented_example_parses(self):
+        """Codex r9: the authoritative example in governance/README.md placed the
+        table directly under the frontmatter, which the blank-line rule refuses —
+        an adopter copying the documented schema got a rejected roster. A schema
+        whose own example fails is not a schema, so the example is parsed here."""
+        text = (REPO / "governance" / "README.md").read_text(encoding="utf-8")
+        blocks = re.findall(r"^````\n(.*?)^````", text, re.S | re.M)
+        self.assertTrue(blocks, "no fenced roster example found in governance/README.md")
+        example = blocks[0]
+        self.assertIn("| Role | Holder | Type |", example)
+        # The example uses <angle> placeholders in its frontmatter, which the
+        # body rules do not police; substitute real values to parse the shape.
+        example = re.sub(r"<[^>]*>", "2026-01-01", example)
+        roster, findings = validate._parse_roster(example, "governance/README.md example")
+        self.assertEqual([f for f in findings if f.level == "ERROR"], [])
+        self.assertEqual(roster.roles["Head of IT"], ["Priya Vale"])
+        self.assertEqual(roster.holders["Ruth Okafor"], "human")
+
     def test_the_engine_and_demo_rosters_obey_their_own_grammar(self):
         """The rule is only credible if the two shipped rosters follow it."""
         for rel in ("governance/roles.md", "demo/governance/roles.md"):
@@ -2571,6 +2589,62 @@ class TestRoster(unittest.TestCase):
                                                   "| CISO | %s | human |" % ch))
                 self.assertTrue(any(f.level == "ERROR" and "invisible" in f.message
                                     for f in validate.check_roles(d)), repr(ch))
+
+    def test_invisible_characters_with_visible_categories_are_caught(self):
+        """Codex r9, BLOCKER: a category test is NOT complete. U+034F and U+FE0F
+        are Mn, the Hangul fillers are Lo, U+2800 is So — each renders as nothing
+        and each resolved as a human holder."""
+        for ch in ("\u034f", "\ufe0f", "\u3164", "\u115f", "\u1160", "\uffa0", "\u2800"):
+            with tempfile.TemporaryDirectory() as d:
+                self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                                  "| CISO | %s | human |" % ch))
+                self.assertTrue(any(f.level == "ERROR" for f in validate.check_roles(d)),
+                                repr(ch))
+                roster, _f = validate._load_roster(d, d)
+                self.assertEqual(validate._resolve_owner(roster, "CISO"), [], repr(ch))
+
+    def test_a_cell_with_no_letter_or_digit_is_refused(self):
+        """The third net: it refuses a cell built from marks or symbols without
+        needing to know which of them render."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO | --- | human |"))
+            self.assertTrue(any(f.level == "ERROR" and "letter or digit" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_zwnj_between_letters_is_allowed(self):
+        """Codex r9: ZWNJ is REQUIRED in some Persian names, so refusing the whole
+        Cf category made a valid person-named owner unrepresentable."""
+        name = "\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645"   # ZWNJ between letters
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO | %s | human |" % name))
+            self.assertEqual([f for f in validate.check_roles(d) if f.level == "ERROR"], [])
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "CISO"),
+                             [(validate._roster_key(name), "human")])
+
+    def test_a_bare_zwnj_is_still_refused(self):
+        """Allowed BETWEEN letters, and nowhere else."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO | \u200c | human |"))
+            self.assertTrue(any(f.level == "ERROR" for f in validate.check_roles(d)))
+
+    def test_a_symlinked_roster_does_not_resolve_ownership(self):
+        """Codex r9: _load_roster followed a symlink, so active-rule ownership
+        could resolve from unaudited content outside the governed artifact."""
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "elsewhere.md", ROSTER_OK)
+            os.makedirs(os.path.join(d, "governance"), exist_ok=True)
+            os.symlink(os.path.join(d, "elsewhere.md"),
+                       os.path.join(d, "governance", "roles.md"))
+            _write(d, "governance/constitution/access.md", RULE_OK)
+            findings = validate.check_roles(d)
+            self.assertTrue(any(f.level == "ERROR" and "symlink" in f.message
+                                for f in findings), findings)
+            roster, _f = validate._load_roster(d, d)
+            self.assertIsNone(roster)
 
     def test_a_non_ascii_name_is_not_an_invisible_character(self):
         """The category check must not reject legitimate names."""
@@ -3763,6 +3837,17 @@ class TestRosterProposalTarget(unittest.TestCase):
             _write(d, "proposals/p1.md", _proposal("governance/roles.md"))
             self.assertFalse(any(f.level == "ERROR" and "must be a skill" in f.message
                                  for f in validate.check_proposals(d)))
+
+    def test_a_roster_target_must_be_the_roster_not_a_prefix_of_it(self):
+        """Codex r9: the bucket test was a prefix match, so a symlinked target
+        resolving to governance/roles.md.backup was accepted."""
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/roles.md.backup", ROSTER_OK)
+            os.symlink(os.path.join(d, "governance", "roles.md.backup"),
+                       os.path.join(d, "governance", "roles.md"))
+            _write(d, "proposals/p1.md", _proposal("governance/roles.md"))
+            self.assertTrue(any(f.level == "ERROR" and "resolves outside" in f.message
+                                for f in validate.check_proposals(d)))
 
     def test_a_roster_proposal_can_never_be_track1_body(self):
         with tempfile.TemporaryDirectory() as d:

@@ -88,9 +88,9 @@ escalating change wanting a proposal.
    Leave a blank line above the table; it runs to the next blank line, and every line until
    then must be a canonical row. Non-rendered text
    must never supply a holder. See `governance/README.md`.
-3. Make every **active** rule's four owner values resolve. Two ways, by exact string: a value
-   matching a **Role** cell resolves to that row's holders; a value matching a **Holder** cell
-   resolves to that holder. A person-named owner therefore resolves through a **holder-only
+3. Make every **active** rule's four owner values resolve. Two ways, by exact string after NFC
+   normalization: a value matching a **Role** cell resolves to that row's holders; a value
+   matching a **Holder** cell resolves to that holder. A person-named owner therefore resolves through a **holder-only
    row** — the Role cell left empty, which asserts a holder without asserting a role. A role
    with no row, or a row with no holder, is unheld.
 4. Check that every `human_appeal_owner` reaches a holder typed `human`.

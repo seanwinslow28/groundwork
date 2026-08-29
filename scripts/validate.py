@@ -2034,27 +2034,62 @@ ROSTER_HEADER = ["role", "holder", "type"]
 # all, so there is nothing to be subtly wrong about. Over-catching is accepted
 # and documented in governance/README.md; a roster body is a few lines of prose
 # and one table, and none of these constructs belongs in it.
+# Characters that render as nothing (or as blank) while carrying a VISIBLE
+# general category, so no category test finds them: the Hangul fillers (Lo), the
+# Braille blank (So), the variation selectors and the combining grapheme joiner
+# (Mn), and the Mongolian and Khmer invisible marks. Round 8 claimed a category
+# check was complete by construction; round 9 disproved it with exactly these.
+_INVISIBLE_EXTRAS = frozenset(
+    "\u034f\u115f\u1160\u17b4\u17b5\u180b\u180c\u180d\u180e\u2800\u3164\uffa0"
+    + "".join(chr(c) for c in range(0xFE00, 0xFE10)))
+# Zero-width non-joiner and joiner: REQUIRED inside some Persian and Indic
+# names, and invisible anywhere else. Allowed only between two letters.
+_ZERO_WIDTH_JOINERS = ("\u200c", "\u200d")
+
+
 def _invisible_char(s):
     """The first character in s that renders as nothing, renders as a space it is
     not, or reorders what surrounds it — or None.
 
-    A CATEGORY check rather than a list of ranges (Codex r8): round 7 enumerated
-    the ranges it knew and missed U+061C, which is the same whack-a-mole that
-    cost six rounds on the table grammar. Unicode's own classification is
-    complete by construction, so there is nothing left to enumerate.
+    THIS IS HIGH-SIGNAL, NOT EXHAUSTIVE, and docs/known-limitations.md says so.
+    Round 7 enumerated ranges and missed U+061C; round 8 replaced that with a
+    Unicode category test and called it complete by construction; round 9
+    disproved that with U+034F and U+FE0F (Mn), the Hangul fillers (Lo), and
+    U+2800 (So). Visibility is a property of fonts and renderers, not of the
+    character database, so no local check can decide it. This one refuses the
+    invisible categories, names the known invisible-but-visibly-categorised
+    characters, and the caller additionally requires a cell to carry at least one
+    letter or digit — three overlapping nets rather than one claim of
+    completeness.
 
-    Tab and carriage return are allowed through: a tab is visible whitespace that
-    _canonical_row strips from a cell, and a CR is a line ending the caller has
-    not normalized away."""
-    for ch in s:
+    Tab and carriage return pass: a tab is visible whitespace that _canonical_row
+    strips from a cell, and a CR is a line ending the caller has not normalized."""
+    for i, ch in enumerate(s):
         if ch in "\t\r":
             continue
+        if ch in _ZERO_WIDTH_JOINERS:
+            prev = s[i - 1] if i else ""
+            nxt = s[i + 1] if i + 1 < len(s) else ""
+            if prev and nxt and unicodedata.category(prev).startswith("L") \
+                    and unicodedata.category(nxt).startswith("L"):
+                continue
+            return ch
+        if ch in _INVISIBLE_EXTRAS:
+            return ch
         cat = unicodedata.category(ch)
         if cat in ("Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp"):
             return ch
         if cat == "Zs" and ch != " ":
             return ch
     return None
+
+
+def _has_letter_or_digit(s):
+    """A role or holder names something, so it carries at least one letter or
+    digit. The third net under _invisible_char: it refuses a cell built entirely
+    from marks, symbols or punctuation without needing to know which of those
+    render."""
+    return any(unicodedata.category(ch)[0] in "LN" for ch in s)
 
 
 # Entries are (matcher, why): a compiled pattern, or a predicate over the line.
@@ -2251,6 +2286,14 @@ def _parse_roster(text, rel):
                                     "roster row names neither a role nor a holder", 2))
             continue
         role, holder = _roster_key(role), _roster_key(holder)
+        for label, cell in (("Role", role), ("Holder", holder)):
+            if cell and not _has_letter_or_digit(cell):
+                findings.append(Finding("ERROR", rel, lineno + 1,
+                                        "roster %s cell carries no letter or digit — it names "
+                                        "nothing a reader can read" % label, 2))
+                bad_cell = True
+        if bad_cell:
+            continue
         if holder:
             if htype not in HOLDER_TYPES:
                 findings.append(Finding("ERROR", rel, lineno + 1,
@@ -2285,6 +2328,15 @@ def _load_roster(inst, root):
     so one malformed roster is reported once."""
     abspath = os.path.join(inst, *ROSTER_REL)
     rel = os.path.relpath(abspath, root)
+    # A symlinked roster is not the roster: os.path.isfile and _read_utf8 both
+    # follow the link, so active-rule ownership would resolve from unaudited
+    # content outside the artifact the gate governs (Codex r9). Treated as a
+    # broken roster, not an absent one — absent is a different finding.
+    if _has_symlink_component(root, os.path.relpath(abspath, root).replace(os.sep, "/")):
+        return None, [Finding("ERROR", rel, None,
+                              "the roster is or sits behind a symlink — ownership must "
+                              "resolve from the governed file itself, not from wherever a "
+                              "link points", 2)]
     if not os.path.isfile(abspath):
         return None, []
     text, rd = _read_utf8(abspath, rel)
@@ -3150,7 +3202,11 @@ def _check_proposals_instance(inst, root, ignore=()):
                 bucket = ("skills/" if target_is_skill
                           else "governance/constitution/" if target_is_rule
                           else "governance/roles.md")
-                if not resolved.startswith(bucket):
+                # The roster bucket is one FILE, so a prefix test would accept
+                # governance/roles.md.backup (Codex r9).
+                escaped = (resolved != bucket if target_is_roster
+                           else not resolved.startswith(bucket))
+                if escaped:
                     findings.append(Finding("ERROR", rel, None,
                                             "proposal 'target' resolves outside %s (symlink or filesystem "
                                             "alias: %s) — fail closed (#17)" % (bucket, resolved)))

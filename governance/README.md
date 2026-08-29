@@ -40,15 +40,20 @@ valid_at: <ISO date — when this mapping was last confirmed>
 review_by: <ISO date — when to re-confirm it>
 source: <where this org map came from: an interview layer, an HR system, the founder's word>
 ---
+# Roles — who holds what
+
 | Role | Holder | Type |
 |---|---|---|
 | Head of IT | Priya Vale | human |
 |  | Ruth Okafor | human |
 ````
 
-- **Two-way resolution, by exact string.** A value matching a **Role** cell resolves to
-  that row's holders; a value matching a **Holder** cell resolves to that holder. The
-  second form is what keeps `owner: Ruth Okafor` valid.
+- **Two-way resolution, by exact string after NFC normalization.** A value matching a
+  **Role** cell resolves to that row's holders; a value matching a **Holder** cell resolves
+  to that holder. The second form is what keeps `owner: Ruth Okafor` valid. Matching is
+  exact except that both sides are normalized to NFC first, so two spellings that render
+  identically are one name — and **only** those: NFKC would also fold fullwidth and
+  ligature forms, which are different names that happen to look related.
 - **A holder-only row** (Role cell empty) names a holder without asserting a role.
 - **A role with no row, or a row with no holder, is unheld** — and a rule with a rung
   cannot have an unheld owner. Drop the rung and it is a draft again, gaps named as WARNs.

@@ -95,6 +95,19 @@ Honest limits of the current build. This file grows as the product does (brief �
   strings that resolve against nothing. v2 resolves constitution-rule owners only — an
   ontology owner is descriptive where a rule owner is enforcement — and the remainder is a
   named remaining hole, open until a later slice decides it.
+- **"A holder a reader can see" is high-signal, not exhaustive.** The roster refuses
+  invisible and bidirectional characters in three overlapping ways — the invisible Unicode
+  general categories, a named set of characters that render as nothing while carrying a
+  *visible* category (the Hangul fillers, the Braille blank, the variation selectors, the
+  combining grapheme joiner), and a requirement that a Role or Holder cell carry at least
+  one letter or digit. That is deliberately three nets rather than one guarantee: visibility
+  is a property of fonts and renderers, not of the Unicode character database, so no local
+  check can decide it, and Unicode gains characters faster than any list is maintained. Nine
+  review rounds each found a case the previous round's rule missed. Zero-width joiners are
+  allowed between letters, because some Persian and Indic names require them — which is
+  itself a hole a determined author could stand in. The honest guarantee is that the obvious
+  and the known cases are refused, not that an invisible holder is impossible. This is the
+  same posture as the secrets floor, and for the same reason.
 - **A deleted roster is a WARN, not an ERROR**, exactly as a deleted rule or skill is, and
   for the same reason: a proposal's `target` must be an existing file, so a deletion can
   never trace to one. Deletion is an attacker's cheapest move against a roster and it stays
