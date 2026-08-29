@@ -217,11 +217,12 @@ established here.
    `docs/superpowers/reviews/<branch>.md`, with any `/` in the branch name written
    as `-` so the log stays a single file directly under `reviews/`.
    **Amended 2026-08-29 (maintainer):** `docs/agents/build-sessions.md` rule 9 is now the
-   operative text, and this decision records the choice, its evidence and its
-   counter-argument rather than restating the contract — one normative copy, which four
-   review rounds of drift between these two sites argued for. The storage convention above
-   is superseded there: one directory per branch or slice, one file per round. This
-   paragraph and the rest of the decision are otherwise unchanged.
+   operative text — one normative copy, which four review rounds of drift between these two
+   sites argued for. **The contract as stated in this decision is superseded by rule 9 and
+   retained unedited, as the record of what was decided rather than as instructions to
+   follow**; where the two differ, rule 9 governs. The storage convention above is the
+   clearest case: rule 9 replaces the single flattened file with one directory per branch
+   and one file per entry.
    The evidence: the prior session ran twenty-five review rounds — sixteen on the
    groundwork branch, nine on the persona-company correction, per the merge commit
    `df6df21` — and what survives is what its commits chose to carry. Fix commits

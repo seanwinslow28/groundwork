@@ -1,6 +1,8 @@
 # Codex review record — branch `docs/review-record-rule`
 
-The durable per-round review log rule 9 requires
+**Branch:** `docs/review-record-rule`.
+
+The durable per-entry review log rule 9 requires
 ([../../../agents/build-sessions.md](../../../agents/build-sessions.md)), kept on the
 branch that installs rule 9. Rule 9 is the operative text; this file carries the parts
 that keep changing, and each `round-NN.md` beside it is fixed once its round has passed.
@@ -28,9 +30,12 @@ the maintainer's at merge.
 | 4 | `bd81918` | does not approve | 12 | `bcee344` |
 | 5 | `bcee344` | does not approve | 9 | `79d216c` |
 | 6 | `79d216c` | does not approve | 11 | `74c7122` |
-| 7 | — | maintainer decisions, not a review round | — | see round-07 |
+| 7 | — | maintainer decisions, not a review round | — | `b33296e` |
+| 8 | `b33296e` | does not approve | 9 | see below |
 
-Forty-seven findings across six rounds, all accepted, none rejected.
+Fifty-six findings across seven review rounds, all accepted, none rejected. The nine rows
+that had been escalated rather than fixed are dispositioned in `round-08.md`, all as fixed
+in `b33296e`.
 
 ## Rejected findings
 
@@ -38,6 +43,12 @@ None. Every finding in every round was accepted.
 
 ## Open maintainer items
 
-**None.** The eleven items rounds 4–6 raised were decided by the maintainer on 2026-08-29
-and are implemented in rule 9 and in this directory's layout. `round-07.md` records each
-decision, what was chosen, and where it landed.
+**None blocking.** The eleven items rounds 4–6 raised were decided by the maintainer on
+2026-08-29; `round-07.md` records each decision and `round-08.md` records where round 8
+found the landing incomplete and what was fixed.
+
+One thing is flagged for the maintainer rather than open: **what counts as adequate grounds
+for rejecting a finding** was part of item 8 and was not covered by the decision. Round 8's
+finding 6 defines it — factually wrong, out of scope, or superseded, each naming its
+source, scope-plus-follow-up, or superseding item. That is the builder's construction, not
+a maintainer choice, and is easy to override if it is too narrow.

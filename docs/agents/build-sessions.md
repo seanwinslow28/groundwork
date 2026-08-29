@@ -26,42 +26,58 @@
 9. **Durable review verdicts.** A slice may not merge unless the verdicts of every Codex
    review round run against it are committed in the repository. **This is the operative
    text.** Decision 7 of the 2026-08-28 roles-as-the-accountable-unit design, under
-   `docs/superpowers/specs/`, records the decision, its evidence and its counter-argument,
-   and points here for the contract.
+   `docs/superpowers/specs/`, records the decision, its evidence and its counter-argument.
 
-   **Where.** One directory per branch or slice, one file per round, never edited after its
-   round has passed: `docs/superpowers/reviews/<branch-slug>/round-NN.md` for plan-less
-   work, or `docs/superpowers/plans/<slice>-reviews/round-NN.md` beside a plan, where
-   `<slice>` is the plan's filename without its date prefix. `<branch-slug>` is the branch
-   name's last path component; if that directory is already taken by unrelated work, add
-   `-2`, `-3`. A `README.md` in the same directory carries the parts that keep changing:
-   what each round reviewed, the fix-commit map, the rejected findings, and any open
-   maintainer items.
+   **Where.** One directory per branch, one file per entry: `docs/superpowers/reviews/<slug>/`,
+   or `docs/superpowers/plans/<slice>-reviews/` when the branch carries exactly one plan,
+   where `<slice>` is that plan's filename with the leading `YYYY-MM-DD-` and the `.md`
+   removed. `<slug>` is the branch name's last path component, lowercased, with every
+   character outside `[a-z0-9._-]` replaced by `-`; if a directory of that name already
+   exists in the merge target, append `-2`, `-3`. That mapping is deliberately not
+   injective — the directory's `README.md` records the full branch name, which is what
+   disambiguates. A collision found only at merge time is resolved by renaming the
+   directory, which is not an edit to any entry.
 
-   **What a round file carries.** The reviewed revision as a commit SHA — a review runs
+   **Entries.** `round-NN.md`, numbered consecutively from 01. Every Codex invocation gets
+   one, a crashed or abandoned one included — that entry records the task id and that no
+   verdict was returned. A directory may also carry a numbered entry that is not a review
+   round, such as a record of maintainer decisions; it says so on its first line. Nothing
+   outside the repository enforces that no invocation was omitted, so the numbering is a
+   record, not a guarantee.
+
+   **An entry is immutable once committed.** A correction to an earlier entry is made by a
+   later one, never by editing it.
+
+   **What a round entry carries.** The reviewed revision as a commit SHA — a review runs
    against a clean worktree — the verdict, and every finding with the reviewer's own
    severity word kept verbatim, plus its disposition. A finding may be summarised rather
-   than quoted in full. A disposition is **fixed in commit X** or **rejected with grounds**,
-   and nothing else. A finding that is neither is unresolved, and a branch carrying an
-   unresolved finding does not merge under this rule. The builder may reject a finding; every
-   rejected one is also listed in the directory's `README.md`, so the single move that closes
-   a finding by disagreeing with it cannot be buried inside a round file.
+   than quoted in full. A disposition is **fixed** or **rejected with grounds**, and nothing
+   else. Grounds say the finding is factually wrong, naming the source; out of scope, naming
+   the scope and the follow-up work it becomes; or superseded, naming what supersedes it.
+   A finding that is neither fixed nor rejected is unresolved, and a branch carrying an
+   unresolved finding does not merge. The builder may reject a finding; every rejected one
+   is also listed in the directory's `README.md`, so the single move that closes a finding
+   by disagreeing with it cannot be buried inside an entry.
 
-   **Every invocation gets a file**, including one that crashed or was abandoned — disposition
-   "aborted, no verdict" — so a missing round shows as a gap in the numbering rather than as
-   nothing at all.
+   **`README.md` carries what keeps changing** — the full branch name, a row per entry, the
+   commit that carried each round's fixes, the rejected findings, and any open items. An
+   entry cannot name the commit that fixes it, since that commit does not exist when the
+   entry is written; the README's map is where that SHA lives. The README records; it never
+   changes a disposition.
 
-   **The terminal round.** The last verdict is committed after the state it reviewed, so that
-   commit is not itself reviewed. That is accepted, and said here rather than exempted. The
-   final verdict must be approving unless the maintainer records the grounds for merging over
-   it in the merge commit, as `5fc61c6` did for slice 2.1.
+   **The terminal round.** The last verdict is committed after the state it reviewed, so
+   that commit is not itself reviewed. That is accepted, and said here rather than exempted.
+   The final verdict must be approving. A maintainer may merge over a non-approving one, and
+   doing so **is** a rejection with grounds of whatever findings remain: the grounds go in
+   the merge commit, as `5fc61c6` did for slice 2.1, and those findings are listed in the
+   README like any other rejection.
 
    *Evidence:* the session that landed rule 8 ran twenty-five review rounds and kept no round
    output; three of its sixteen groundwork rounds left no numbered fix commit, and two of
    those left nothing anywhere. Decision 7 carries the full account.
    *Worked example:* `docs/superpowers/reviews/spec-roles-accountable-unit.md` — 25 rounds,
    102 findings, every disposition, one approving verdict, with its fix-commit map
-   backfilled. It predates the per-round layout above, which binds work started after this
+   backfilled. It predates the per-entry layout above, which binds work started after this
    rule lands.
 
 ## Where the plan lives
