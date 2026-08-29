@@ -31,8 +31,9 @@
    counter-argument.
 
    **Where.** One directory per branch, one file per entry:
-   `docs/superpowers/reviews/<slug>/`, or `docs/superpowers/plans/<slice>-reviews/` when
-   the branch carries exactly one plan, where `<slice>` is that plan's filename with the
+   `docs/superpowers/reviews/<slug>/`, or `docs/superpowers/plans/<slice>-reviews/` when the
+   branch's own commits add or change exactly one plan, where `<slice>` is that plan's
+   filename with the
    leading `YYYY-MM-DD-` and the `.md` removed. `<slug>` is the branch name's last path
    component, ASCII-lowercased, with every character outside `[a-z0-9._-]` replaced by `-`.
    For **either** path: if a directory of that name already exists in the branch's merge

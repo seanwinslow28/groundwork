@@ -32,10 +32,11 @@ the maintainer's at merge.
 | 6 | `79d216c` | does not approve | 11 | `74c7122` |
 | 7 | — | maintainer decisions, not a review round | — | `b33296e` |
 | 8 | `b33296e` | does not approve | 9 | `21c6c74` |
-| 9 | `21c6c74` | does not approve | 9 | see round-11 |
-| 10 | `edce94b` | does not approve | 6 | see round-11 |
+| 9 | `21c6c74` | does not approve | 9 | `edce94b` |
+| 10 | `edce94b` | does not approve | 6 | `214c1b5` |
+| 11 | `214c1b5` | does not approve | 5 | see round-12 |
 
-Seventy-one findings across nine review rounds, all accepted, none rejected. Sixteen rows
+Seventy-six findings across ten review rounds, all accepted, none rejected. Sixteen rows
 that had been escalated rather than closed are dispositioned in `round-09.md`, three of them
 corrected again in `round-10.md`.
 
@@ -69,5 +70,6 @@ found the landing incomplete and what was fixed.
 **One item is open for the maintainer: what counts as adequate grounds for rejecting a
 finding.** It was part of item 8 and the decision did not cover it. Round 8 defined it
 unilaterally, round 9 removed that as an unapproved policy choice, and round 10 found round
-9's replacement recommendation rested on a misread precedent. `round-10.md` carries the
-restated options, recommendation and counter-argument — read that one, not round 9's.
+9's replacement recommendation rested on a misread precedent. `round-11.md` carries the
+current options, recommendation and counter-argument — read that one; rounds 9 and 10 each
+recommended on a reason a later round found false.
