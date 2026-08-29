@@ -2034,6 +2034,30 @@ ROSTER_HEADER = ["role", "holder", "type"]
 # all, so there is nothing to be subtly wrong about. Over-catching is accepted
 # and documented in governance/README.md; a roster body is a few lines of prose
 # and one table, and none of these constructs belongs in it.
+def _invisible_char(s):
+    """The first character in s that renders as nothing, renders as a space it is
+    not, or reorders what surrounds it — or None.
+
+    A CATEGORY check rather than a list of ranges (Codex r8): round 7 enumerated
+    the ranges it knew and missed U+061C, which is the same whack-a-mole that
+    cost six rounds on the table grammar. Unicode's own classification is
+    complete by construction, so there is nothing left to enumerate.
+
+    Tab and carriage return are allowed through: a tab is visible whitespace that
+    _canonical_row strips from a cell, and a CR is a line ending the caller has
+    not normalized away."""
+    for ch in s:
+        if ch in "\t\r":
+            continue
+        cat = unicodedata.category(ch)
+        if cat in ("Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp"):
+            return ch
+        if cat == "Zs" and ch != " ":
+            return ch
+    return None
+
+
+# Entries are (matcher, why): a compiled pattern, or a predicate over the line.
 _ROSTER_FORBIDDEN = (
     (re.compile(r"`"),
      "a backtick — a code span can run across lines and render a whole table as "
@@ -2041,9 +2065,7 @@ _ROSTER_FORBIDDEN = (
     (re.compile(r"~{2,}"),
      "a run of tildes — a code fence can hide a table, and '~~' is strikethrough, "
      "which makes a cell read as something other than what it stores"),
-    (re.compile(r"[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u00ad"
-                r"\u200b-\u200f\u2028-\u202e\u2060-\u2064\u2066-\u206f"
-                r"\ufeff\ufff9-\ufffb]"),
+    (lambda ln: _invisible_char(ln) is not None,
      "an invisible or bidirectional control character — a holder must be text a "
      "reader can see and read in the order it is written"),
     (re.compile(r"<[A-Za-z/!?]"),
@@ -2136,8 +2158,9 @@ def _parse_roster(text, rel):
     # Nothing a reader does not see may supply a holder. Forbidden constructs are
     # refused outright rather than interpreted — see _ROSTER_FORBIDDEN.
     for n in range(body_start, len(lines)):
-        for pattern, why in _ROSTER_FORBIDDEN:
-            if pattern.search(lines[n]):
+        for matcher, why in _ROSTER_FORBIDDEN:
+            hit = matcher(lines[n]) if callable(matcher) else matcher.search(lines[n])
+            if hit:
                 findings.append(Finding("ERROR", rel, n + 1,
                                         "a roster body carries no %s" % why, 2))
                 return Roster(roles, holders), findings
@@ -2153,14 +2176,21 @@ def _parse_roster(text, rel):
     # invisible to the parser, which is how a namespace collision slipped past
     # (Codex r7, BLOCKER). The block is the contiguous non-blank run, and every
     # line in it must be canonical.
-    if start > body_start and lines[start - 1].strip() != "":
+    # Blankness is CommonMark's — only spaces and tabs (Codex r8). str.strip()
+    # also strips U+00A0, which is NOT a blank line to a renderer, so an NBSP
+    # line ended the block early and hid every row after it. A CR is tolerated
+    # so a CRLF file's blank lines are still blank.
+    def _blank_line(ln):
+        return ln.strip(" \t\r") == ""
+
+    if start == body_start or not _blank_line(lines[start - 1]):
         findings.append(Finding("ERROR", rel, start + 1,
                                 "the roster table needs a blank line above it — without one "
-                                "it is a continuation of the paragraph before it, and renders "
-                                "as prose rather than as a table", 2))
+                                "it can read as a continuation of what precedes it rather "
+                                "than as a table", 2))
         return Roster(roles, holders), findings
     end = start
-    while end + 1 < len(lines) and lines[end + 1].strip() != "":
+    while end + 1 < len(lines) and not _blank_line(lines[end + 1]):
         end += 1
     outside = [n for n in pipe if not (start <= n <= end)]
     if outside:
@@ -2220,6 +2250,7 @@ def _parse_roster(text, rel):
             findings.append(Finding("ERROR", rel, lineno + 1,
                                     "roster row names neither a role nor a holder", 2))
             continue
+        role, holder = _roster_key(role), _roster_key(holder)
         if holder:
             if htype not in HOLDER_TYPES:
                 findings.append(Finding("ERROR", rel, lineno + 1,
@@ -2264,6 +2295,15 @@ def _load_roster(inst, root):
     return roster, rd + findings
 
 
+def _roster_key(s):
+    """A roster string as compared. NFC, because two spellings that RENDER
+    identically are the same name: without it an owner written NFC failed to
+    resolve against an NFD holder, and a canonically equivalent Role and Holder
+    evaded the collision ERROR (Codex r8). The repository already normalizes
+    this way for committed paths, and for the same reason."""
+    return unicodedata.normalize("NFC", s.strip())
+
+
 def _resolve_owner(roster, value):
     """The holders an owner value resolves to, as [(holder, type)]. Empty means
     UNHELD: no roster match, or a Role row carrying no holder.
@@ -2279,7 +2319,7 @@ def _resolve_owner(roster, value):
     references are the recorded alternative."""
     if roster is None or not isinstance(value, str):
         return []
-    v = value.strip()
+    v = _roster_key(value)
     if v in roster.roles:
         return [(h, roster.holders.get(h)) for h in roster.roles[v]]
     if v in roster.holders:

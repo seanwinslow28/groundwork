@@ -64,9 +64,12 @@ carried a schema cost.
   candidate with a measured instance behind it: **a representable form for *enforced,
   but nobody owns it***. That run's confirmed interview record carried a rule at
   `hard-block` whose ownership nobody claimed. Three outcomes were considered — omit the
-  rule, ship it and let the gate fail, or ship it as a declared draft — and the generation
-  contract permits only the first, since an artifact missing a required field does not
-  ship. The run shipped the draft and the validator accepted it with warnings, so a
+  rule, ship it and let the gate fail, or ship it as a declared draft — and at the time the
+  generation contract permitted only the first, since an artifact missing a required field
+  does not ship. **That has since changed:** the v2 contract permits a rule with a gap to
+  ship as a declared rungless draft that names its own gaps, subject to the safety-spine
+  exceptions, and requires the generation report to name every rule that shipped
+  incomplete. The run shipped the draft and the validator accepted it with warnings, so a
   structural consumer reads two drafts and zero active rules where the confirmed record
   says a hard gate. That the gate allowed it at all is a second finding, not a licence.
 

@@ -2548,12 +2548,76 @@ class TestRoster(unittest.TestCase):
             roster, _f = validate._load_roster(d, d)
             self.assertEqual(validate._resolve_owner(roster, "CISO"), [])
 
+    def test_an_nbsp_line_does_not_end_the_table(self):
+        """Codex r8, BLOCKER: str.strip() treats U+00A0 as blank, but CommonMark
+        does not — so an NBSP line ended the block early and every row after it
+        became invisible, hiding a Role/Holder collision."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| Head of IT | Sean Winslow | human |\n"
+                                              "| CISO | Sean Winslow | human |\n",
+                                              "|  | CISO | human |\n\u00a0\nCISO\n"))
+            findings = validate.check_roles(d)
+            self.assertTrue(any(f.level == "ERROR" for f in findings), findings)
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "CISO"), [])
+
+    def test_every_invisible_category_is_caught_not_a_list_of_ranges(self):
+        """Codex r8, BLOCKER: round 7 enumerated ranges and missed U+061C. The
+        check is now by Unicode category, so there is nothing left to enumerate."""
+        for ch in ("\u061c", "\u200b", "\u2060", "\ufeff", "\u200e", "\u202e",
+                   "\u00ad", "\u2028", "\u0007"):
+            with tempfile.TemporaryDirectory() as d:
+                self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                                  "| CISO | %s | human |" % ch))
+                self.assertTrue(any(f.level == "ERROR" and "invisible" in f.message
+                                    for f in validate.check_roles(d)), repr(ch))
+
+    def test_a_non_ascii_name_is_not_an_invisible_character(self):
+        """The category check must not reject legitimate names."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO | Tom\u00e1s Iglesias | human |"))
+            self.assertEqual([f for f in validate.check_roles(d) if f.level == "ERROR"], [])
+
+    def test_canonically_equivalent_names_resolve_and_collide(self):
+        """Codex r8: NFC and NFD spellings render identically, so they are one
+        name — an owner must resolve against either, and a Role that equals a
+        Holder under normalization is still a collision."""
+        nfd = "Jos\u0065\u0301"          # Jose + combining acute
+        nfc = "Jos\u00e9"                  # precomposed
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO | %s | human |" % nfd))
+            roster, findings = validate._load_roster(d, d)
+            self.assertEqual([f for f in findings if f.level == "ERROR"], [])
+            self.assertEqual(validate._resolve_owner(roster, nfc),
+                             [(validate._roster_key(nfd), "human")])
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| Head of IT | Sean Winslow | human |\n"
+                                              "| CISO | Sean Winslow | human |\n",
+                                              "| %s | Ada Byron | human |\n|  | %s | human |\n"
+                                              % (nfd, nfc)))
+            self.assertTrue(any(f.level == "ERROR" and "both a Role and a Holder" in f.message
+                                for f in validate.check_roles(d)))
+
     def test_a_table_without_a_blank_line_above_it_errors(self):
         """The other half of the block rule: with no blank line above, GFM reads
         the table as a lazy continuation of the paragraph and renders prose."""
         with tempfile.TemporaryDirectory() as d:
             self._roster(d, ROSTER_OK.replace("\n| Role | Holder | Type |",
                                               "Who holds what:\n| Role | Holder | Type |"))
+            self.assertTrue(any(f.level == "ERROR" and "blank line" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_the_blank_line_is_required_at_the_body_start_too(self):
+        """Codex r8: the rule was skipped when the table was the body's first
+        line, so the code and the documented grammar disagreed. The rule is
+        unconditional, which is what the documentation already said."""
+        with tempfile.TemporaryDirectory() as d:
+            head = ROSTER_OK.split("# Roles")[0]
+            table = ROSTER_OK.split("|---|---|---|")[0].split("# Roles — who holds what")[1]
+            self._roster(d, head + "| Role | Holder | Type |\n|---|---|---|\n"
+                         "| CISO | Sean Winslow | human |\n")
             self.assertTrue(any(f.level == "ERROR" and "blank line" in f.message
                                 for f in validate.check_roles(d)))
 
