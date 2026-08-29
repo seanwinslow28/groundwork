@@ -102,7 +102,7 @@ _Avoid_: lockfile, manifest (that is #9's interview manifest)
 ### Consent gate (per-harness proposal mechanics — ticket #18)
 
 **Consent gate**:
-The harness-independent invariant behind governed self-improvement: an *escalating* change reaches the main line only via a reviewable proposal artifact plus a distinct human affirmative act, leaving a git record. The "rung-5, human-owned decision" made mechanical. A GitHub draft PR is one *rendering* of it, never the gate itself.
+The harness-independent invariant behind governed self-improvement: an *escalating* change reaches the main line only via a reviewable proposal artifact plus a distinct human affirmative act, leaving a git record. **One exception:** the commit that creates a governed root — generation cannot be its own proposal, so that commit is where gating starts rather than something gated. The "rung-5, human-owned decision" made mechanical. A GitHub draft PR is one *rendering* of it, never the gate itself.
 _Avoid_: draft PR (a rendering, not the gate), approval workflow (implies an engine)
 
 **Consent ladder**:

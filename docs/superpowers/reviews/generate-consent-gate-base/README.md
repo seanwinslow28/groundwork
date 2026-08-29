@@ -67,6 +67,12 @@ decided** and is recorded in `round-07.md`. Item 5 was closed at round 6. The re
 outside governed self-improvement, or an exception to it? The glossary states the invariant
 without qualification, and this branch exempts the root-creating commit.
 
+*Closed.* The maintainer decided 2026-08-29 that it is an exception, and that
+`CONTEXT.md:105` says so on the generation exemption alone — recorded as decision 5b of
+entry 12 in `docs/superpowers/plans/r1-roster-schema-v2-reviews/`, implemented on branch
+`docs/rule9-categories-consent-clause` (record:
+`docs/superpowers/reviews/rule9-categories-consent-clause/`).
+
 **2. Adopter-facing sites that state the base or the enforcement, incompletely.**
 `README.md:127` and `delivery/README.md:244` give a company repo `--diff main`, which
 reproduces S2 before generation reaches `main`, and `delivery/` promises exit 0.

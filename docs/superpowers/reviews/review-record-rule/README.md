@@ -99,3 +99,9 @@ unilaterally, round 9 removed that as an unapproved policy choice, and round 10 
 9's replacement recommendation rested on a misread precedent. `round-11.md` carries the
 current options, recommendation and counter-argument — read that one; rounds 9 and 10 each
 recommended on a reason a later round found false.
+
+*Closed.* The maintainer chose round 11's option (b) on 2026-08-29 — a closed list of three
+categories, with the open-plus-override path as the escape hatch — recorded as decision 5a
+of entry 12 in `docs/superpowers/plans/r1-roster-schema-v2-reviews/` and written into rule 9
+on branch `docs/rule9-categories-consent-clause` (record:
+`docs/superpowers/reviews/rule9-categories-consent-clause/`).
