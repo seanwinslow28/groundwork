@@ -20,15 +20,17 @@ keep changing.
 | 5 | `e3efe16` | does not approve | 5 (1 BLOCKER, 1 MEDIUM, 3 LOW) | `153aa65` |
 | 6 | `01414ed` | does not approve | 4 (2 BLOCKER, 2 LOW) | `a2bedcc` |
 | 7 | `b8f94b4` | does not approve | 6 (2 BLOCKER, 1 HIGH, 1 MEDIUM, 2 LOW) | `df99dc5` |
+| 8 | `37e449b` | does not approve | 6 (2 BLOCKER, 2 MEDIUM, 2 LOW) | `63211e4` |
 
-Forty-three findings across seven rounds. Forty-two fixed; one rejected with grounds.
+Forty-nine findings across eight rounds. Forty-eight fixed; one rejected with grounds.
 
 **Corrections to earlier entries live in later ones**, per rule 9: `round-03.md` corrects
 `round-02.md`'s axis split, and `round-04.md` corrects `round-03.md`'s claim that two changed
 test assertions were "strictly stronger" — one of them was not; `round-05.md` corrects
 two false narrative summaries in `round-04.md`; `round-06.md` corrects `round-05.md`'s
-"third consecutive round", which its own next paragraph contradicted; and `round-07.md`
-corrects two overreaching claims in `round-06.md`.
+"third consecutive round", which its own next paragraph contradicted; `round-07.md`
+corrects two overreaching claims in `round-06.md`; and `round-08.md` corrects two claims in
+`round-07.md` that described fixes as more complete than they were.
 
 ## Open findings
 
