@@ -2343,6 +2343,51 @@ class TestRoster(unittest.TestCase):
             self.assertEqual(validate._resolve_owner(roster, "Ghost Role"), [])
             self.assertEqual(validate._resolve_owner(roster, "Ghost Holder"), [])
 
+    def test_a_table_living_entirely_inside_a_fence_is_no_table(self):
+        """Codex r2, BLOCKER: round 1 bounded the table but a roster whose ONLY
+        pipe-bearing block sat inside a fence still parsed, so example content
+        satisfied held-to-activate and the human-appeal gate."""
+        fenced = ROSTER_OK.split("# Roles")[0] + "# Roles\n\n```\n" + \
+            "| Role | Holder | Type |\n|---|---|---|\n| CISO | Sean Winslow | human |\n```\n"
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, fenced)
+            findings = validate.check_roles(d)
+            self.assertTrue(any(f.level == "ERROR" for f in findings), findings)
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "CISO"), [])
+            self.assertEqual(validate._resolve_owner(roster, "Sean Winslow"), [])
+
+    def test_a_table_living_entirely_inside_an_html_comment_is_no_table(self):
+        commented = ROSTER_OK.split("# Roles")[0] + "# Roles\n\n<!--\n" + \
+            "| Role | Holder | Type |\n|---|---|---|\n| CISO | Sean Winslow | human |\n-->\n"
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, commented)
+            self.assertTrue(any(f.level == "ERROR" for f in validate.check_roles(d)))
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "CISO"), [])
+
+    def test_an_empty_roster_is_legitimate(self):
+        """Codex r2: a draft-only instance whose mapping nobody has confirmed has
+        a header and a delimiter and no rows. Generation must invent no entries,
+        so the parser must not force a row."""
+        empty = ROSTER_OK.split("| Head of IT")[0]
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, empty)
+            self.assertEqual([f for f in validate.check_roles(d) if f.level == "ERROR"], [])
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(roster.roles, {})
+            self.assertEqual(roster.holders, {})
+
+    def test_an_empty_roster_does_not_rescue_an_active_rule(self):
+        """The other half: an empty roster satisfies the missing-roster check but
+        resolves nothing, so an active rule is still red — four named ERRORs."""
+        empty = ROSTER_OK.split("| Head of IT")[0]
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/constitution/access.md", RULE_OK)
+            _write(d, "governance/roles.md", empty)
+            errs = [f for f in validate.check_constitution(d) if f.level == "ERROR"]
+            self.assertEqual(len([f for f in errs if "does not resolve" in f.message]), 4, errs)
+
     def test_a_commented_out_row_is_not_a_holder(self):
         with tempfile.TemporaryDirectory() as d:
             self._roster(d, ROSTER_OK + "\n<!-- | Ghost | Ghost Holder | human | -->\n")
@@ -4175,6 +4220,44 @@ class TestRosterIsGoverned(unittest.TestCase):
             errs = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
                     if f.level == "ERROR" and "oles.md" in f.path]
             self.assertTrue(errs, "the respelled roster was exempted as a bootstrap addition")
+
+    def test_an_ancestor_symlink_at_base_is_not_a_bootstrap(self):
+        """Codex r2: a v1 base whose `governance` is a symlink already exposes a
+        roster the base FILE LIST never names, so replacing the symlink with a
+        real directory at the boundary made a modified roster look like an
+        exempt addition."""
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "groundwork.pin", "---\nschema_version: 1\n---\n")
+            _write(d, "real/constitution/access.md", RULE_OK)
+            _write(d, "real/roles.md", ROSTER_OK)
+            os.symlink("real", os.path.join(d, "governance"))
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "base")
+            os.remove(os.path.join(d, "governance"))
+            shutil.copytree(os.path.join(d, "real"), os.path.join(d, "governance"))
+            _write(d, "governance/roles.md",
+                   ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                     "| CISO | triage agent | agent |"))
+            _write(d, "groundwork.pin", "---\nschema_version: 2\n---\n")
+            errs = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                    if f.level == "ERROR" and "roles.md" in f.path]
+            self.assertTrue(errs, "a roster reachable at base was exempted as a bootstrap")
+
+    def test_a_symlinked_roster_finding_demotes_behind_a_v1_pin(self):
+        """Codex r2: the pre-classification findings (symlink, unreadable,
+        deletion) were emitted before the roster's since=2 was computed, so a
+        v1-pinned root got an undemoted ERROR beside its boundary ERROR."""
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            os.symlink(os.path.join(d, "governance", "constitution", "access.md"),
+                       os.path.join(d, "governance", "roles.md"))
+            findings = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                        if "roles.md" in f.path]
+            self.assertTrue(findings)
+            self.assertTrue(all(f.since == 2 for f in findings), findings)
 
     def test_a_matching_proposal_clears_a_roster_change(self):
         with tempfile.TemporaryDirectory() as d:

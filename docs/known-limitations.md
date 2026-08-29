@@ -59,8 +59,8 @@ Honest limits of the current build. This file grows as the product does (brief �
   company content. The groundwork engine repo is pin-less by design, so its own `skills/` and
   `governance/constitution/` exemplars are not governed by it. Whether groundwork governs its own maintenance with its own consent gate is
   the same open question as the hook set above, not an oversight.
-- **A deleted rule or skill is a WARN, not an ERROR.** Retirement is legitimate (rules carry
-  `sunset`, cards carry `retirement_condition`) and it is escalating — but a proposal's
+- **A deleted rule, skill, or roster is a WARN, not an ERROR.** Retirement is legitimate
+  (rules carry `sunset`, cards carry `retirement_condition`) and it is escalating — but a proposal's
   `target` must be an existing file, so a deletion can never be traced to one. Making it an
   ERROR would build a gate nothing could clear. The honest record of a deletion is the
   maintainer's consent commit.

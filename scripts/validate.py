@@ -2037,8 +2037,13 @@ def _parse_roster(text, rel):
 
     The table grammar is _canonical_row — the SAME one the executive view uses.
     A second table grammar in this repo is a decision nobody should make twice.
-    Rows are read from the FULL text, not the body: a frontmatter line can never
-    start with '|', so the line numbers stay the file's own.
+
+    The scan starts after the frontmatter block and ignores every line inside a
+    code fence or an HTML comment, so non-rendered text can never supply a
+    holder (Codex r1 and r2). Those lines are BLANKED rather than removed, which
+    keeps every reported line number the file's own. A '|' outside the one table
+    block still ERRORs, computed against the RAW lines, so a fenced example is
+    reported rather than silently tolerated.
 
     Every finding here carries since=2. The roster does not exist below v2, so a
     v1-pinned repo could not have met any of these requirements."""
@@ -2088,7 +2093,40 @@ def _parse_roster(text, rel):
             if lines[k].strip() == "---":
                 body_start = k + 1
                 break
-    pipe = [i for i in range(body_start, len(lines)) if "|" in lines[i]]
+
+    # Blank every line that renders as nothing — inside a fence, or inside an
+    # HTML comment. Round 1 bounded the table but still parsed one living
+    # ENTIRELY inside a fence, which made example content a live holder (Codex
+    # r2, BLOCKER). Blanking preserves indices, so line numbers stay honest.
+    masked, fence, in_comment = list(lines), None, False
+    for n in range(body_start, len(lines)):
+        ln = lines[n]
+        if fence is not None:
+            masked[n] = ""
+            m = _fence_match(ln)
+            if m and m.group(1)[0] * 3 == fence and not m.group(2).strip():
+                fence = None
+        elif in_comment:
+            if "-->" in ln:
+                masked[n], in_comment = ln.split("-->", 1)[1], False
+            else:
+                masked[n] = ""
+        else:
+            m = _fence_match(ln)
+            if m:
+                fence, masked[n] = m.group(1)[0] * 3, ""
+                continue
+            rest = ln
+            while "<!--" in rest:
+                before, _sep, after = rest.partition("<!--")
+                if "-->" in after:
+                    rest = before + after.split("-->", 1)[1]
+                else:
+                    rest, in_comment = before, True
+                    break
+            masked[n] = rest
+
+    pipe = [n for n in range(body_start, len(lines)) if "|" in masked[n]]
     if not pipe:
         findings.append(Finding("ERROR", rel, None,
                                 "roster has no '| Role | Holder | Type |' table", 2))
@@ -2097,7 +2135,8 @@ def _parse_roster(text, rel):
     end = start
     while end + 1 < len(lines) and "|" in lines[end + 1]:
         end += 1
-    outside = [i for i in pipe if i > end]
+    outside = [n for n in range(body_start, len(lines))
+               if "|" in lines[n] and not (start <= n <= end)]
     if outside:
         findings.append(Finding("ERROR", rel, outside[0] + 1,
                                 "a roster holds exactly one table; a block was read from "
@@ -2105,18 +2144,21 @@ def _parse_roster(text, rel):
                                 "it — an example row must never be readable as a holder"
                                 % (start + 1, end + 1), 2))
         return Roster(roles, holders), findings
-    header = _canonical_row(lines[start])
+    header = _canonical_row(masked[start])
     if header is None or [c.casefold() for c in header] != ROSTER_HEADER:
         findings.append(Finding("ERROR", rel, start + 1,
                                 "roster table header must be exactly "
                                 "'| Role | Holder | Type |'", 2))
         return Roster(roles, holders), findings
-    if end < start + 2:
+    if end < start + 1:
+        # A header and delimiter with no rows is LEGITIMATE (Codex r2): a
+        # draft-only instance whose mapping nobody has confirmed has an empty
+        # roster, and generation must invent no entries. Every owner then fails
+        # resolution, which is the true answer — an active rule stays red.
         findings.append(Finding("ERROR", rel, start + 1,
-                                "roster table needs its delimiter row and at least one "
-                                "holder row", 2))
+                                "roster table needs its delimiter row", 2))
         return Roster(roles, holders), findings
-    delim = _canonical_row(lines[start + 1])
+    delim = _canonical_row(masked[start + 1])
     if delim is None or not all(_EXEC_DELIM_CELL.match(c) for c in delim):
         findings.append(Finding("ERROR", rel, start + 2,
                                 "the row under the header must be the delimiter "
@@ -2125,7 +2167,7 @@ def _parse_roster(text, rel):
         return Roster(roles, holders), findings
 
     for lineno in range(start + 2, end + 1):
-        cells = _canonical_row(lines[lineno])
+        cells = _canonical_row(masked[lineno])
         if cells is None:
             findings.append(Finding("ERROR", rel, lineno + 1,
                                     "roster row is not canonical — exactly three cells "
@@ -3906,9 +3948,20 @@ def blast_radius_diff_findings(root, base):
             # governance/roles.md to Governance/Roles.md while bumping the pin
             # reads as a deletion plus an addition, which would launder a
             # modification through an addition-only exemption.
-            gpre = _fold(g + "/") if g else ""
-            if any(_fold(r).startswith(gpre) and _fold(r)[len(gpre):] == "governance/roles.md"
-                   for r in base_rels):
+            # A root that could ALREADY reach a roster at base is migrating,
+            # not bootstrapping. Two shapes, both matched NFC+casefold:
+            #   - the roster itself in the base file list, under any spelling
+            #     (a case-rename at the boundary would otherwise read as an
+            #     addition — Codex r1);
+            #   - an ANCESTOR of that path present as a file entry, which for a
+            #     directory path means a symlink: a base whose `governance` is a
+            #     symlink already exposes a roster the file list never names, so
+            #     replacing it with a real directory would launder a
+            #     modification through an addition-only exemption (Codex r2).
+            target = ((g + "/") if g else "") + "governance/roles.md"
+            parts = target.split("/")
+            blocked = {_fold("/".join(parts[:n])) for n in range(1, len(parts) + 1)}
+            if any(_fold(r) in blocked for r in base_rels):
                 continue
             abspath = os.path.join(root, *pin_rel.split("/"))
             if not os.path.isfile(abspath):
@@ -4010,6 +4063,11 @@ def blast_radius_diff_findings(root, base):
         pairs = governed_classes(rel)
         if not pairs:
             continue
+        # The roster is v2-only, so the findings raised BEFORE classification —
+        # symlink, unreadable, deletion — must demote behind an older pin too
+        # (Codex r2). Mixed classification (also a rule or skill under another
+        # governed root) binds v1, so it stays untagged.
+        path_since = 2 if all(cls == "roster" for _g, cls in pairs) else None
 
         abspath = os.path.join(root, *rel.split("/"))
         bf = base_rels.get(rel)
@@ -4018,33 +4076,33 @@ def blast_radius_diff_findings(root, base):
             if status == "symlink":
                 findings.append(Finding("ERROR", rel, None,
                                         "governed file is or sits behind a symlink (cannot classify "
-                                        "its blast radius)"))
+                                        "its blast radius)", path_since))
                 continue
             if status == "unreadable":
                 # NOT the deletion WARN: an unlistable ancestor makes the change
                 # unclassifiable, and unclassifiable resolves to fail-closed.
                 findings.append(Finding("ERROR", rel, None,
                                         "cannot classify this change: a directory on its path is "
-                                        "unreadable — fail closed"))
+                                        "unreadable — fail closed", path_since))
                 continue
             if status == "missing":
                 findings.append(Finding("WARN", rel, None,
                                         "governed file deleted — retiring a rule, skill, or roster is escalating, "
                                         "and its record is the maintainer's consent commit; a proposal "
-                                        "cannot name a target that no longer exists (#18)"))
+                                        "cannot name a target that no longer exists (#18)", path_since))
                 continue
             old = _git_show(toplevel, base, bf)
             if old is None:
                 findings.append(Finding("ERROR", rel, None,
                                         "cannot classify this change: the base version is unreadable "
-                                        "or not valid UTF-8"))
+                                        "or not valid UTF-8", path_since))
                 continue
             kind = "modified"
         else:
             if _has_symlink_component(root, rel):
                 findings.append(Finding("ERROR", rel, None,
                                         "governed file is or sits behind a symlink (cannot classify "
-                                        "its blast radius)"))
+                                        "its blast radius)", path_since))
                 continue
             if not os.path.isfile(abspath):
                 continue

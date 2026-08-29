@@ -133,8 +133,8 @@ against the safety invariant that no rule may end in automation, every memory re
 provenance and supersession chain, a high-signal secrets floor, and the always-loaded
 context budget. The second adds the stateful rules: organizational memory is
 append-and-supersede rather than editable, confirmed interview layers are frozen, and a
-change to a rule or a high-risk skill must carry a matching pending proposal or the gate
-ERRORs.
+change to a rule, the roles roster, or a high-risk skill must carry a matching pending
+proposal or the gate ERRORs.
 
 **What it does not prove.** The secrets floor is high-signal, not exhaustive. No check
 reads prose for truth — the validator can confirm every required field is answered, and

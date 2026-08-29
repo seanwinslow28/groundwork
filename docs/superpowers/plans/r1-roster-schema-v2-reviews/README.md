@@ -13,7 +13,7 @@ keep changing.
 
 | Round | Reviewed | Verdict | Findings | Fix commit |
 |---|---|---|---|---|
-| 1 | `199b5bc` | does not approve | 11 (2 BLOCKER, 3 HIGH, 3 MEDIUM, 3 LOW) | `7eb0885` |
+| 1 | `199b5bc` | does not approve | 11 (2 BLOCKER, 4 HIGH, 3 MEDIUM, 2 LOW) | `7eb0885` |
 
 Eleven findings, all accepted and all fixed. None rejected, none left open.
 
