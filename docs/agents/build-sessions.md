@@ -24,28 +24,45 @@
 
 ## Standing rules (added during build)
 9. **Durable review verdicts.** A slice may not merge unless the verdicts of every Codex
-   review round run against it — findings, severities, and dispositions (fixed in commit X /
-   rejected with grounds), not just the final approve — are committed in the repository. A
-   slice with a plan stores them beside it, at `docs/superpowers/plans/<slice>-reviews.md`;
-   plan-less work uses `docs/superpowers/reviews/<branch>.md`, with any `/` in the branch
-   name written as `-` so the log stays a single file directly under `reviews/`. The log is
-   appended per round, on the branch, so the merge carries the record.
-   *Evidence:* the session that landed rule 8 ran twenty-five rounds — sixteen on the
-   groundwork branch, nine on the persona-company correction, per merge commit `df6df21` —
-   and what survives is what the fix commits and the merge chose to quote. Three of the
-   sixteen left no numbered commit in the `fix(build): Codex r…` sequence: r16 approved, and
-   `df6df21` carries that verdict and both round counts; r3 and r9 left nothing, there or
-   anywhere else in the repository. No complete round output survives for any of the sixteen. The honesty plan paid the same cost
-   earlier: its header records that its three rounds' "review outputs were not retained",
-   leaving the merge as the durable record of the approval, with "no inspectable artifact"
-   dating round 3 itself. The non-gating rounds are where the pattern data lives — the
-   recurring parallel-site drift class, whose "seventh instance" `18fa805` names, and the
-   four factual defects rule 8 counts — so a log of approvals alone would keep none of it.
-   *Worked example:* `docs/superpowers/reviews/spec-roles-accountable-unit.md`, written
-   prospectively on the branch that proposed this rule — twenty-five rounds, 102 findings,
-   every disposition, one approving verdict. The rule and its counter-argument are locked as
-   decision 7 of the 2026-08-28 roles-as-the-accountable-unit design, under
-   `docs/superpowers/specs/`.
+   review round run against it are committed in the repository. **This is the operative
+   text.** Decision 7 of the 2026-08-28 roles-as-the-accountable-unit design, under
+   `docs/superpowers/specs/`, records the decision, its evidence and its counter-argument,
+   and points here for the contract.
+
+   **Where.** One directory per branch or slice, one file per round, never edited after its
+   round has passed: `docs/superpowers/reviews/<branch-slug>/round-NN.md` for plan-less
+   work, or `docs/superpowers/plans/<slice>-reviews/round-NN.md` beside a plan, where
+   `<slice>` is the plan's filename without its date prefix. `<branch-slug>` is the branch
+   name's last path component; if that directory is already taken by unrelated work, add
+   `-2`, `-3`. A `README.md` in the same directory carries the parts that keep changing:
+   what each round reviewed, the fix-commit map, the rejected findings, and any open
+   maintainer items.
+
+   **What a round file carries.** The reviewed revision as a commit SHA — a review runs
+   against a clean worktree — the verdict, and every finding with the reviewer's own
+   severity word kept verbatim, plus its disposition. A finding may be summarised rather
+   than quoted in full. A disposition is **fixed in commit X** or **rejected with grounds**,
+   and nothing else. A finding that is neither is unresolved, and a branch carrying an
+   unresolved finding does not merge under this rule. The builder may reject a finding; every
+   rejected one is also listed in the directory's `README.md`, so the single move that closes
+   a finding by disagreeing with it cannot be buried inside a round file.
+
+   **Every invocation gets a file**, including one that crashed or was abandoned — disposition
+   "aborted, no verdict" — so a missing round shows as a gap in the numbering rather than as
+   nothing at all.
+
+   **The terminal round.** The last verdict is committed after the state it reviewed, so that
+   commit is not itself reviewed. That is accepted, and said here rather than exempted. The
+   final verdict must be approving unless the maintainer records the grounds for merging over
+   it in the merge commit, as `5fc61c6` did for slice 2.1.
+
+   *Evidence:* the session that landed rule 8 ran twenty-five review rounds and kept no round
+   output; three of its sixteen groundwork rounds left no numbered fix commit, and two of
+   those left nothing anywhere. Decision 7 carries the full account.
+   *Worked example:* `docs/superpowers/reviews/spec-roles-accountable-unit.md` — 25 rounds,
+   102 findings, every disposition, one approving verdict, with its fix-commit map
+   backfilled. It predates the per-round layout above, which binds work started after this
+   rule lands.
 
 ## Where the plan lives
 - Design: `docs/superpowers/specs/2026-07-22-groundwork-v1-build-sequence-design.md`
