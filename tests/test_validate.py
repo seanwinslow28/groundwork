@@ -2655,6 +2655,61 @@ class TestVersionPin(unittest.TestCase):
             self.assertTrue(any(f.level == "ERROR" and "MIGRATIONS" in f.message for f in validate.validate(d)))
 
 
+class TestSinceDemotion(unittest.TestCase):
+    """#21's per-check `since:` mechanism, wired at the v1->v2 bump. A finding
+    introduced at schema vN demotes ERROR -> WARN for content pinned below N.
+    The gate is NOT softened: a pin below the engine is already red at
+    check_version_pin's single migration-boundary ERROR, and these demoted WARNs
+    are the precise finger-pointing MIGRATIONS.md promises behind it."""
+
+    def test_finding_defaults_to_no_since(self):
+        f = validate.Finding("ERROR", "x.md", None, "m")
+        self.assertIsNone(f.since)
+
+    def test_pin_versions_maps_dirs_to_ints(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "co/groundwork.pin", "---\nschema_version: 1\n---\n")
+            self.assertEqual(validate._pin_versions(d), {"co": 1})
+
+    def test_root_pin_maps_to_the_empty_key(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "groundwork.pin", "---\nschema_version: 1\n---\n")
+            self.assertEqual(validate._pin_versions(d), {"": 1})
+
+    def test_malformed_pin_is_absent_not_lenient(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "co/groundwork.pin", "---\nschema_version: someday\n---\n")
+            self.assertEqual(validate._pin_versions(d), {})
+
+    def test_error_demotes_behind_an_older_pin(self):
+        f = validate.Finding("ERROR", "co/governance/roles.md", None, "m", 2)
+        out = validate.apply_since_demotion([f], {"co": 1})
+        self.assertEqual(out[0].level, "WARN")
+        self.assertIn("new since schema v2", out[0].message)
+        self.assertIn("pinned at v1", out[0].message)
+
+    def test_error_stands_at_the_pinned_version(self):
+        f = validate.Finding("ERROR", "co/governance/roles.md", None, "m", 2)
+        self.assertEqual(validate.apply_since_demotion([f], {"co": 2})[0].level, "ERROR")
+
+    def test_unpinned_content_is_never_demoted(self):
+        """The engine root carries no pin, so its own content is current by
+        definition — demoting there would silently disarm the engine's own gate."""
+        f = validate.Finding("ERROR", "governance/roles.md", None, "m", 2)
+        self.assertEqual(validate.apply_since_demotion([f], {"co": 1})[0].level, "ERROR")
+
+    def test_nearest_enclosing_pin_wins(self):
+        f = validate.Finding("ERROR", "co/inner/governance/roles.md", None, "m", 2)
+        out = validate.apply_since_demotion([f], {"co": 1, "co/inner": 2})
+        self.assertEqual(out[0].level, "ERROR")
+
+    def test_warns_and_untagged_findings_pass_through_unchanged(self):
+        warn = validate.Finding("WARN", "co/x.md", None, "m", 2)
+        plain = validate.Finding("ERROR", "co/x.md", None, "m")
+        out = validate.apply_since_demotion([warn, plain], {"co": 1})
+        self.assertEqual(out, [warn, plain])
+
+
 class TestSymlinkedDirs(unittest.TestCase):
     def test_symlinked_content_dir_warns(self):
         with tempfile.TemporaryDirectory() as d:

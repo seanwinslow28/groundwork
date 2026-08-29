@@ -18,7 +18,11 @@ import sys
 import unicodedata
 from collections import namedtuple
 
-Finding = namedtuple("Finding", ["level", "path", "line", "message"])
+# `since` is the SCHEMA_VERSION a check was introduced at (#21's per-check
+# demotion), and defaults to None: a check that predates versioning binds every
+# pin. See apply_since_demotion.
+Finding = namedtuple("Finding", ["level", "path", "line", "message", "since"],
+                     defaults=(None,))
 
 SKIP_DIRS = {".git", ".remember", "__pycache__"}
 # Non-content trees, relative to the validated root: the validator's own test
@@ -2379,6 +2383,72 @@ def check_version_pin(root):
     return findings
 
 
+def _pin_versions(root, ignore=()):
+    """{root-relative directory -> pinned schema version} for every readable
+    groundwork.pin under root, where "" is root itself.
+
+    A pin that is missing, unparseable, or non-integer is simply ABSENT here:
+    check_version_pin already ERRORs on it, and letting a malformed pin grant
+    leniency would make the broken state the quiet one. .gitignore is honored
+    (as check_version_pin does), so a pin hidden behind an ignore rule buys no
+    demotion — the safe direction."""
+    out = {}
+    for abspath in iter_files(root, ignore):
+        if os.path.basename(abspath) != "groundwork.pin":
+            continue
+        rel = os.path.relpath(abspath, root)
+        data, _f = _load_frontmatter(abspath, rel)
+        if data is None:
+            continue
+        sv = data.get("schema_version")
+        if not isinstance(sv, str):
+            continue
+        try:
+            pinned = int(sv.strip())
+        except ValueError:
+            continue
+        out[os.path.dirname(rel).replace(os.sep, "/")] = pinned
+    return out
+
+
+def apply_since_demotion(findings, pins):
+    """#21's per-check `since:` mechanism, wired at the v1->v2 bump (MIGRATIONS.md).
+
+    A finding carrying `since=N` demotes ERROR -> WARN when the nearest enclosing
+    pinned root pins BELOW N: a v1 repo has no roster, so a v2 resolution check
+    cannot bind content pinned before rosters existed. This never means a green
+    gate — that root is already red at check_version_pin's single
+    migration-boundary ERROR, and these WARNs are the finger-pointing behind it.
+
+    Content under no pin (the engine's own tree) is never demoted: it is current
+    by definition, which is what keeps groundwork's own gate armed.
+
+    Applied at the COMPOSITION points — validate() and main()'s diff passes. A
+    check called directly returns undemoted findings; only the caller that knows
+    the tree knows the pins."""
+    if not pins:
+        return findings
+    out = []
+    for f in findings:
+        if f.since is None or f.level != "ERROR":
+            out.append(f)
+            continue
+        parts = f.path.replace(os.sep, "/").split("/")
+        pinned = None
+        for n in range(len(parts) - 1, -1, -1):
+            d = "/".join(parts[:n])
+            if d in pins:
+                pinned = pins[d]
+                break
+        if pinned is not None and pinned < f.since:
+            out.append(f._replace(level="WARN", message=(
+                "%s [new since schema v%d; this content is pinned at v%d — "
+                "see MIGRATIONS.md]" % (f.message, f.since, pinned))))
+        else:
+            out.append(f)
+    return out
+
+
 def check_company_root(root):
     """What a company repo owes, checked only when the validated root carries a
     #21 groundwork.pin — which is exactly the statement 'this is a company repo'
@@ -3095,7 +3165,7 @@ def validate(root):
     findings += check_root_files(root)
     findings += check_interview_state(root, ignore)
     findings += check_company_root(root)
-    return findings
+    return apply_since_demotion(findings, _pin_versions(root, ignore))
 
 
 def _diff_in_workbench_skips(rel_from_root):
@@ -3674,13 +3744,16 @@ def main(argv):
         # print it once. Each pass dedupes against the passes BEFORE it, never
         # against the stateless findings (Codex r2 of 1.5d-ii): a stateless
         # finding that legitimately recurs in a diff pass must not be swallowed.
+        # Dedupe on the RAW findings, then demote: demotion rewrites the message,
+        # so deduping after it would compare rewritten tuples against raw ones.
+        pins = _pin_versions(root, load_gitignore(root))
         seen = set()
         for diff_pass in (memory_diff_findings,
                           blast_radius_diff_findings,
                           interview_diff_findings):
             fresh = [f for f in diff_pass(root, diff_base) if f not in seen]
             seen.update(fresh)
-            findings += fresh
+            findings += apply_since_demotion(fresh, pins)
     errors = [f for f in findings if f.level == "ERROR"]
     warns = [f for f in findings if f.level == "WARN"]
     for f in findings:
