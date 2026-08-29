@@ -9,8 +9,10 @@ a person and an agent in conversation, and the honest reader for prose is a read
 question skeleton already names the destination field for every answer, so this is
 transcription and formatting, not interpretation. A missing answer is never filled in:
 an incomplete interview stops generation entirely (precondition 1), and a gap inside a
-complete one means the artifact that needed it does not ship and the generation report
-says so (the ordering rules below name the commonest cases; the rule holds for every
+complete one means the artifact that needed it either does not ship at all or ships in
+its own kind's declared incomplete state — a skill written `provisioned: no`, a
+constitution rule shipped rungless as a declared draft — and the generation report says
+so either way (the ordering rules below name each kind's case; the rule holds for every
 required field, named or not).
 
 ## Before you write anything
@@ -144,10 +146,14 @@ way. Copy them; do not retype them.
 - `pause_condition` and `retirement_condition`
 
 They are marked `(human-only)` in [questions.md](questions.md). If a layer does not carry
-one, **the skill does not ship** — write it `provisioned: no` and record the missing
-answer in the generation report. An invented owner is an accountability structure the
-named person will discover when something goes wrong, and an invented forbidden action
-is a boundary nobody agreed to.
+one, **the skill does not go live** — write the package `provisioned: no` and record the
+missing answer in the generation report. The package ships; the automation does not.
+`provisioned: no` is the work-package convention's own drafting state — `yes` once the
+skill is live for a company, `no` while drafting
+([work-package-spec.md](../skills/work-package-spec.md)) — so writing it is not a way of
+withholding the file, and the report below names these packages for exactly that reason.
+An invented owner is an accountability structure the named person will discover when
+something goes wrong, and an invented forbidden action is a boundary nobody agreed to.
 
 **5. `governance/constitution/` — one file per kept rule.** Four owned objects (value,
 rule, runtime check, human appeal, each with its owner), a rung, and a sunset date. Two
@@ -282,13 +288,31 @@ and memory guards read from the base, so what they catch is a layer the base alr
 being edited or deleted — its interview manifest too, or the layer is not covered — and a
 base-held memory record deleted or edited in a way the schema forbids.
 
-**Say what you generated and what you could not.** A list of the activities that got deep
-records, the skills that shipped `provisioned: no` and why, and every question still
-open — including the ones generation itself surfaced, a missing Gate answer or an
-unanswered human-only field. Answering them is a **new interview turn** under the state
-format ([README.md](README.md)) — a fresh `_working.md` and a later layer — never an edit
-to a frozen one. A generation report that claims completeness it does not have is the
-one output worse than an incomplete repo.
+**Say what you generated and what you could not.** Every artifact that shipped
+incomplete, or did not ship at all, is named with its reason. Each class has its rule
+where that artifact is written above; the report is where they all come due together:
+
+- The activities that got deep records — and the ones that did not, because a Gate
+  answer was missing from the layers.
+- Any layers carrying no grounding dispositions, in those words: "these layers carry no
+  grounding dispositions; grounding paragraphs not generated."
+- The baselines that did not ship as memory records, because `owner` was never answered.
+- The skills that shipped `provisioned: no`, and which human-only answer each is waiting
+  on.
+- The constitution rules that shipped as declared drafts, and which gaps each one
+  declares — a field missing, unresolvable against the roster, or disputed. This is the
+  obligation that pays for the declared-draft permission above.
+- Any rule that did not ship at all under that permission's one exception, and which
+  rung-independent gate ERROR stopped it.
+- The roster's `review_by` where it carries the interim policy default rather than an
+  elicited cadence. The roster file records this itself; the report does not leave it
+  to be found there.
+- Every question still open, including the ones generation itself surfaced.
+
+Answering them is a **new interview turn** under the state format
+([README.md](README.md)) — a fresh `_working.md` and a later layer — never an edit to a
+frozen one. A generation report that claims completeness it does not have is the one
+output worse than an incomplete repo.
 
 ## What stays in the engine
 
