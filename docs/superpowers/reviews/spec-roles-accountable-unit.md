@@ -4,8 +4,11 @@
 > (decision 7), applied prospectively to the branch that proposes it. Plan-less work
 > uses this location (`docs/superpowers/reviews/<branch>.md`); slices with a plan use
 > `docs/superpowers/plans/<slice>-reviews.md`. Every round is appended here before the
-> branch may merge: verdict, each finding with severity and CONFIRMED/PLAUSIBLE
-> status, and its disposition.
+> branch may merge: verdict, each finding with its severity, and its disposition. The
+> CONFIRMED/PLAUSIBLE mark on each finding is this log's own addition — neither decision 7
+> nor rule 9 requires it. (Header amended on branch `docs/review-record-rule`, Codex round
+> 2, which found the original attributed that requirement to decision 7, which does not
+> state it. The round tables below are untouched.)
 
 ## Round 1 — 2026-08-28, task-mtdq901q-mnnojt, verdict: does not approve (17 findings)
 
