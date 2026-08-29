@@ -1936,6 +1936,165 @@ def _check_constitution_instance(inst, root, ignore=()):
     return findings
 
 
+
+# --- The roles roster (R1 / decision 4) -----------------------------------
+# One file per validated instance. It is the ONLY place resolution happens, so
+# it is one place to go stale — and a dated one. Written inline in every rule's
+# frontmatter instead, it would build the parallel-site drift class into every
+# adopter repo.
+ROSTER_REL = ("governance", "roles.md")
+ROSTER_FIELDS = ("valid_at", "review_by", "source")
+HOLDER_TYPES = {"human", "agent"}
+ROSTER_HEADER = ["role", "holder", "type"]
+
+# roles: {role -> [holder, ...]}, where [] is a declared-but-unheld role.
+# holders: {holder -> "human" | "agent"}.
+Roster = namedtuple("Roster", ["roles", "holders"])
+
+
+def _parse_roster(text, rel):
+    """Parse one governance/roles.md into (Roster, findings).
+
+    The table grammar is _canonical_row — the SAME one the executive view uses.
+    A second table grammar in this repo is a decision nobody should make twice.
+    Rows are read from the FULL text, not the body: a frontmatter line can never
+    start with '|', so the line numbers stay the file's own.
+
+    Every finding here carries since=2. The roster does not exist below v2, so a
+    v1-pinned repo could not have met any of these requirements."""
+    findings = []
+    data, _body, fm = _frontmatter_and_body(text, rel)
+    findings += fm
+    today = datetime.date.today()
+
+    for field in ROSTER_FIELDS:
+        v = data.get(field)
+        if not (isinstance(v, str) and _answered(v)):
+            findings.append(Finding("ERROR", rel, None,
+                                    "roster missing '%s' — the roster is dated content "
+                                    "(valid_at, review_by, source), org-memory style" % field, 2))
+            continue
+        if field == "source":
+            continue
+        d = _parse_date(v)
+        if d is None:
+            findings.append(Finding("ERROR", rel, None,
+                                    "roster '%s' is not an ISO date (YYYY-MM-DD)" % field, 2))
+        elif field == "valid_at" and d > today:
+            findings.append(Finding("ERROR", rel, None,
+                                    "roster 'valid_at' is in the future — it records when "
+                                    "the mapping was last confirmed, never a plan", 2))
+        elif field == "review_by" and d < today:
+            findings.append(Finding("WARN", rel, None,
+                                    "roster 'review_by' has passed — who holds what may "
+                                    "have drifted", 2))
+
+    roles, holders, header_seen = {}, {}, False
+    for lineno, line in enumerate(text.split("\n"), 1):
+        cells = _canonical_row(line)
+        if cells is None:
+            continue
+        if [c.casefold() for c in cells] == ROSTER_HEADER:
+            header_seen = True
+            continue
+        if all(c and set(c) <= set("-: ") for c in cells):
+            continue  # delimiter
+        role, holder, htype = cells
+        bad_cell = False
+        for label, cell in (("Role", role), ("Holder", holder), ("Type", htype)):
+            if cell and not _is_plain_text(cell):
+                findings.append(Finding("ERROR", rel, lineno,
+                                        "roster %s cell carries markup — cells are plain "
+                                        "text, and resolution is by exact string" % label, 2))
+                bad_cell = True
+        if bad_cell:
+            continue
+        if not role and not holder:
+            findings.append(Finding("ERROR", rel, lineno,
+                                    "roster row names neither a role nor a holder", 2))
+            continue
+        if holder:
+            if htype not in HOLDER_TYPES:
+                findings.append(Finding("ERROR", rel, lineno,
+                                        "roster holder %r has type %r (one of %s) — the "
+                                        "human-appeal path depends on it"
+                                        % (holder, htype, sorted(HOLDER_TYPES)), 2))
+            elif holders.get(holder, htype) != htype:
+                findings.append(Finding("ERROR", rel, lineno,
+                                        "roster holder %r is typed both %r and %r"
+                                        % (holder, holders[holder], htype), 2))
+            else:
+                holders[holder] = htype
+        elif htype:
+            findings.append(Finding("ERROR", rel, lineno,
+                                    "roster row types a holder it does not name", 2))
+        if role:
+            roles.setdefault(role, [])
+            if holder:
+                roles[role].append(holder)
+
+    if not header_seen:
+        findings.append(Finding("ERROR", rel, None,
+                                "roster has no '| Role | Holder | Type |' header row", 2))
+    for name in sorted(set(roles) & set(holders)):
+        findings.append(Finding("ERROR", rel, None,
+                                "%r is both a Role and a Holder — every owner reference to "
+                                "it would be ambiguous, and no precedence rule is defined "
+                                "because none should be needed" % name, 2))
+    return Roster(roles, holders), findings
+
+
+def _load_roster(inst, root):
+    """(Roster, findings) for one instance, or (None, findings) when it has no
+    roster. The findings belong to check_roles; every other caller discards them,
+    so one malformed roster is reported once."""
+    abspath = os.path.join(inst, *ROSTER_REL)
+    rel = os.path.relpath(abspath, root)
+    if not os.path.isfile(abspath):
+        return None, []
+    text, rd = _read_utf8(abspath, rel)
+    if text is None:
+        return None, rd
+    roster, findings = _parse_roster(text, rel)
+    return roster, rd + findings
+
+
+def _resolve_owner(roster, value):
+    """The holders an owner value resolves to, as [(holder, type)]. Empty means
+    UNHELD: no roster match, or a Role row carrying no holder.
+
+    Resolution is by EXACT string, two ways (decision 1 + decision 4): a value
+    matching a Role cell resolves to that row's holders; a value matching a
+    Holder cell resolves to that holder directly — which is what keeps a
+    person-named owner valid.
+
+    It is INTENT-BLIND: nothing marks a value as meant-as-role or meant-as-person,
+    so a forgotten role row whose title equals an existing holder name resolves as
+    that holder. Accepted and documented (docs/known-limitations.md); typed owner
+    references are the recorded alternative."""
+    if roster is None or not isinstance(value, str):
+        return []
+    v = value.strip()
+    if v in roster.roles:
+        return [(h, roster.holders.get(h)) for h in roster.roles[v]]
+    if v in roster.holders:
+        return [(v, roster.holders[v])]
+    return []
+
+
+def check_roles(root, ignore=()):
+    """The roles roster's own schema and integrity, per instance (see
+    _instance_roots). Whether a rule's owners RESOLVE against it is
+    check_constitution's, where the rule frontmatter already is."""
+    findings = []
+    if _ignored("governance", ignore):
+        return findings
+    for inst in _instance_roots(root, ignore):
+        _roster, f = _load_roster(inst, root)
+        findings += f
+    return findings
+
+
 INTERVIEW_MANIFEST = "00-manifest.md"
 INTERVIEW_WORKING = "_working.md"
 INTERVIEW_STATUSES = ("in-progress", "complete")
@@ -3154,6 +3313,7 @@ def validate(root):
     findings += check_owner_cards(root, ignore)
     findings += check_memory(root)
     findings += check_constitution(root, ignore)
+    findings += check_roles(root, ignore)
     findings += check_hooks(root)
     findings += check_version_pin(root)
     findings += check_symlinked_dirs(root)

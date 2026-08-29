@@ -2158,6 +2158,184 @@ class TestConstitutionProvenance(unittest.TestCase):
             self.assertEqual(validate.check_constitution(d), [])
 
 
+ROSTER_OK = """---
+valid_at: 2026-08-01
+review_by: 2099-01-01
+source: The maintainer's own statement
+---
+# Roles — who holds what
+
+| Role | Holder | Type |
+|---|---|---|
+| Head of IT | Sean Winslow | human |
+| CISO | Sean Winslow | human |
+"""
+
+
+class TestRoster(unittest.TestCase):
+    """governance/roles.md: the file that decides who holds every owner an active
+    rule names. Its own schema and integrity live here; resolving owner VALUES
+    against it lives with the rules, in check_constitution."""
+
+    def _roster(self, d, text=ROSTER_OK):
+        _write(d, "governance/roles.md", text)
+
+    def test_valid_roster_is_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d)
+            self.assertEqual(validate.check_roles(d), [])
+
+    def test_no_roster_is_silent_here(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/changelog.md", "# changelog\n")
+            self.assertEqual(validate.check_roles(d), [])
+
+    def test_roles_and_holders_parse(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d)
+            roster, findings = validate._load_roster(d, d)
+            self.assertEqual(findings, [])
+            self.assertEqual(roster.roles["Head of IT"], ["Sean Winslow"])
+            self.assertEqual(roster.holders["Sean Winslow"], "human")
+
+    def test_missing_frontmatter_field_errors(self):
+        for field in ("valid_at", "review_by", "source"):
+            with tempfile.TemporaryDirectory() as d:
+                self._roster(d, re.sub(r"(?m)^%s:.*\n" % field, "", ROSTER_OK))
+                errs = [f for f in validate.check_roles(d) if f.level == "ERROR"]
+                self.assertTrue(any(field in f.message for f in errs), field)
+
+    def test_every_roster_finding_carries_since_two(self):
+        """The roster does not exist below v2, so every finding about it must
+        demote behind a v1 pin. One untagged finding would ERROR a v1 repo on a
+        requirement that repo could not have met."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| Sean Winslow | Ada Byron | human |")
+                         .replace("review_by: 2099-01-01\n", ""))
+            findings = validate.check_roles(d)
+            self.assertGreater(len(findings), 1)
+            self.assertTrue(all(f.since == 2 for f in findings),
+                            [f for f in findings if f.since != 2])
+
+    def test_non_iso_valid_at_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("valid_at: 2026-08-01", "valid_at: someday"))
+            self.assertTrue(any(f.level == "ERROR" and "valid_at" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_future_valid_at_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("valid_at: 2026-08-01", "valid_at: 2099-01-01"))
+            self.assertTrue(any(f.level == "ERROR" and "future" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_passed_review_by_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("review_by: 2099-01-01", "review_by: 2020-01-01"))
+            findings = validate.check_roles(d)
+            self.assertTrue(any(f.level == "WARN" and "review_by" in f.message
+                                for f in findings))
+            self.assertFalse(any(f.level == "ERROR" for f in findings))
+
+    def test_namespace_collision_errors(self):
+        """A string that is both a Role and a Holder makes every owner reference
+        to it ambiguous, and no precedence rule is defined because none should
+        be needed."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| Sean Winslow | Ada Byron | human |"))
+            self.assertTrue(any(f.level == "ERROR" and "both a Role and a Holder" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_conflicting_holder_types_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO | Sean Winslow | agent |"))
+            self.assertTrue(any(f.level == "ERROR" and "typed both" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_invalid_holder_type_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO | Sean Winslow | person |"))
+            self.assertTrue(any(f.level == "ERROR" and "type" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_holder_only_row_is_legal(self):
+        """R1's generation writes person-confirmed owners as holder-only rows:
+        a name, no role asserted."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "|  | Ada Byron | human |"))
+            self.assertEqual([f for f in validate.check_roles(d) if f.level == "ERROR"], [])
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(roster.holders["Ada Byron"], "human")
+
+    def test_role_row_with_no_holder_is_legal_and_unheld(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO |  |  |"))
+            self.assertEqual([f for f in validate.check_roles(d) if f.level == "ERROR"], [])
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(roster.roles["CISO"], [])
+            self.assertEqual(validate._resolve_owner(roster, "CISO"), [])
+
+    def test_empty_row_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |", "|  |  |  |"))
+            self.assertTrue(any(f.level == "ERROR" and "neither a role nor a holder" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_type_without_a_holder_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO |  | human |"))
+            self.assertTrue(any(f.level == "ERROR" and "types a holder it does not name"
+                                in f.message for f in validate.check_roles(d)))
+
+    def test_markup_in_a_cell_errors(self):
+        """Resolution is by exact string, so a bolded name is a DIFFERENT string
+        from the one the rule carries — silently unresolvable."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO | **Sean Winslow** | human |"))
+            self.assertTrue(any(f.level == "ERROR" and "plain text" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_missing_header_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| Role | Holder | Type |\n", ""))
+            self.assertTrue(any(f.level == "ERROR" and "header" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_one_role_two_holders(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK + "| Head of IT | Ada Byron | human |\n")
+            self.assertEqual([f for f in validate.check_roles(d) if f.level == "ERROR"], [])
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(roster.roles["Head of IT"], ["Sean Winslow", "Ada Byron"])
+
+    def test_nested_instance_roster_is_checked(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "co/governance/roles.md",
+                   ROSTER_OK.replace("| CISO | Sean Winslow | human |", "|  |  |  |"))
+            self.assertTrue(any(f.level == "ERROR" and f.path.startswith("co/")
+                                for f in validate.check_roles(d)))
+
+    def test_resolution_is_two_way_and_exact(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d)
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "Head of IT"),
+                             [("Sean Winslow", "human")])
+            self.assertEqual(validate._resolve_owner(roster, "Sean Winslow"),
+                             [("Sean Winslow", "human")])
+            self.assertEqual(validate._resolve_owner(roster, "head of it"), [])
+            self.assertEqual(validate._resolve_owner(roster, "Ada Byron"), [])
+            self.assertEqual(validate._resolve_owner(None, "Head of IT"), [])
+
+
 class TestActionClassGate(unittest.TestCase):
     def test_destructive_delete_blocked(self):
         cat, _ = action_class_gate.classify("rm -rf /var/data")

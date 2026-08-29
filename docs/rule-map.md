@@ -35,6 +35,7 @@ can ever ERROR.
 | Card spine, track-2 trio, freshness, and the three drift checks, per instance (6) | check_owner_cards | ERROR on drift and malformed values always, and on missing spine fields at provisioning; WARN on missing fields below provisioning and on freshness |
 | Org-memory record shape, provenance, and supersession chains (7) | check_memory | ERROR on the spine, broken supersession, and a confirmed record with no source; WARN on staleness, an unindexed record, and a missing source below confirmed |
 | Typed rules, the no-rung-six safety invariant, orphan-prohibition, sunset (8) | check_constitution | ERROR on the safety spine, WARN on drafts and missing provenance |
+| The roles roster's schema and integrity: dated frontmatter, typed holders, no Role/Holder collision, per instance (R1) | check_roles | ERROR on the schema and on an ambiguous or mistyped holder, WARN on staleness |
 | Resumable interview state: manifest pointer, frozen layers, one working file (9) | check_interview_state | ERROR on shape, a half-committed turn, and a confirmed layer missing its source; WARN on dates, ordering, and a working file without a source |
 | The action-class gate's registration as part of its own enforcement claim (8) | check_hooks | ERROR on a guard that cannot fire, WARN on an incomplete set |
 | The version-skew gate and the pull promise (21) | check_version_pin | ERROR on a malformed pin or a skew of one or more, WARN on reverse skew |
