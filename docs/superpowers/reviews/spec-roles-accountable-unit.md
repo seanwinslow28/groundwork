@@ -183,3 +183,16 @@ round-10 rows 1 and 2.
 | 3 | high | Decision 6 permitted shipping a declared draft with an unresolvable field while decisions 2–3 ERROR a high-risk draft with an unresolvable appeal owner — ship-and-fail | CONFIRMED | Fixed: decision 6 gains the safety-spine exception — high-risk appeal gaps do not ship, declared or not |
 | 4 | med | `generate.md` itself both denies and affirms that `provisioned: no` skills ship — the spec repeated the affirmation as if uncontested | CONFIRMED | Fixed: the spec states the self-contradiction and assigns its reconciliation to R2. Amends round-10 row 2 |
 | 5 | low | The three per-check bullets still said "(WARN under a v1 pin)" after round 10's recast — accurate in context, but the log overstated removal | CONFIRMED | Fixed: all three bullets now name the demotion as finger-pointing behind the boundary ERROR |
+
+## Round 12 — 2026-08-29, task-mtduyhoh-2d710c, verdict: does not approve (3 findings, all high)
+
+Reviewed: commit `d39c8d6` (spec after round-11 fixes, plus this log). All 3 findings
+accepted; fixed in the following commit. All three strike round 11's fixes — the
+third consecutive round in which the freshest fixes carry the defects. Rows amended:
+round-11 rows 1 and 3.
+
+| # | Sev | Finding (compressed) | Verdict | Disposition |
+|---|---|---|---|---|
+| 1 | high | "Every holder human is transcription" is false — the protocol guarantees personhood only for acted-on activity and skill owners; constitution owners may be roles or disclaimers | CONFIRMED | Fixed: `human` typing only for the protocol's human-only owner rows; every other owner value enters as an unheld Role row, and an unresolved rule ships rungless as a declared draft. Amends round-11 row 1 |
+| 2 | high | The engine-root roster needs holders for `Head of IT`/`CISO` that no file names — the implementing agent would have to invent them | CONFIRMED | Fixed: the engine-root roster is maintainer-authored content, an explicit maintainer input to the R1 plan |
+| 3 | high | The spine exception covered "missing or unresolvable" appeal gaps but not resolves-to-agent-only — a shippable artifact the gate rejects | CONFIRMED | Fixed: the exception names all three spine-ERROR forms — missing, unresolvable, resolving to no human holder. Amends round-11 row 3 |

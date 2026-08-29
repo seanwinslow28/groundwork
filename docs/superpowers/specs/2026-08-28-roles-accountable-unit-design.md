@@ -168,7 +168,8 @@ established here.
    safety-spine exception:** a high-risk rule whose appeal fields are missing or
    unresolvable does not ship at all, declared or not — decisions 2 and 3 ERROR it
    even as a draft, so the declared-draft path cannot apply; the spine outranks the
-   contract. The other artifact
+   contract. The exception covers every spine-ERROR form of the appeal gap:
+   missing, unresolvable, or resolving to no human holder. The other artifact
    kinds stand unchanged: a deep record missing its Gate answer and a memory record
    missing its owner do not ship — those kinds have no draft state to ship into, and
    this design does not invent one — while a skill missing human-only answers is
@@ -348,13 +349,22 @@ review:
   as holders, tests, and the `docs/rule-map.md`, `docs/known-limitations.md`, and
   `MIGRATIONS.md` entries, **and the demo pin migrated to `schema_version: 2`** —
   without that, the R1 engine's own gate goes red on `demo/groundwork.pin` at the
-  migration boundary. **R1 also carries the minimal `generate.md` workflow edits**
-  — the pin writes `schema_version: 2`, and a `governance/roles.md` is generated
-  from the confirmed owner answers, every holder typed `human`: until R2 rewrites
-  it, the binding interview protocol still requires person owners ("a person, not a
-  role"), so typing its confirmed owners human is transcription of what that
-  protocol guarantees, not interpretation, and agent-typed holders become possible
-  only with R2's elicitation. These edits exist because without them the documented
+  migration boundary. **The engine-root roster is maintainer-authored content, and
+  R1's plan carries it as an explicit maintainer input:** the engine's own active
+  rule names `Head of IT` and `CISO`, no file identifies who holds those roles for
+  the groundwork instance, and the implementing agent must not invent the answer —
+  the maintainer names the holders (realistically themself, for a solo-maintained
+  engine) as part of landing R1. **R1 also carries the minimal `generate.md`
+  workflow edits** — the pin writes `schema_version: 2`, and a `governance/roles.md`
+  is generated from the confirmed owner answers, inventing neither holders nor
+  types: a holder enters typed `human` only where the binding protocol guarantees a
+  person — the acted-on activity owner and the skill owner/backup, exactly its
+  human-only owner rows — while every other owner value (a constitution rule's
+  owners may be roles or disclaimers; run 1's `runtime_check_owner` proves it)
+  enters as an unheld Role row. A generated rule whose owners do not all resolve
+  ships rungless as a declared draft under decision 6, its unresolved owners named
+  as the gaps. Agent-typed holders, and typing for the rest, arrive with R2's
+  elicitation. These edits exist because without them the documented
   generation workflow is broken for exactly the window between R1 and R2: today's
   `generate.md` instructs `schema_version: 1`, which the R1 engine ERRORs at the
   migration boundary, and writing `2` without a roster fails the missing-roster
