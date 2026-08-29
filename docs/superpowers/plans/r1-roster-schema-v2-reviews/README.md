@@ -15,8 +15,10 @@ keep changing.
 |---|---|---|---|---|
 | 1 | `199b5bc` | does not approve | 11 (2 BLOCKER, 4 HIGH, 3 MEDIUM, 2 LOW) | `7eb0885` |
 | 2 | `4bee0a7` | does not approve | 7 (1 BLOCKER, 1 HIGH, 3 MEDIUM, 2 LOW) | `87817ae` |
+| 3 | `fae6858` | does not approve | 6 (2 BLOCKER, 3 LOW, 1 MEDIUM) | `65fed7d` |
 
-Eighteen findings across two rounds. Seventeen fixed; one rejected with grounds.
+Twenty-four findings across three rounds. Twenty-three fixed; one rejected with grounds.
+Round 2's axis split is corrected in `round-03.md`, not in `round-02.md`, which is immutable.
 
 ## Open findings
 
