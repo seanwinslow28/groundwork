@@ -44,7 +44,7 @@ transcript audited; nobody has run them on a real company — see `docs/known-li
   canon, eight executive views, seven deep records, org memory, four work packages,
   three constitution rules, one runnable rung-3 reminder, one pending proposal, and the
   15-minute three-query walkthrough. It carries a `groundwork.pin`, so it is a
-  **governed root** — changes to its skills and rules run the #18 consent gate exactly
+  **governed root** — changes to its skills, rules, and roster run the #18 consent gate exactly
   as a company repo's would.
 - `delivery/` — the provisioning guide: the repo-local symlink layer that gives generated
   skills a harness-visible path in all four harnesses, the organization plugin upload and

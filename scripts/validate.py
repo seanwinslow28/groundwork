@@ -2941,6 +2941,7 @@ def _check_proposals_instance(inst, root, ignore=()):
         target = data.get("target")
         target_is_rule = False
         target_is_skill = False
+        target_is_roster = False
         t = None
         if _blank(target):
             findings.append(Finding("ERROR", rel, None, "proposal missing 'target' (the skill or rule it changes)"))
@@ -2953,10 +2954,13 @@ def _check_proposals_instance(inst, root, ignore=()):
             t = os.path.normpath(target.strip().replace("\\", "/")).replace("\\", "/")
             target_is_skill = t.startswith("skills/")
             target_is_rule = t.startswith("governance/constitution/")
-            if not (target_is_skill or target_is_rule):
+            target_is_roster = t == "governance/roles.md"
+            if not (target_is_skill or target_is_rule or target_is_roster):
                 findings.append(Finding("ERROR", rel, None,
-                                        "proposal 'target' must be a skill (skills/) or a constitution rule "
-                                        "(governance/constitution/); other artifacts keep their own governance (#17)"))
+                                        "proposal 'target' must be a skill (skills/), a constitution rule "
+                                        "(governance/constitution/), or the roles roster "
+                                        "(governance/roles.md); other artifacts keep their own "
+                                        "governance (#17)"))
             elif not os.path.isfile(os.path.join(inst, t)):
                 findings.append(Finding("ERROR", rel, None, "proposal 'target' not found: %s" % t))
             else:
@@ -2966,7 +2970,9 @@ def _check_proposals_instance(inst, root, ignore=()):
                 resolved = os.path.relpath(
                     os.path.realpath(os.path.join(inst, t)),
                     os.path.realpath(inst)).replace("\\", "/")
-                bucket = "skills/" if target_is_skill else "governance/constitution/"
+                bucket = ("skills/" if target_is_skill
+                          else "governance/constitution/" if target_is_rule
+                          else "governance/roles.md")
                 if not resolved.startswith(bucket):
                     findings.append(Finding("ERROR", rel, None,
                                             "proposal 'target' resolves outside %s (symlink or filesystem "
@@ -2983,6 +2989,10 @@ def _check_proposals_instance(inst, root, ignore=()):
             findings.append(Finding("ERROR", rel, None,
                                     "a constitution rule can never be 'track1-body' — rules never auto-apply; "
                                     "they are escalating by construction (#17)"))
+        elif br == "track1-body" and target_is_roster:
+            findings.append(Finding("ERROR", rel, None,
+                                    "the roles roster can never be 'track1-body' — who holds an "
+                                    "owner is governance, and it never auto-applies (#17)", 2))
         elif br == "track1-body" and target_is_skill and not t.endswith("/SKILL.md"):
             findings.append(Finding("ERROR", rel, None,
                                     "'track1-body' touches only the SKILL.md body — %s is not a SKILL.md; "
@@ -3271,7 +3281,8 @@ def check_synthetic_identifiers(root, ignore=()):
 
 def _governed_class(rel):
     """Classify a path (relative to a governed root) into #17's routing domain:
-    'rule' (any constitution file), 'skill-md' (a package's own SKILL.md),
+    'rule' (any constitution file), 'roster' (the instance's governance/roles.md),
+    'skill-md' (a package's own SKILL.md),
     'skill-other' (anything else inside a skill package — the Owner's Card and
     every nested file), or None (not governed by the proposal routing at all).
     Top-level docs under skills/ (e.g. skills/work-package-spec.md) are not part
@@ -3288,6 +3299,8 @@ def _governed_class(rel):
     if len(parts) >= 3 and low[0] == "governance" and low[1] == "constitution" \
             and low[-1].endswith(".md"):
         return "rule"
+    if len(parts) == 2 and low[0] == "governance" and low[1] == "roles.md":
+        return "roster"
     if len(parts) >= 3 and low[0] == "skills":
         if len(parts) == 3 and parts[2] == "SKILL.md":
             return "skill-md"
@@ -3318,6 +3331,9 @@ def classify_governed_change(kind, cls, old_text, new_text):
             return None, None
     if cls == "rule":
         return "escalating", "a constitution rule (rules never auto-apply, #17)"
+    if cls == "roster":
+        return "escalating", ("the roles roster — it decides who holds every active rule's "
+                              "owners and where its human appeal terminates (#17)")
     if cls == "skill-other":
         return "escalating", "a skill-package file other than SKILL.md (Owner's Card / package content)"
     if kind == "added":
@@ -3687,6 +3703,19 @@ def _pin_dirs(root, base_files, scope, wt_files):
     return dirs
 
 
+def _pin_version_text(text):
+    """The integer schema_version in a pin file's text, or None. Parsing only —
+    check_version_pin owns the findings."""
+    data, _f = parse_frontmatter(text or "", "<pin>")
+    sv = (data or {}).get("schema_version")
+    if not isinstance(sv, str):
+        return None
+    try:
+        return int(sv.strip())
+    except ValueError:
+        return None
+
+
 def _pending_proposal_radii(root, gov_rel):
     """{realpath(target) -> set(declared blast_radius)} for the pending proposals
     in <governed root>/proposals/. Targets resolve through the filesystem
@@ -3788,6 +3817,34 @@ def blast_radius_diff_findings(root, base):
     gov_roots = _pin_dirs(root, base_files, scope, wt_files)
     if not gov_roots:
         return findings  # no company instance in scope: the tripwire is dormant
+
+    def _bootstrap_roots():
+        """Decision 8's migration-scoped bootstrap: governed roots whose pin moves
+        v1 -> v2 in THIS diff. A roster ADDITION there is not escalating, because
+        every v1->v2 migration necessarily adds its roster — the exemption is
+        exactly the migration boundary, the sanctioned crossing mechanism.
+
+        Narrow on purpose. Only v1 -> v2 (the only bump for which "necessarily
+        adds its roster" is true), only when a base pin exists, and only for
+        additions — the caller enforces that last one. A root already at v2 gets
+        nothing, which is what closes the delete-then-re-add route."""
+        out = set()
+        for g in gov_roots:
+            pin_rel = (g + "/" if g else "") + "groundwork.pin"
+            bf = base_rels.get(pin_rel)
+            if bf is None:
+                continue
+            if _pin_version_text(_git_show(toplevel, base, bf)) != 1:
+                continue
+            abspath = os.path.join(root, *pin_rel.split("/"))
+            if not os.path.isfile(abspath):
+                continue
+            new_pin, _rd = _read_utf8(abspath, pin_rel)
+            if _pin_version_text(new_pin) == 2:
+                out.add(g)
+        return out
+
+    bootstrap = _bootstrap_roots()
 
     def _fold(s):
         # NFC first (git reports NFC while a mac filesystem lists NFD — the
@@ -3930,9 +3987,14 @@ def blast_radius_diff_findings(root, base):
             continue
 
         for g, cls in pairs:
+            if cls == "roster" and kind == "added" and g in bootstrap:
+                continue  # decision 8's migration-scoped bootstrap
             radius, detail = classify_governed_change(kind, cls, old, new)
             if radius is None:
                 continue
+            # The roster is a v2 artifact: behind a v1 pin these demote to the
+            # finger-pointing WARN, in front of the one boundary ERROR.
+            since = 2 if cls == "roster" else None
 
             if g not in proposals_cache:
                 proposals_cache[g] = _pending_proposal_radii(root, g)
@@ -3944,12 +4006,12 @@ def blast_radius_diff_findings(root, base):
                     findings.append(Finding("ERROR", rel, None,
                                             "escalating change (%s) with no pending proposal — an escalating "
                                             "change reaches the main line only through a reviewable proposal "
-                                            "in %sproposals/ (#18)" % (detail, prefix)))
+                                            "in %sproposals/ (#18)" % (detail, prefix), since))
                 elif "escalating" not in radii:
                     findings.append(Finding("ERROR", rel, None,
                                             "declared-vs-actual blast-radius mismatch: the pending proposal "
                                             "declares 'track1-body' but this change actually touches %s — "
-                                            "that is escalating (#18)" % detail))
+                                            "that is escalating (#18)" % detail, since))
             elif not radii and os.path.realpath(abspath) not in appended_targets.get(g, set()):
                 findings.append(Finding("WARN", rel, None,
                                         "track-1 body-only change with no new governance changelog entry — "

@@ -3344,6 +3344,26 @@ class TestProposals(unittest.TestCase):
             self.assertFalse(any(f.level == "ERROR" and "reason" in f.message for f in findings))
 
 
+class TestRosterProposalTarget(unittest.TestCase):
+    """Decision 8 makes the roster a third proposal target. `_proposal` is
+    defined below this point in the module; module globals resolve at call
+    time, so it is available here."""
+
+    def test_roster_is_a_valid_proposal_target(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/roles.md", ROSTER_OK)
+            _write(d, "proposals/p1.md", _proposal("governance/roles.md"))
+            self.assertFalse(any(f.level == "ERROR" and "must be a skill" in f.message
+                                 for f in validate.check_proposals(d)))
+
+    def test_a_roster_proposal_can_never_be_track1_body(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/roles.md", ROSTER_OK)
+            _write(d, "proposals/p1.md", _proposal("governance/roles.md", "track1-body"))
+            self.assertTrue(any(f.level == "ERROR" and "roster" in f.message
+                                for f in validate.check_proposals(d)))
+
+
 class TestChangelog(unittest.TestCase):
     def test_empty_changelog_clean(self):
         with tempfile.TemporaryDirectory() as d:
@@ -3448,6 +3468,22 @@ class TestGovernedClassify(unittest.TestCase):
     def test_rule_paths_are_governed(self):
         self.assertEqual(validate._governed_class("governance/constitution/access.md"), "rule")
         self.assertEqual(validate._governed_class("governance/constitution/sub/access.md"), "rule")
+
+    def test_roster_is_its_own_governed_class(self):
+        self.assertEqual(validate._governed_class("governance/roles.md"), "roster")
+        self.assertEqual(validate._governed_class("Governance/Roles.md"), "roster")
+        self.assertIsNone(validate._governed_class("governance/sub/roles.md"))
+        self.assertIsNone(validate._governed_class("governance/changelog.md"))
+
+    def test_a_roster_change_always_escalates(self):
+        for kind in ("added", "modified"):
+            radius, detail = validate.classify_governed_change(kind, "roster", "a\n", "b\n")
+            self.assertEqual(radius, "escalating")
+            self.assertIn("roster", detail)
+
+    def test_an_untouched_roster_is_not_a_change(self):
+        self.assertEqual(validate.classify_governed_change("modified", "roster", "a\n", "a\n"),
+                         (None, None))
 
     def test_skill_md_and_package_files(self):
         self.assertEqual(validate._governed_class("skills/weekly-digest/SKILL.md"), "skill-md")
@@ -3986,6 +4022,91 @@ class TestBlastRadiusDiff(unittest.TestCase):
             finally:
                 validate.subprocess.run = real_run
             self.assertTrue(any(f.level == "ERROR" for f in findings))
+
+
+class TestRosterIsGoverned(unittest.TestCase):
+    """Decision 8: the roster decides who holds every active rule's owners and
+    where its human appeal terminates, so editing it is governance, not
+    bookkeeping. One exemption: an ADDITION in the same diff that moves the
+    root's pin v1 -> v2 is the sanctioned migration crossing."""
+
+    def _repo(self, d, pin="1"):
+        """A committed governed root with a rule and no roster."""
+        _git(d, "init", "-q")
+        _git(d, "config", "user.email", "t@t.t")
+        _git(d, "config", "user.name", "t")
+        _write(d, "groundwork.pin", "---\nschema_version: %s\n---\n" % pin)
+        _write(d, "governance/constitution/access.md", RULE_OK)
+        _git(d, "add", "-A")
+        _git(d, "commit", "-qm", "base")
+
+    def test_a_roster_added_without_the_pin_moving_is_escalating(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "governance/roles.md", ROSTER_OK)
+            errs = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                    if f.level == "ERROR" and "roles.md" in f.path]
+            self.assertTrue(any("no pending proposal" in f.message for f in errs), errs)
+
+    def test_the_migration_bootstrap_exempts_the_addition(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "governance/roles.md", ROSTER_OK)
+            _write(d, "groundwork.pin", "---\nschema_version: 2\n---\n")
+            self.assertEqual([f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                              if "roles.md" in f.path], [])
+
+    def test_a_modification_is_never_exempt_even_across_the_boundary(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "governance/roles.md", ROSTER_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "roster")
+            _write(d, "governance/roles.md", ROSTER_OK + "|  | Ada Byron | human |\n")
+            _write(d, "groundwork.pin", "---\nschema_version: 2\n---\n")
+            errs = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                    if f.level == "ERROR" and "roles.md" in f.path]
+            self.assertTrue(errs, "a roster modification is escalating, boundary or not")
+
+    def test_a_re_add_at_v2_is_gated(self):
+        """The delete-then-re-add route: a root already at v2 gets no bootstrap."""
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d, pin="2")
+            _write(d, "governance/roles.md", ROSTER_OK)
+            errs = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                    if f.level == "ERROR" and "roles.md" in f.path]
+            self.assertTrue(errs)
+
+    def test_a_matching_proposal_clears_a_roster_change(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "governance/roles.md", ROSTER_OK)
+            _write(d, "proposals/p1.md", _proposal("governance/roles.md"))
+            self.assertEqual([f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                              if f.level == "ERROR" and "roles.md" in f.path], [])
+
+    def test_the_roster_gate_carries_since_two(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "governance/roles.md", ROSTER_OK)
+            gov = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                   if "roles.md" in f.path]
+            self.assertTrue(gov)
+            self.assertTrue(all(f.since == 2 for f in gov))
+
+    def test_a_deleted_roster_stays_a_warn(self):
+        """Deletions keep the documented WARN-only limitation all three governed
+        families share. Gating them was weighed and declined as a larger redesign."""
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "governance/roles.md", ROSTER_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "roster")
+            os.remove(os.path.join(d, "governance", "roles.md"))
+            findings = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                        if "roles.md" in f.path]
+            self.assertTrue(findings)
+            self.assertTrue(all(f.level == "WARN" for f in findings), findings)
 
 
 class TestAgentsChain(unittest.TestCase):
