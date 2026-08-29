@@ -37,9 +37,11 @@ the maintainer's at merge.
 | 11 | `214c1b5` | does not approve | 5 | `7f327ab` |
 | 12 | `7f327ab` | does not approve | 3 | `42ebcd8` |
 | 13 | — | record correction, not a review round | — | `42ebcd8` |
-| 14 | `42ebcd8` | does not approve | 5 | see round-15 |
+| 14 | `42ebcd8` | does not approve | 5 | `a3740d0` |
+| 15 | `a3740d0` | does not approve | 1 | see round-16 |
 
-Eighty-four findings across twelve review rounds, all accepted, none rejected. **Seventeen**
+Eighty-five findings across thirteen review rounds, all accepted, none rejected. Across all
+of them the supersession chain leaves **seventy-nine fixed and six open**. **Seventeen**
 rows that had been escalated rather than closed are dispositioned across `round-09.md`,
 `round-10.md` and `round-11.md` — each table superseding the last, the seventeenth row found
 only at round 11. `round-13.md` reclassifies two rows recorded as "standing" rather than
