@@ -62,6 +62,23 @@
    still owed nor the one move that closes a finding by disagreeing with it can be buried
    inside an entry.
 
+   **Grounds for a rejection: a closed list.** A rejection states one of exactly three
+   categories, and carries what that category requires: **factually wrong**, naming the
+   source that shows it wrong; **out of scope**, naming the scope it falls outside and the
+   follow-up work it becomes; or **superseded**, naming what supersedes it. A finding no
+   category fits is **not** rejected — it stays **open**, and the maintainer overrides at
+   merge if the slice should land anyway (see "The terminal round" below, and what
+   `5fc61c6` did for slice 2.1). That escape hatch is the maintainer's to use, not the
+   builder's. *Grounds:* a closed list is auditable, where "case-specific grounds" is
+   satisfied by any sentence at all. *Counter-argument, recorded:* a closed list cannot
+   anticipate a legitimate reason nobody has hit yet, and when one arrives the builder
+   either distorts a category to fit or routes the finding to the maintainer. Decided by
+   the maintainer 2026-08-29. Entry 12 — `round-12.md` in
+   [R1's review record](../superpowers/plans/r1-roster-schema-v2-reviews/) — records the
+   decision, its grounds and its counter-argument, and
+   [round 11](../superpowers/reviews/review-record-rule/round-11.md) of the
+   review-record-rule log records the options it was chosen from.
+
    **`README.md` carries what keeps changing** — the full branch name, a row per entry, the
    commit that carried each round's fixes, the open findings, the rejected findings, and any
    maintainer items. An entry cannot name the commit that fixes it, since that commit does
