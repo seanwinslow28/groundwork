@@ -29,16 +29,54 @@ It is placed on the **five-rung enforcement ladder** — `value` → `instructio
 path. Every rule gets a **sunset** date. When a ritual is repealed, its **surviving
 job** must be reassigned before the repeal ships (orphan-prohibition).
 
+## The roster: who holds what
+
+An owner is a **role** or a **named holder**, and `governance/roles.md` is where that
+resolves. One roster per instance.
+
+````
+---
+valid_at: <ISO date — when this mapping was last confirmed>
+review_by: <ISO date — when to re-confirm it>
+source: <where this org map came from: an interview layer, an HR system, the founder's word>
+---
+| Role | Holder | Type |
+|---|---|---|
+| Head of IT | Priya Vale | human |
+|  | Ruth Okafor | human |
+````
+
+- **Two-way resolution, by exact string.** A value matching a **Role** cell resolves to
+  that row's holders; a value matching a **Holder** cell resolves to that holder. The
+  second form is what keeps `owner: Ruth Okafor` valid.
+- **A holder-only row** (Role cell empty) names a holder without asserting a role.
+- **A role with no row, or a row with no holder, is unheld** — and a rule with a rung
+  cannot have an unheld owner. Drop the rung and it is a draft again, gaps named as WARNs.
+- **Type is `human` or `agent`.** The `human_appeal_owner` must reach at least one
+  `human`: an appeal path that terminates in a model is not an appeal path.
+- **No string may be both a Role and a Holder** — every reference to it would be ambiguous,
+  and no precedence rule is defined because none should be needed.
+- `valid_at` is a **snapshot**, deliberately narrower than org-memory's
+  when-the-fact-became-true `valid_at`.
+
+Changing the roster in a governed root is an escalating change (#17): it decides who holds
+every active rule's owners, and where its human appeal terminates.
+
 ## What the validator enforces
 
 - **ERROR:** a `high-risk` rule with no human-appeal path (no rung six — placeholder
   answers like `none`/`TBD` do not count); a repeal (`repeals`) whose `surviving_job`
   is not `reassigned_to` a single accountable person; an active rule (placed on a
   rung) with no `owner`, or missing any of the four owned objects or its rule
-  statement (the H1 title + body); a missing `action_class` on an active rule.
+  statement (the H1 title + body); a missing `action_class` on an active rule; an
+  active rule whose `owner`, `value_owner`, `runtime_check_owner`, or
+  `human_appeal_owner` does not resolve in the roster; an active rule (or a `high-risk`
+  draft) whose `human_appeal_owner` reaches no human holder; an instance with an active
+  rule and no `governance/roles.md`.
 - **WARN:** a missing, unparseable, or overdue `sunset`; a rule not yet placed on a
-  rung (draft). The safety-spine ERRORs above apply to drafts too — only the `owner`
-  requirement waits for provisioning (rung placement).
+  rung (draft), plus one named WARN per gap it carries — an owner field with no answer,
+  or one that does not resolve. The safety-spine ERRORs above apply to drafts too — only
+  the `owner` requirement waits for provisioning (rung placement).
 
 ## Where worksheets live (and why it matters)
 

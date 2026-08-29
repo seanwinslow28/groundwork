@@ -34,7 +34,7 @@ can ever ERROR.
 | The canonical executive-view grammar and deep-record listing, per instance (5) | check_ontology | ERROR on the grammar, WARN on an unlisted deep record |
 | Card spine, track-2 trio, freshness, and the three drift checks, per instance (6) | check_owner_cards | ERROR on drift and malformed values always, and on missing spine fields at provisioning; WARN on missing fields below provisioning and on freshness |
 | Org-memory record shape, provenance, and supersession chains (7) | check_memory | ERROR on the spine, broken supersession, and a confirmed record with no source; WARN on staleness, an unindexed record, and a missing source below confirmed |
-| Typed rules, the no-rung-six safety invariant, orphan-prohibition, sunset (8) | check_constitution | ERROR on the safety spine, WARN on drafts and missing provenance |
+| Typed rules, the no-rung-six safety invariant, held-to-activate resolution, orphan-prohibition, sunset (8, R1) | check_constitution | ERROR on the safety spine, on an active rule whose owner does not resolve, and on an appeal path that reaches no human; WARN on a draft's named gaps and missing provenance |
 | The roles roster's schema and integrity: dated frontmatter, typed holders, no Role/Holder collision, per instance (R1) | check_roles | ERROR on the schema and on an ambiguous or mistyped holder, WARN on staleness |
 | Resumable interview state: manifest pointer, frozen layers, one working file (9) | check_interview_state | ERROR on shape, a half-committed turn, and a confirmed layer missing its source; WARN on dates, ordering, and a working file without a source |
 | The action-class gate's registration as part of its own enforcement claim (8) | check_hooks | ERROR on a guard that cannot fire, WARN on an incomplete set |
@@ -47,7 +47,7 @@ can ever ERROR.
 | The synthetic-identifier allowlist, scoped to demo content only (16) | check_synthetic_identifiers | ERROR |
 | The stateful memory pass under diff, driven by the base file list (7) | memory_diff_findings | ERROR |
 | The frozen-layer guard under diff (9) | interview_diff_findings | ERROR |
-| The blast-radius tripwire: declared against actual, plus the append-only changelog (18 and 17) | blast_radius_diff_findings | ERROR on a missing or mismatched proposal and on a changelog rewrite or deletion, WARN on a governed deletion or a missing changelog line |
+| The blast-radius tripwire: declared against actual across three governed families, plus the append-only changelog (18 and 17) | blast_radius_diff_findings | ERROR on a missing or mismatched proposal and on a changelog rewrite or deletion, WARN on a governed deletion or a missing changelog line |
 
 ## Corrections the hand audit made
 

@@ -73,6 +73,36 @@ Honest limits of the current build. This file grows as the product does (brief �
   left rotation cadence as a build-phase detail; it lands with a documented rotation
   convention, not before.
 
+## Governance — the roles roster (schema v2)
+
+- **A roster does not make "held" true.** It records what the repository says, dated — not
+  the world. A person can leave, a role can move, and the file will keep resolving until
+  someone edits it. A **stale roster** produces exactly the confident-error class the
+  evidence floor documents, one level up: the gate goes green on an accountability structure
+  nobody has confirmed. `valid_at` and `review_by` date the claim; nothing verifies it.
+- **Resolution is intent-blind.** Nothing marks an owner value as meant-as-a-role or
+  meant-as-a-person: a value is whatever it matches. So a role title whose roster row was
+  *forgotten*, and which happens to equal an existing Holder string, silently resolves as
+  that holder instead of surfacing as unheld — the integrity check catches a Role/Holder
+  collision inside the file, but it cannot see a row that is absent. The structural fix is
+  typed owner references in the rule itself (`role:` / `person:`), which discriminates at
+  the source and changes the rule frontmatter schema for every adopter; it was weighed at
+  R1 plan review and declined, because the failure needs a role title spelled identically to
+  a holder name *and* a forgotten row, both the repo author's own text. Recorded here as the
+  known alternative if it ever bites.
+- **Owner fields outside the constitution are not resolved.** Deep records
+  (`accountable_owner`, `gate_owner`), Owner's Cards, and memory records still carry owner
+  strings that resolve against nothing. v2 resolves constitution-rule owners only — an
+  ontology owner is descriptive where a rule owner is enforcement — and the remainder is a
+  named remaining hole, open until a later slice decides it.
+- **A deleted roster is a WARN, not an ERROR**, exactly as a deleted rule or skill is, and
+  for the same reason: a proposal's `target` must be an existing file, so a deletion can
+  never trace to one. Deletion is an attacker's cheapest move against a roster and it stays
+  loud-after-the-fact rather than gated; gating deletions across all three governed families
+  was weighed and declined as a larger redesign than that slice should carry. It is not
+  silent — a root with active rules and no roster is red at the missing-roster ERROR, and
+  re-adding one to a root already at v2 needs a proposal.
+
 ## Context budget (#13)
 
 - **Only the repo-side instruction chain is measurable.** Codex's 32 KiB

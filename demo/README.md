@@ -22,7 +22,8 @@ it is also the allowlist every identifier here is checked against.
   captured baselines.
 - [`skills/`](skills/README.md) — four work packages, each a `SKILL.md` plus an Owner's
   Card naming a real person, citing the baseline captured before it was provisioned.
-- [`governance/`](governance/README.md) — three rules on three rungs, plus
+- [`governance/`](governance/README.md) — three rules on three rungs, the
+  [roster](governance/roles.md) their owners resolve against, plus
   [one runnable rule](governance/reminders/meeting-challenger/) you can pipe
   JSON into today.
 - [`interview/`](interview/00-manifest.md) — the interview this OS was generated from:

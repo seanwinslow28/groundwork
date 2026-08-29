@@ -2328,6 +2328,14 @@ class TestRoster(unittest.TestCase):
             self.assertTrue(any(f.level == "ERROR" and f.path.startswith("co/")
                                 for f in validate.check_roles(d)))
 
+    def test_the_named_holes_are_documented(self):
+        """The design names four things R1 must record rather than solve. A
+        limitation nobody wrote down is a claim by omission."""
+        text = (REPO / "docs" / "known-limitations.md").read_text(encoding="utf-8")
+        for phrase in ("intent-blind", "stale roster",
+                       "outside the constitution", "deleted roster"):
+            self.assertIn(phrase, text.lower(), phrase)
+
     def test_resolution_is_two_way_and_exact(self):
         with tempfile.TemporaryDirectory() as d:
             self._roster(d)

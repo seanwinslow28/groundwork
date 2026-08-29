@@ -50,7 +50,10 @@ Small, and none of it is promised by a date.
 Each of these is designed far enough to be described and deliberately absent from V1. The
 first one is the only one with a schema cost.
 
-- **The first `SCHEMA_VERSION` bump, and its two candidate passengers.** First, a
+- **The first `SCHEMA_VERSION` bump has landed, and neither candidate rode it.** v2 is
+  *roles as the accountable unit* — a roster at `governance/roles.md`, and an active rule's
+  owners must resolve against it ([MIGRATIONS.md](../MIGRATIONS.md)). The two passengers
+  this bullet named are recorded below, with what became of each. First, a
   health-metrics field: the interview already asks what must not degrade while a
   standard is met — the Goodhart guard — and there is nowhere typed to put the answer,
   so it lands in prose. The first end-to-end run was designed to measure whether that
@@ -64,10 +67,17 @@ first one is the only one with a schema cost.
   ship. The run shipped the draft and the validator accepted it with warnings, so a
   structural consumer reads two drafts and zero active rules where the confirmed record
   says a hard gate. That the gate allowed it at all is a second finding, not a licence.
-  Either addition is a v2 change with a migration note, and the pull promise has been
-  binding since 2026-07-29.
-- **Per-check `since:` tags** and scatter-suppression, which is the other half of the
-  version-skew policy. Dormant at v1 by construction; wired at the first real bump.
+
+  The health-metrics field is **still unbuilt** and still a candidate for a later bump. The
+  second candidate was **superseded rather than delivered**: v2 chose held-to-activate over a
+  representable third state, so an unowned practice still reads as a draft in the machine
+  layer — by design now, with named WARNs, rather than by accident. The roles design records
+  that choice and its cost in full. Any further addition is another bump with its own
+  migration note; the pull promise has been binding since 2026-07-29.
+- **Per-check `since:` tags** and scatter-suppression, the other half of the version-skew
+  policy. **Wired at the v1→v2 bump**, as planned: a check declares the version it was
+  introduced at, and its ERROR demotes to a finger-pointing WARN behind an older pin's single
+  migration-boundary error.
 - **The Classify, Consent, Enforce compliance pack:** a consent registry with approved and
   forbidden uses and expiry, CODEOWNERS on sensitive generated folders, a Gitleaks
   profile, an erasure runbook, and a data-protection impact template.
