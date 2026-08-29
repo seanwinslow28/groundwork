@@ -2328,6 +2328,59 @@ class TestRoster(unittest.TestCase):
             self.assertTrue(any(f.level == "ERROR" and f.path.startswith("co/")
                                 for f in validate.check_roles(d)))
 
+    # --- Codex r1: the roster holds exactly ONE table, with a boundary ---
+
+    def test_a_fenced_example_row_is_not_a_holder(self):
+        """Codex r1, BLOCKER: scanning every canonical-looking line made a
+        fenced EXAMPLE row a live holder — enough to satisfy held-to-activate,
+        and even to make a high-risk appeal appear to reach a human."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK + "\n```\n| Ghost Role | Ghost Holder | human |\n```\n")
+            findings = validate.check_roles(d)
+            self.assertTrue(any(f.level == "ERROR" and "exactly one table" in f.message
+                                for f in findings), findings)
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "Ghost Role"), [])
+            self.assertEqual(validate._resolve_owner(roster, "Ghost Holder"), [])
+
+    def test_a_commented_out_row_is_not_a_holder(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK + "\n<!-- | Ghost | Ghost Holder | human | -->\n")
+            self.assertTrue(any(f.level == "ERROR" and "exactly one table" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_a_row_missing_its_trailing_pipe_errors_rather_than_vanishing(self):
+        """The other half: a visible operative row that silently disappeared."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO | Sean Winslow | human"))
+            self.assertTrue(any(f.level == "ERROR" and "not canonical" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_a_missing_delimiter_row_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("|---|---|---|\n", ""))
+            self.assertTrue(any(f.level == "ERROR" and "delimiter" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_a_pipe_in_a_source_value_does_not_hijack_the_block(self):
+        """The scan starts after the frontmatter, so a '|' in `source` is not
+        the head of the table block."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("source: The maintainer's own statement",
+                                              "source: HR export | 2026-08-01"))
+            self.assertEqual([f for f in validate.check_roles(d) if f.level == "ERROR"], [])
+
+    def test_a_malformed_frontmatter_finding_also_carries_since_two(self):
+        """Codex r1: the reader's own findings were appended raw, so a duplicate
+        key ERRORed undemoted under a v1 pin."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("source: The maintainer's own statement",
+                                              "valid_at: 2026-08-02\nsource: x"))
+            dupes = [f for f in validate.check_roles(d) if "duplicate" in f.message]
+            self.assertTrue(dupes)
+            self.assertTrue(all(f.since == 2 for f in dupes), dupes)
+
     def test_the_named_holes_are_documented(self):
         """The design names four things R1 must record rather than solve. A
         limitation nobody wrote down is a claim by omission."""
@@ -2529,6 +2582,27 @@ class TestAppealReachesAHuman(unittest.TestCase):
             self.assertIsNone([f for f in errs if "rung six" in f.message][0].since,
                               "the pre-existing v1 spine ERROR must NOT carry since=2 — it "
                               "keeps firing under any pin")
+
+    def test_high_risk_draft_with_no_roster_at_all_still_errors(self):
+        """Codex r1, BLOCKER: with no roster the appeal owner resolves to nobody,
+        which is decision 3's high-risk-draft ERROR. It used to exit green behind
+        the draft WARN and the aggregate missing-roster WARN."""
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, rule=RULE_OK.replace("rung: human-decision\n", ""), roster=None)
+            errs = [f for f in validate.check_constitution(d) if f.level == "ERROR"]
+            self.assertTrue(any("reaches no human" in f.message for f in errs), errs)
+
+    def test_plain_draft_with_no_roster_names_each_gap(self):
+        """Codex r1: decision 5 wants one NAMED WARN per gap. Four unresolved
+        owner fields must not collapse into the one aggregate roster WARN."""
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, rule=RULE_OK.replace("rung: human-decision\n", "")
+                       .replace("action_class: high-risk", "action_class: reversible-write"),
+                       roster=None)
+            warns = [f.message for f in validate.check_constitution(d) if f.level == "WARN"]
+            for field in validate._RULE_OWNER_FIELDS:
+                self.assertTrue(any("does not resolve" in m and "'%s'" % field in m
+                                    for m in warns), (field, warns))
 
     def test_appeal_findings_carry_since_two(self):
         with tempfile.TemporaryDirectory() as d:
@@ -4084,6 +4158,23 @@ class TestRosterIsGoverned(unittest.TestCase):
             errs = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
                     if f.level == "ERROR" and "roles.md" in f.path]
             self.assertTrue(errs)
+
+    def test_a_case_rename_at_the_boundary_is_not_a_bootstrap(self):
+        """Codex r1: a v1 root that ALREADY has a roster could bump its pin while
+        respelling the file, so the base spelling reads as a deletion and the new
+        one as a bootstrap-exempt addition — laundering a modification through an
+        addition-only exemption. A root with a roster at base never bootstraps."""
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "governance/roles.md", ROSTER_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "roster")
+            os.remove(os.path.join(d, "governance", "roles.md"))
+            _write(d, "governance/Roles.md", ROSTER_OK + "|  | Ada Byron | human |\n")
+            _write(d, "groundwork.pin", "---\nschema_version: 2\n---\n")
+            errs = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                    if f.level == "ERROR" and "oles.md" in f.path]
+            self.assertTrue(errs, "the respelled roster was exempted as a bootstrap addition")
 
     def test_a_matching_proposal_clears_a_roster_change(self):
         with tempfile.TemporaryDirectory() as d:
@@ -6954,7 +7045,8 @@ file only routes.
 
 ## Proposing a change
 
-An agent may propose a change to a skill or a rule by writing a file in `proposals/`.
+An agent may propose a change to a skill, a rule, or the roster by writing a file in
+`proposals/`.
 Only the maintainer lands one. The rules that bind every agent, including the review
 gate on high-risk actions, are in `governance/`.
 

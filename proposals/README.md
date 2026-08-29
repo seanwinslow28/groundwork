@@ -66,7 +66,8 @@ At PR time the validator classifies every changed skill, rule, and roster under 
 (a directory carrying a `groundwork.pin`) and checks the **declaration against the diff**:
 
 - An **escalating** change with **no pending proposal** → ERROR.
-- A pending proposal declaring **`track1-body`** while the diff actually touches a rule, a
+- A pending proposal declaring **`track1-body`** while the diff actually touches a rule, the
+  roster, a
   track-2 skill, frontmatter, or the Owner's Card → ERROR (**declared-vs-actual mismatch** —
   this is what stops a rule edit being smuggled under a track-1 label).
 - A **track-1 body-only** change with no newly appended changelog line → WARN (an agent

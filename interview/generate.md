@@ -61,8 +61,8 @@ Four preconditions. All four, every time.
 shape for each artifact, and this document names fields rather than showing files: the
 executive-view table is specified in [../ontologies/README.md](../ontologies/README.md),
 the card spine in [../skills/work-package-spec.md](../skills/work-package-spec.md), the
-memory-record schema in [../memory/README.md](../memory/README.md), the rule objects and the roster in
-[../governance/README.md](../governance/README.md), and the pin file in
+memory-record schema in [../memory/README.md](../memory/README.md), the rule objects and
+the roster in [../governance/README.md](../governance/README.md), and the pin file in
 [../MIGRATIONS.md](../MIGRATIONS.md). Read the shape before writing to it.
 
 **A company repo links only inside itself.** Never write a link that climbs out of the
@@ -84,10 +84,11 @@ lines with no fences fail the gate. **Write the pin last, and commit it only in 
 generation commit** — if generation takes more than one commit, the pin belongs in the last
 of them. That makes the commit creating the governed root and the last commit of generation
 the same commit, which is the one "Then prove it" names as the base. Once the pin is
-committed the repo is a governed root; whether a rule or skill then counts as an escalating
-change wanting a proposal (#18) turns on the base you diff against — it escalates when that
-base does not already hold it — not on the order you wrote files within a commit. Generate
-into a repo whose base already carries the pin and you will write a proposal per file.
+committed the repo is a governed root; whether a rule, skill, or the roster then counts as
+an escalating change wanting a proposal (#18) turns on the base you diff against — it
+escalates when that base does not already hold it — not on the order you wrote files within
+a commit. Generate into a repo whose base already carries the pin and you will write a
+proposal per file.
 
 **2. `ontologies/` first.** Every function gets an `_executive-view.md` listing every
 activity with a Direction — that is the whole executive tier, and most activities never
@@ -155,8 +156,8 @@ with an owner — **there is no rung six** — and a repealed ritual's surviving
 reassigned to a named person before the repeal ships.
 
 **Then `governance/roles.md` — and invent nothing in it.** The roster is what makes an
-owner resolve, so a rule cannot carry a rung until its four owner values do. Write it from the confirmed
-answers you already have, by this rule and no wider:
+owner resolve, so a rule cannot carry a rung until its four owner values do. Write it from
+the confirmed answers you already have, by this rule and no wider:
 
 - **Enter a holder, typed `human`, only where the binding protocol guarantees a person:**
   the acted-on activity's owner and the skill's owner — the answers under the row
@@ -262,8 +263,9 @@ Do not.
 **The commit that creates the governed root is not subject to the consent gate.** #18
 routes an escalating change through a reviewable proposal, and generation cannot be its
 own proposal — it leaves nothing pending in `proposals/` for the gate to match a generated
-rule or skill against. Name the pre-generation commit as the base and you ask the gate to
-review the act that created the thing it governs: every generated constitution rule comes
+rule, skill, or roster against. Name the pre-generation commit as the base and you ask the
+gate to review the act that created the thing it governs: every generated constitution
+rule comes
 back as an escalating change with no pending proposal, so every generated OS carrying a
 constitution rule goes red against that base, correct or not. Measured on the OS generated
 in the 2026-07-31 persona-company run, which carries two constitution rules: the
@@ -275,9 +277,9 @@ alongside it is classified exactly as one committed after it.
 **What this run proves, and what it does not.** The comparison is the base tree against the
 working filesystem, not one commit against another. A clean result here says the stateful
 modes ran and found nothing; it does not say they were exercised. Later work exercises
-them: a new rule or skill is the #18 consent gate's case, while the frozen-layer and memory
-guards read from the base, so what they catch is a layer the base already held being
-edited or deleted — its interview manifest too, or the layer is not covered — and a
+them: a new rule, skill, or roster is the #18 consent gate's case, while the frozen-layer
+and memory guards read from the base, so what they catch is a layer the base already held
+being edited or deleted — its interview manifest too, or the layer is not covered — and a
 base-held memory record deleted or edited in a way the schema forbids.
 
 **Say what you generated and what you could not.** A list of the activities that got deep

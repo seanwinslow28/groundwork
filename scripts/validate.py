@@ -1879,7 +1879,11 @@ def _check_constitution_instance(inst, root, ignore=()):
                     findings.append(Finding("WARN", rel, None,
                                             "draft rule has no answered '%s' — an owner field "
                                             "with no answer" % field, 2))
-                elif roster is not None and not _resolve_owner(roster, v):
+                elif not _resolve_owner(roster, v):
+                    # No roster at all resolves to nothing, and decision 5 wants
+                    # the gap NAMED rather than collapsed into the aggregate
+                    # missing-roster WARN (Codex r1). _resolve_owner already
+                    # takes roster=None.
                     findings.append(Finding("WARN", rel, None,
                                             "draft rule's '%s' (%s) does not resolve in the "
                                             "roster (unheld)" % (field, v.strip()), 2))
@@ -1957,9 +1961,13 @@ def _check_constitution_instance(inst, root, ignore=()):
         # repeated here for an active rule (the activation ERROR names it) or for
         # a plain draft (decision 5's second class names it) — only a high-risk
         # draft needs it, where neither of those fires as an ERROR.
+        # NOT guarded on a roster existing (Codex r1, BLOCKER): with no roster an
+        # answered appeal owner resolves to nobody, which is exactly decision 3's
+        # high-risk-draft ERROR. Guarding it let a high-risk draft with a missing
+        # roster exit green behind two WARNs.
         high_risk = isinstance(ac, str) and ac == "high-risk"
         hao = data.get("human_appeal_owner")
-        if roster is not None and isinstance(hao, str) and _answered(hao):
+        if isinstance(hao, str) and _answered(hao):
             held = _resolve_owner(roster, hao)
             if not held:
                 if high_risk and not active:
@@ -2036,7 +2044,10 @@ def _parse_roster(text, rel):
     v1-pinned repo could not have met any of these requirements."""
     findings = []
     data, _body, fm = _frontmatter_and_body(text, rel)
-    findings += fm
+    # The reader's own findings are re-tagged, not appended raw (Codex r1): a
+    # roster cannot exist below v2, so a malformed one must demote behind an
+    # older pin like every other finding about this file.
+    findings += [f._replace(since=2) for f in fm]
     today = datetime.date.today()
 
     for field in ROSTER_FIELDS:
@@ -2061,53 +2072,99 @@ def _parse_roster(text, rel):
                                     "roster 'review_by' has passed — who holds what may "
                                     "have drifted", 2))
 
-    roles, holders, header_seen = {}, {}, False
-    for lineno, line in enumerate(text.split("\n"), 1):
-        cells = _canonical_row(line)
+    # ONE canonical table, with a boundary — the executive view's doctrine
+    # (parse_exec_table), applied to the second table surface. Scanning every
+    # canonical-looking line in the raw file made a fenced or comment-wrapped
+    # EXAMPLE row a live holder, and silently dropped a visible row missing its
+    # trailing pipe (Codex r1). Under a bounded single table the whole class —
+    # decoy tables, fenced examples, blockquoted rows — is unreachable rather
+    # than handled. The scan starts after the frontmatter so a '|' in a `source`
+    # value cannot hijack the block.
+    roles, holders = {}, {}
+    lines = text.split("\n")
+    body_start = 0
+    if lines and lines[0].strip() == "---":
+        for k in range(1, len(lines)):
+            if lines[k].strip() == "---":
+                body_start = k + 1
+                break
+    pipe = [i for i in range(body_start, len(lines)) if "|" in lines[i]]
+    if not pipe:
+        findings.append(Finding("ERROR", rel, None,
+                                "roster has no '| Role | Holder | Type |' table", 2))
+        return Roster(roles, holders), findings
+    start = pipe[0]
+    end = start
+    while end + 1 < len(lines) and "|" in lines[end + 1]:
+        end += 1
+    outside = [i for i in pipe if i > end]
+    if outside:
+        findings.append(Finding("ERROR", rel, outside[0] + 1,
+                                "a roster holds exactly one table; a block was read from "
+                                "line %d to line %d and this line carries a '|' outside "
+                                "it — an example row must never be readable as a holder"
+                                % (start + 1, end + 1), 2))
+        return Roster(roles, holders), findings
+    header = _canonical_row(lines[start])
+    if header is None or [c.casefold() for c in header] != ROSTER_HEADER:
+        findings.append(Finding("ERROR", rel, start + 1,
+                                "roster table header must be exactly "
+                                "'| Role | Holder | Type |'", 2))
+        return Roster(roles, holders), findings
+    if end < start + 2:
+        findings.append(Finding("ERROR", rel, start + 1,
+                                "roster table needs its delimiter row and at least one "
+                                "holder row", 2))
+        return Roster(roles, holders), findings
+    delim = _canonical_row(lines[start + 1])
+    if delim is None or not all(_EXEC_DELIM_CELL.match(c) for c in delim):
+        findings.append(Finding("ERROR", rel, start + 2,
+                                "the row under the header must be the delimiter "
+                                "'|---|---|---|' — no alignment colons, exactly three "
+                                "cells", 2))
+        return Roster(roles, holders), findings
+
+    for lineno in range(start + 2, end + 1):
+        cells = _canonical_row(lines[lineno])
         if cells is None:
+            findings.append(Finding("ERROR", rel, lineno + 1,
+                                    "roster row is not canonical — exactly three cells "
+                                    "between a leading and a trailing '|'", 2))
             continue
-        if [c.casefold() for c in cells] == ROSTER_HEADER:
-            header_seen = True
-            continue
-        if all(c and set(c) <= set("-: ") for c in cells):
-            continue  # delimiter
         role, holder, htype = cells
         bad_cell = False
         for label, cell in (("Role", role), ("Holder", holder), ("Type", htype)):
             if cell and not _is_plain_text(cell):
-                findings.append(Finding("ERROR", rel, lineno,
+                findings.append(Finding("ERROR", rel, lineno + 1,
                                         "roster %s cell carries markup — cells are plain "
                                         "text, and resolution is by exact string" % label, 2))
                 bad_cell = True
         if bad_cell:
             continue
         if not role and not holder:
-            findings.append(Finding("ERROR", rel, lineno,
+            findings.append(Finding("ERROR", rel, lineno + 1,
                                     "roster row names neither a role nor a holder", 2))
             continue
         if holder:
             if htype not in HOLDER_TYPES:
-                findings.append(Finding("ERROR", rel, lineno,
+                findings.append(Finding("ERROR", rel, lineno + 1,
                                         "roster holder %r has type %r (one of %s) — the "
                                         "human-appeal path depends on it"
                                         % (holder, htype, sorted(HOLDER_TYPES)), 2))
             elif holders.get(holder, htype) != htype:
-                findings.append(Finding("ERROR", rel, lineno,
+                findings.append(Finding("ERROR", rel, lineno + 1,
                                         "roster holder %r is typed both %r and %r"
                                         % (holder, holders[holder], htype), 2))
             else:
                 holders[holder] = htype
         elif htype:
-            findings.append(Finding("ERROR", rel, lineno,
+            findings.append(Finding("ERROR", rel, lineno + 1,
                                     "roster row types a holder it does not name", 2))
         if role:
             roles.setdefault(role, [])
             if holder:
                 roles[role].append(holder)
 
-    if not header_seen:
-        findings.append(Finding("ERROR", rel, None,
-                                "roster has no '| Role | Holder | Type |' header row", 2))
     for name in sorted(set(roles) & set(holders)):
         findings.append(Finding("ERROR", rel, None,
                                 "%r is both a Role and a Holder — every owner reference to "
@@ -2125,6 +2182,7 @@ def _load_roster(inst, root):
     if not os.path.isfile(abspath):
         return None, []
     text, rd = _read_utf8(abspath, rel)
+    rd = [f._replace(since=2) for f in rd]
     if text is None:
         return None, rd
     roster, findings = _parse_roster(text, rel)
@@ -2944,7 +3002,7 @@ def _check_proposals_instance(inst, root, ignore=()):
         target_is_roster = False
         t = None
         if _blank(target):
-            findings.append(Finding("ERROR", rel, None, "proposal missing 'target' (the skill or rule it changes)"))
+            findings.append(Finding("ERROR", rel, None, "proposal missing 'target' (the skill, rule, or roster it changes)"))
         elif not isinstance(target, str):
             findings.append(Finding("ERROR", rel, None, "proposal 'target' must be a single path"))
         else:
@@ -3785,7 +3843,8 @@ def _changelog_appended_targets(root, gov_abs, appended_lines):
 
 
 def blast_radius_diff_findings(root, base):
-    """#18's blast-radius tripwire. On --diff, classify every changed skill/rule
+    """#18's blast-radius tripwire. On --diff, classify every changed skill, rule,
+    and roster
     under a governed root (a directory carrying a #21 groundwork.pin) and require
     each ESCALATING change to trace to a pending proposal whose DECLARED
     blast_radius matches what the diff ACTUALLY touches. A track-1 body-only
@@ -3818,6 +3877,11 @@ def blast_radius_diff_findings(root, base):
     if not gov_roots:
         return findings  # no company instance in scope: the tripwire is dormant
 
+    def _fold(s):
+        # NFC first (git reports NFC while a mac filesystem lists NFD — the
+        # same mismatch _committed_path_status already bridges), then casefold.
+        return unicodedata.normalize("NFC", s).casefold()
+
     def _bootstrap_roots():
         """Decision 8's migration-scoped bootstrap: governed roots whose pin moves
         v1 -> v2 in THIS diff. A roster ADDITION there is not escalating, because
@@ -3836,6 +3900,16 @@ def blast_radius_diff_findings(root, base):
                 continue
             if _pin_version_text(_git_show(toplevel, base, bf)) != 1:
                 continue
+            # A root that ALREADY had a roster at base is migrating, not
+            # bootstrapping. Matching case- and normalization-insensitively
+            # (Codex r1): on a case-folding filesystem, renaming
+            # governance/roles.md to Governance/Roles.md while bumping the pin
+            # reads as a deletion plus an addition, which would launder a
+            # modification through an addition-only exemption.
+            gpre = _fold(g + "/") if g else ""
+            if any(_fold(r).startswith(gpre) and _fold(r)[len(gpre):] == "governance/roles.md"
+                   for r in base_rels):
+                continue
             abspath = os.path.join(root, *pin_rel.split("/"))
             if not os.path.isfile(abspath):
                 continue
@@ -3845,11 +3919,6 @@ def blast_radius_diff_findings(root, base):
         return out
 
     bootstrap = _bootstrap_roots()
-
-    def _fold(s):
-        # NFC first (git reports NFC while a mac filesystem lists NFD — the
-        # same mismatch _committed_path_status already bridges), then casefold.
-        return unicodedata.normalize("NFC", s).casefold()
 
     def governed_classes(rel):
         # EVERY containing root's classification (Codex r1+r2): picking one
@@ -3960,7 +4029,7 @@ def blast_radius_diff_findings(root, base):
                 continue
             if status == "missing":
                 findings.append(Finding("WARN", rel, None,
-                                        "governed file deleted — retiring a rule or skill is escalating, "
+                                        "governed file deleted — retiring a rule, skill, or roster is escalating, "
                                         "and its record is the maintainer's consent commit; a proposal "
                                         "cannot name a target that no longer exists (#18)"))
                 continue

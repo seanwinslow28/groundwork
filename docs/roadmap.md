@@ -45,10 +45,12 @@ Small, and none of it is promised by a date.
   becomes wrong without anyone editing it. It gets re-verified against the named projects
   rather than left to rot, on the same principle as this document's review date.
 
-## V2 — documented, not built
+## V2 — designed beyond V1
 
-Each of these is designed far enough to be described and deliberately absent from V1. The
-first one is the only one with a schema cost.
+Each of these was designed far enough to be described and deliberately left out of V1. The
+first two have since **landed**, at the v1→v2 schema bump, and say so in their own bullets;
+everything below them is still documented-not-built. The first one is the only one that
+carried a schema cost.
 
 - **The first `SCHEMA_VERSION` bump has landed, and neither candidate rode it.** v2 is
   *roles as the accountable unit* — a roster at `governance/roles.md`, and an active rule's

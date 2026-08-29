@@ -63,7 +63,9 @@ holder(s), and each holder's type (`human` or `agent`). A rule that carries a ru
 must have all four owner fields — `owner`, `value_owner`, `runtime_check_owner`,
 `human_appeal_owner` — resolve against it, and `human_appeal_owner` must resolve to at least
 one **human**: an appeal path that terminates in a model is not an appeal path. A draft rule
-may still carry unheld or absent owners; its gaps are named WARNs. The roster also joins the
+may still carry unheld or absent owners; its gaps are named WARNs. **A `high-risk` draft is
+the exception** — the safety spine runs draft-time, so an appeal owner that is missing,
+resolves to nobody, or resolves only to agent holders ERRORs on a draft too. The roster also joins the
 consent gate as a third governed artifact family — changing it in a governed root is an
 escalating change wanting a proposal.
 
@@ -81,7 +83,9 @@ escalating change wanting a proposal.
 4. Set `schema_version: 2` in `groundwork.pin`.
 
 A rule you cannot complete does not have to be forced: drop its `rung` and it is a draft
-again, with its gaps named as WARNs rather than guessed at.
+again, with its gaps named as WARNs rather than guessed at — **except a `high-risk` rule**,
+whose appeal path must reach a named human whether it is a draft or not. There is no rung
+six, and dropping the rung does not buy an exemption from that.
 
 **Why.** A rule the machine enforces with an owner nobody claims is *enforced, but nobody
 owns it* — the failure a persona-company run actually produced, where an owner field read

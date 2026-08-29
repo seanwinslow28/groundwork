@@ -74,9 +74,11 @@ every active rule's owners, and where its human appeal terminates.
   draft) whose `human_appeal_owner` reaches no human holder; an instance with an active
   rule and no `governance/roles.md`.
 - **WARN:** a missing, unparseable, or overdue `sunset`; a rule not yet placed on a
-  rung (draft), plus one named WARN per gap it carries — an owner field with no answer,
-  or one that does not resolve. The safety-spine ERRORs above apply to drafts too — only
-  the `owner` requirement waits for provisioning (rung placement).
+  rung (draft), plus one named WARN per gap it carries, in three classes — an owner field
+  with no answer; one that does not resolve; and, on a rule that is **not** `high-risk`, an
+  appeal owner that resolves but only to `agent` holders. The safety-spine ERRORs above
+  apply to drafts too — only the `owner` requirement waits for provisioning (rung
+  placement).
 
 ## Where worksheets live (and why it matters)
 

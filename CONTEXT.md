@@ -118,7 +118,7 @@ The real enforcement layer: only the git-capable maintainer can *land* a change 
 _Avoid_: validator enforcement (the validator is a tripwire, not the teeth), branch protection
 
 **Blast-radius match check**:
-The validator `--diff` tripwire #18 adds: an escalating change (rule / track-2 skill / description / governance frontmatter / Owner's Card, per #17's boundary) must trace to an approved proposal whose *declared* blast-radius matches what the diff *actually* touches — mismatch or missing-proposal is an ERROR. Stops an agent smuggling a rule edit inside a proposal labelled "track-1 body-only." Cannot verify a human *truthfully* reviewed — that is the commit bit's job.
+The validator `--diff` tripwire #18 adds: an escalating change (rule / roster / track-2 skill / description / governance frontmatter / Owner's Card, per #17's boundary) must trace to an approved proposal whose *declared* blast-radius matches what the diff *actually* touches — mismatch or missing-proposal is an ERROR. Stops an agent smuggling a rule edit inside a proposal labelled "track-1 body-only." Cannot verify a human *truthfully* reviewed — that is the commit bit's job.
 _Avoid_: consent check (overstates what a stateless validator can prove)
 
 ### Synthetic-demo verification (demo data conventions — ticket #16)

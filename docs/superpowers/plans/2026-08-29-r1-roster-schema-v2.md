@@ -95,13 +95,13 @@ once committed; corrections go in a later entry, never by editing an earlier one
 | Path | What changes |
 |---|---|
 | `scripts/validate.py` | `Finding.since`; the demotion pass; roster parsing + `check_roles`; resolution inside `_check_constitution_instance`; `SCHEMA_VERSION = 2`; the roster as a governed family in `_governed_class`, `classify_governed_change`, `_check_proposals_instance`, and `blast_radius_diff_findings`. |
-| `tests/test_validate.py` | `ROSTER_OK` fixture; `TestConstitution._rule` writes it; four new test classes. |
+| `tests/test_validate.py` | `ROSTER_OK` fixture; `TestConstitution._rule` writes it; six new test classes (`TestSinceDemotion`, `TestRoster`, `TestRosterResolution`, `TestAppealReachesAHuman`, `TestRosterProposalTarget`, `TestRosterIsGoverned`). |
 | `demo/groundwork.pin` | `schema_version: 1` → `2`. |
 | `MIGRATIONS.md` | The v1→v2 note; the `since:` section flips from deferred to wired; current version 2. |
 | `docs/rule-map.md` | A `check_roles` row; updated severities for `check_constitution` and `blast_radius_diff_findings`. |
 | `docs/known-limitations.md` | Four entries: a stale roster, intent-blind resolution, owner fields outside the constitution, roster deletion. |
 | `governance/README.md` | The roster's file grammar. |
-| `demo/governance/README.md`, `demo/README.md`, `demo/canon.md` | The demo's own narration of its roster. |
+| `demo/governance/README.md`, `demo/README.md` | The demo's own narration of its roster. `demo/canon.md` was checked and carries no inventory of demo contents, so it is not touched. |
 | `CONTEXT.md`, `AGENTS.md`, `proposals/README.md` | The #17 routing enumeration: two artifact families → three. |
 | `interview/generate.md` | The minimal R1-window workflow edits: pin `2`, roster generation, the declared-draft permission with its report obligation. |
 
@@ -1910,9 +1910,10 @@ the inner table must sit inside the fence.
 - [ ] **Step 6: Narrate the demo's roster**
 
 `demo/governance/README.md` — add one line to whatever inventory it carries, naming
-`roles.md` as who holds the owners its three rules name. `demo/canon.md` and `AGENTS.md`'s
-demo bullet (`AGENTS.md:44-53`) both enumerate the demo's contents; add the roster to each,
-in that list's own voice. **Read each file first and match its wording**; do not paste a
+`roles.md` as who holds the owners its three rules name. `AGENTS.md`'s demo bullet
+(`AGENTS.md:44-53`) enumerates the demo's contents; add the roster there, in that list's
+own voice. Check `demo/canon.md` too — at planning time it carried no such inventory, so it
+needs nothing; confirm that rather than assuming it. **Read each file first and match its wording**; do not paste a
 sentence written for another file. Keep `AGENTS.md` under 200 lines
 (`wc -l AGENTS.md`).
 
