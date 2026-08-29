@@ -248,8 +248,10 @@ One person may hold many roles (the solo builder holds all of them). **Resolutio
 by exact string, two ways:** an owner value matching a Role cell resolves to that
 row's holders; an owner value matching a Holder cell resolves to that holder
 directly. The second form is what keeps person-named owners valid (decision 1) — the
-demo's `owner: Ruth Okafor` resolves because Ruth Okafor appears as a holder. A role
-with no row, or a row with no holder, is unheld.
+demo's `owner: Ruth Okafor` resolves because Ruth Okafor appears as a holder. A
+holder-only row (Role cell empty) is legal: it makes its holder resolvable without
+asserting a role, which is what R1's generation writes for person-confirmed owners.
+A role with no row, or a row with no holder, is unheld.
 
 Two-way resolution requires **roster integrity**, checked as part of R1: a string
 appearing both as a Role and as a Holder is a namespace collision and ERRORs — every
@@ -359,12 +361,18 @@ review:
   is generated from the confirmed owner answers, inventing neither holders nor
   types: a holder enters typed `human` only where the binding protocol guarantees a
   person — the acted-on activity owner and the skill owner/backup, exactly its
-  human-only owner rows — while every other owner value (a constitution rule's
+  human-only owner rows — entered as **holder-only rows** (the Role cell empty;
+  the human-only questions yield a person's name, not a role, and the Role column
+  fills with R2's elicitation). Every other owner value (a constitution rule's
   owners may be roles or disclaimers; run 1's `runtime_check_owner` proves it)
-  enters as an unheld Role row. A generated rule whose owners do not all resolve
-  ships rungless as a declared draft under decision 6, its unresolved owners named
-  as the gaps. Agent-typed holders, and typing for the rest, arrive with R2's
-  elicitation. These edits exist because without them the documented
+  enters as an unheld Role row — except a string already entered as a typed
+  Holder, which enters once: the Holder classification wins, since it carries
+  more information, and duplicating it as a Role would trip the roster-integrity
+  ERROR. A generated rule whose owners do not all resolve ships rungless as a
+  declared draft under decision 6 — subject to its safety-spine exception: a rule
+  whose high-risk appeal gap takes any of the three ERROR forms does not ship at
+  all — with its unresolved owners named as the gaps. Agent-typed holders, and
+  typing for the rest, arrive with R2's elicitation. These edits exist because without them the documented
   generation workflow is broken for exactly the window between R1 and R2: today's
   `generate.md` instructs `schema_version: 1`, which the R1 engine ERRORs at the
   migration boundary, and writing `2` without a roster fails the missing-roster

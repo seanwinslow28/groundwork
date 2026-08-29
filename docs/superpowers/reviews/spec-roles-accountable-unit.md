@@ -196,3 +196,15 @@ round-11 rows 1 and 3.
 | 1 | high | "Every holder human is transcription" is false — the protocol guarantees personhood only for acted-on activity and skill owners; constitution owners may be roles or disclaimers | CONFIRMED | Fixed: `human` typing only for the protocol's human-only owner rows; every other owner value enters as an unheld Role row, and an unresolved rule ships rungless as a declared draft. Amends round-11 row 1 |
 | 2 | high | The engine-root roster needs holders for `Head of IT`/`CISO` that no file names — the implementing agent would have to invent them | CONFIRMED | Fixed: the engine-root roster is maintainer-authored content, an explicit maintainer input to the R1 plan |
 | 3 | high | The spine exception covered "missing or unresolvable" appeal gaps but not resolves-to-agent-only — a shippable artifact the gate rejects | CONFIRMED | Fixed: the exception names all three spine-ERROR forms — missing, unresolvable, resolving to no human holder. Amends round-11 row 3 |
+
+## Round 13 — 2026-08-29, task-mtdvajvt-ux28zi, verdict: does not approve (1 high, 2 plausible)
+
+Reviewed: commit `eb71da1` (spec after round-12 fixes, plus this log). All 3 accepted
+(the two PLAUSIBLE-only were accepted as real encoding gaps); fixed in the following
+commit. Rows amended: round-12 rows 1 and 3.
+
+| # | Sev | Finding (compressed) | Verdict | Disposition |
+|---|---|---|---|---|
+| 1 | high | R1's "ships rungless as a declared draft" was unconditional — reintroducing ship-and-fail for the high-risk appeal gaps decision 6 excludes | CONFIRMED | Fixed: the R1 rule is now subject to decision 6's safety-spine exception, restated inline. Amends round-12 rows 1 and 3 |
+| 2 | med | The same string arriving from a human-only row (Holder) and a constitution owner row (Role) would trip the roster-integrity ERROR — no dedup rule existed | PLAUSIBLE-only | Accepted: one entry per distinct string; the Holder classification wins (more information) |
+| 3 | med | The human-only rows yield a person's name, not a role — nothing said what fills the Role cell without invention | PLAUSIBLE-only | Accepted: person-confirmed owners enter as holder-only rows (Role cell empty), the Role column filled by R2's elicitation |
