@@ -125,3 +125,12 @@ round-6 row 2, recorded here per row 4 below).
 | 2 | high | The new resolves-to-nothing ERROR's pin tier was unstated in decision 3 and conflicts with decision 2's unqualified invariant under a v1 pin | CONFIRMED | Fixed: both resolution-based ERRORs are `since: 2` — necessarily, since a v1 repo has no roster to resolve against; the verbatim invariant is the v1 check's, said at both decision 2 and decision 3. Amends round-6 row 2 |
 | 3 | med | Decision 5's "no roster match" omitted the holderless-Role-row case, which matches but does not resolve | CONFIRMED | Fixed: "does not resolve (no match, or a match on a Role row with no holder)" |
 | 4 | low | Round 6's amendment list omitted round-4 row 1, whose age-tier disposition the resolves-to-nothing check superseded | CONFIRMED | Recorded here: round-6 row 2 also amends round-4 row 1 |
+
+## Round 8 — 2026-08-28, task-mtdsun1l-1be6dd, verdict: does not approve (1 finding)
+
+Reviewed: commit `86206b3` (spec after round-7 fixes, plus this log). The spec itself
+drew no findings; the one finding is this log's own bookkeeping.
+
+| # | Sev | Finding (compressed) | Verdict | Disposition |
+|---|---|---|---|---|
+| 1 | low | Round-6 row 3's "Fixed at all three sites" was falsified by round-7 finding 3, but round 7's amendment inventory never named round-6 row 3 | CONFIRMED | Recorded here: round-7 row 3 amends round-6 row 3 — the round-6 fix reached the validator section and the two prose sites but not decision 5 |
