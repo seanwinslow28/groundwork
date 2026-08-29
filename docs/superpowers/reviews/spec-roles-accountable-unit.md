@@ -263,3 +263,13 @@ commit. Rows amended: round-16 rows 3 and 5.
 | 3 | med | The 90-day default was miscited as "the C10 pattern" — C10 derived from an elicited cadence; this has none | CONFIRMED | Fixed: named a policy default, default-not-answered, C10's weaker cousin. Amends round-16 row 5 |
 | 4 | med | The roster's `valid_at` (generation date) silently diverged from org-memory's became-true semantics | PLAUSIBLE-only | Fixed: snapshot semantics (when the mapping was last confirmed) stated deliberately, in the spec and the file |
 | 5 | low | The sketch example's review_by was 92 days from valid_at, not the mandated 90 | CONFIRMED | Fixed: 2026-11-26 |
+
+## Round 18 — 2026-08-29, task-mtdx5adx-4k2m0u, verdict: does not approve (2 findings)
+
+Reviewed: commit `fddea1b` (spec after round-17 fixes, plus this log). Both accepted;
+fixed in the following commit. Rows amended: round-17 rows 1 and 4.
+
+| # | Sev | Finding (compressed) | Verdict | Disposition |
+|---|---|---|---|---|
+| 1 | high | The consent-gate addition named no implementation surface — the proposal schema and `_governed_class()` know only two governed classes and would reject or ignore a roster target | CONFIRMED | Fixed: the roster is stated as a third governed class, with every two-class surface R1 must change enumerated; extending locked #17 flagged for the maintainer. Amends round-17 row 1 |
+| 2 | med | `valid_at` = generation date makes stale mappings look freshly confirmed — generation is not confirmation | CONFIRMED | Fixed: `valid_at` transcribes the latest `confirmed_at` among the source layers; the review_by default anchors to `valid_at`. Amends round-17 row 4 |

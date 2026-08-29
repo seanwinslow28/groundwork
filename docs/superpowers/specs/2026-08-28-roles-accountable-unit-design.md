@@ -324,7 +324,13 @@ biting. This is flagged for the maintainer at R1 plan review.
   who holds every active rule's owners and where its human appeal terminates, so
   editing it is governance, not bookkeeping. Without this, an ungoverned roster
   edit could redirect an active rule's appeal endpoint silently, hollowing out
-  the #18 gate from underneath.
+  the #18 gate from underneath. **This makes the roster a third governed class**,
+  and R1 changes every surface that today knows only two: the proposal target
+  schema (which currently ERRORs on non-constitution, non-skill targets),
+  `_governed_class()`, the #17 routing contract's two-artifact enumeration, the
+  blast-radius tripwire, `docs/rule-map.md`, and the tests. Extending #17 — a
+  locked decision — is flagged for the maintainer alongside the gate addition
+  itself.
 - **No reality check:** nothing verifies a roster row against the world. The
   disclaiming-owner problem ("the function, no person named") is caught at
   activation by failed resolution, not by prose analysis — provided no roster entry
@@ -387,10 +393,11 @@ review:
   Person-confirmed owners are entered as **holder-only rows** (the Role cell
   empty; those questions yield a person's name, not a role). The roster's
   `valid_at` records when the mapping was last confirmed — for an R1-window
-  roster, the generation date — snapshot semantics, deliberately narrower than
-  org-memory's when-the-fact-became-true `valid_at`, and stated as such in the
-  file. Its `review_by`, which no current question elicits, is a stated interim
-  **policy default** (90 days from generation), recorded in the file as
+  roster, the **latest `confirmed_at` among the interview layers its entries
+  transcribe**, never the generation date, which may fall later and confirms
+  nothing — snapshot semantics, deliberately narrower than org-memory's
+  when-the-fact-became-true `valid_at`, and stated as such in the file. Its `review_by`, which no current question elicits, is a stated interim
+  **policy default** (90 days from `valid_at`, matching the sketch), recorded in the file as
   default-not-answered — a weaker cousin of C10's derivation, which had an
   elicited cadence to derive from where this has none — replaced by an elicited
   answer from R2 on. Every other owner
