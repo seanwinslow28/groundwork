@@ -98,10 +98,11 @@ their shape from the holding semantics.
    merely incomplete, so it ERRORs on a high-risk draft too — otherwise a high-risk
    draft with a model for an appeal path would leave the gate green, which the spine
    forbids verbatim). An appeal owner that resolves to *nothing* on a draft stays in
-   decision 5's WARN tier — unheld is the drafting state. All of these ERRORs are
-   `since: 2` checks, so under a v1 pin the new-requirement demotion applies and they
-   fire as WARNs — on v1-pinned content the spine's verbatim guarantee is therefore
-   only as strong as the pull promise allows, and holds in full from v2. Value,
+   decision 5's WARN tier — unheld is the drafting state. The tiers under a v1 pin
+   differ by age: the existing check — a high-risk rule whose appeal fields are not
+   answered — is a v1 ERROR and keeps firing as one under any pin; only the **new**
+   agent-only-resolution ERRORs are `since: 2` checks, demoted to WARN on v1-pinned
+   content, so that part of the spine's guarantee holds in full from v2. Value,
    rule, and runtime-check owners may be agent-held.
    *Counter-argument, recorded:* per-object holder-type rules add a distinction the
    schema could not previously see, and the smallest adopter — one human holding
@@ -118,10 +119,11 @@ their shape from the holding semantics.
    lookup; it is one more required file; the interview must now elicit it.
 
 5. **Hole (a), the drafting gate: WARN, naming each gap.** A draft rule raises one
-   WARN per gap in three named classes: a missing owner field (rule owner, appeal
-   owner), an owner value with no roster match, and an appeal owner that resolves
-   but to agent-only holders on a non-high-risk draft — resolvable, wrongly typed.
-   Each WARN names its gap specifically. (A missing sunset already
+   WARN per gap in three named classes: a missing owner field (any of the four —
+   rule owner, value owner, runtime-check owner, appeal owner), an owner value with
+   no roster match, and an appeal owner that resolves but to agent-only holders on a
+   non-high-risk draft — resolvable, wrongly typed. Each WARN names its gap
+   specifically. (A missing sunset already
    WARNs today, draft or active, outside the rung branch; that check is unchanged.)
    Today an absent rule owner and appeal owner on a draft raise nothing at all (the
    safety-spine ERRORs above are the exception, and they stay ERRORs). Blocking more
@@ -141,11 +143,13 @@ their shape from the holding semantics.
    no draft state to ship into, and this design does not invent one.
    Under decision 2 this is not a concession — the declared draft is the designed
    encoding of *confirmed but incomplete or unheld*. Run 1 already practiced this
-   contract for the gaps it recognized as gaps: both shipped rules declare their
-   missing rule owner, appeal path, and sunset in-file ("Each file names its own
-   missing owners in its body rather than pretending to be complete") and the
-   generation report names both incomplete rules and those reasons under "What did
-   not ship, and why" (`generation-report.md:45–72`, verified this session). One gap
+   contract for the gaps it recognized as gaps: each shipped rule declares its own
+   missing fields in-file — the quad-check its rule owner, appeal owner, and sunset;
+   the intake gate its value statement, value owner, appeal path and owner, and
+   sunset ("Each file names its own missing owners in its body rather than
+   pretending to be complete") — and the generation report names both incomplete
+   rules and those reasons under "What did not ship, and why"
+   (`generation-report.md:45–72`, verified this session). One gap
    it did not declare, because it was not yet one: the disclaiming
    `runtime_check_owner` becomes unresolvable — and therefore a declared-draft
    obligation — only under this design. The amendment makes the contract match the
@@ -261,8 +265,10 @@ biting. This is flagged for the maintainer at R1 plan review.
   `docs/known-limitations.md` in R1, until a later slice decides it.
 - **No reality check:** nothing verifies a roster row against the world. The
   disclaiming-owner problem ("the function, no person named") is caught at
-  activation by failed resolution, not by prose analysis; on a draft it surfaces as
-  hole (a)'s named WARN.
+  activation by failed resolution, not by prose analysis — provided no roster row
+  carries that exact string; a roster that lists the disclaimer as a Role or Holder
+  resolves it, because the roster is trusted text. On a draft it surfaces as hole
+  (a)'s named WARN.
 
 ### The prose rewrite
 
@@ -319,5 +325,6 @@ review:
   intent-blind: a forgotten role row whose title equals an existing holder name
   resolves as that holder instead of surfacing as unheld (the stated blind spot in
   "The roster", flagged for the maintainer at R1 plan review).
-- **It does not analyze owner prose.** A disclaiming owner string fails at activation
-  because it resolves to nothing, not because the validator understands disclaimers.
+- **It does not analyze owner prose.** A disclaiming owner string fails at
+  activation only because it resolves to nothing, never because the validator
+  understands disclaimers — put the same string in the roster and it resolves.

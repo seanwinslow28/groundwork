@@ -71,3 +71,16 @@ fixes; rows amended: round-2 rows 1 and 4, round-1 rows 5 and 7.
 | 6 | med | Decision 6 claimed run 1 declared every gap — the disclaiming runtime_check_owner was never declared as one, in the rule or the report | CONFIRMED | Fixed: narrowed to "the gaps it recognized as gaps", with the new unresolvable class named as new. Amends round-1 row 5 |
 | 7 | med | "Refuse to ship, or invent" contradicts the three outcomes the run record weighs and the design's own declared-draft contract | CONFIRMED | Fixed: the sentence now carries the three weighed outcomes, omission-only compliance, and invention as the temptation |
 | 8 | low | Header said "six decisions"; the list has seven | CONFIRMED | Fixed: seven — one carried in from the kickoff, six brainstormed |
+
+## Round 4 — 2026-08-28, task-mtdrllt5-wbp4xs, verdict: does not approve (4 findings)
+
+Reviewed: commit `3c585d7` (spec after round-3 fixes, plus this log). All 4 findings
+accepted; fixed in the following commit. The high is again an overbroad prior fix.
+Rows amended: round-3 rows 3 and 6.
+
+| # | Sev | Finding (compressed) | Verdict | Disposition |
+|---|---|---|---|---|
+| 1 | high | "All of these ERRORs are `since: 2`" overreaches — the existing unanswered-appeal ERROR is a v1 check and keeps its tier under any pin; only the new agent-only checks demote | CONFIRMED | Fixed: decision 3 splits the tiers by age — v1 check stays ERROR, new checks `since: 2`. Amends round-3 row 3 |
+| 2 | med | Decision 5 named two owner fields where the validator section says "any" — four exist (owner, value_owner, runtime_check_owner, human_appeal_owner) | CONFIRMED | Fixed: decision 5 names all four |
+| 3 | med | "Both shipped rules declare their missing rule owner, appeal path, and sunset" misstates both files' actual gaps (quad-check has human_appeal; the intake gate has a rule owner) | CONFIRMED | Fixed: per-rule enumeration matching the files. Amends round-3 row 6 |
+| 4 | med | "Caught at activation by failed resolution" stated unconditionally — an erroneous roster row carrying the disclaimer string would resolve it | CONFIRMED | Fixed at both sites: conditional stated; the roster is trusted text |
