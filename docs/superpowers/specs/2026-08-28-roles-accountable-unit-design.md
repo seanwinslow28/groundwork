@@ -241,11 +241,17 @@ established here.
    roster edit could redirect an active rule's appeal endpoint silently.) A change
    to `governance/roles.md` in a governed root is an escalating change requiring a
    matching proposal, extending locked #17's routing contract from two artifact
-   families to three. **Deletions keep the existing WARN-only limitation** that
-   `docs/known-limitations.md` already documents for rules and skills — so the
-   roster is governed exactly as they are, ungated deletion included, and a
-   deleted roster is loud anyway: every active rule then ERRORs on the missing
-   roster.
+   families to three. Operationally that means **modifications**: a file addition
+   is by definition a root whose base had no roster, which is the bootstrap — the
+   commit that creates the governed artifact, ungovernable by the gate it brings
+   into being (the S2-approved principle). **Deletions keep the existing
+   WARN-only limitation** that `docs/known-limitations.md` already documents for
+   rules and skills — so the roster is governed exactly as they are, ungated
+   deletion included, and a deleted roster is loud anyway: every active rule then
+   ERRORs on the missing roster. The delete-then-re-add route around the gate is
+   correspondingly narrow: with active rules the intermediate state is red at the
+   missing-roster ERROR, and a single diff spanning both is a modification, which
+   the gate catches.
    *Counter-argument, recorded:* deletion is an attacker's cheapest move against a
    roster, and it stays loud-after-the-fact rather than gated; and every #17
    extension grows the surface the two-family promise was meant to keep small.
@@ -394,11 +400,16 @@ review:
   as holders, tests, and the `docs/rule-map.md`, `docs/known-limitations.md`, and
   `MIGRATIONS.md` entries, **and the demo pin migrated to `schema_version: 2`** —
   without that, the R1 engine's own gate goes red on `demo/groundwork.pin` at the
-  migration boundary. **The demo roster addition carries its matching proposal in
-  `demo/proposals/`**, because demo is a governed root and R1's own `--diff` gate
-  — the one this slice installs — will classify that addition as escalating: the
-  slice must pass the gate it creates, exactly as any escalating demo change
-  runs the consent gate. **The engine-root roster is maintainer-authored content, and
+  migration boundary. **The demo roster lands as a bootstrap, not an escalating
+  change:** the roster tripwire classifies a roster change as escalating only
+  when the base revision already carries a roster — the first introduction of one
+  is the commit that *creates* the governed artifact, and the S2-approved
+  principle already holds that such a commit cannot be governed by the gate it
+  brings into being (generation cannot be its own proposal). A carried pending
+  proposal was considered and is impossible: applied changes must not sit beside
+  their pending proposals — the build's own decision record rejects that state —
+  and removing the proposal would fail the very tripwire that demanded it. From
+  the first modification after bootstrap, decision 8 binds in full. **The engine-root roster is maintainer-authored content, and
   R1's plan carries it as an explicit maintainer input:** the engine's own active
   rule names `Head of IT` and `CISO`, no file identifies who holds those roles for
   the groundwork instance, and the implementing agent must not invent the answer —
@@ -427,9 +438,12 @@ review:
   source layers' `confirmed_at` dates must parse as real, non-future ISO dates —
   today the validator only WARNs on a malformed one, so a frozen interview can
   carry `confirmed_at: someday`, leaving the aggregate undefined. A malformed or
-  future date halts roster generation with the offending layer named: the
-  operator fixes the record; the generator never invents a date. (The interview's
-  existing halt rule, applied at generation.) Its `review_by`, which no current question elicits, is a stated interim
+  future date stops roster generation with the offending layer named — and the
+  legal recovery is **a new confirming turn**, never an edit: frozen layers are
+  immutable, so the operator runs a correction layer re-confirming the affected
+  entries with a parseable date, and the aggregate reads each entry's most recent
+  confirming layer. The generator never invents a date. (Append-and-supersede,
+  the posture the whole record already keeps.) Its `review_by`, which no current question elicits, is a stated interim
   **policy default** (90 days from `valid_at`, matching the sketch), recorded in the file as
   default-not-answered — a weaker cousin of C10's derivation, which had an
   elicited cadence to derive from where this has none — replaced by an elicited

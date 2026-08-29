@@ -299,3 +299,15 @@ Rows amended: round-19 row 2, round-11 row 2.
 |---|---|---|---|---|
 | 1 | major | `confirmed_at` malformed/future dates only WARN — a frozen interview can leave the earliest-date aggregate and the 90-day derivation undefined | CONFIRMED | Fixed: a generation precondition — unparseable or future dates halt roster generation with the layer named; the operator fixes, the generator never invents. Amends round-19 row 2 |
 | 2 | major | R1's own demo roster addition trips the escalating-change gate R1 installs — no matching proposal or exemption was scoped | CONFIRMED | Fixed: the demo roster addition carries its matching proposal in demo/proposals/; the slice must pass the gate it creates. Amends round-11 row 2 |
+
+## Round 21 — 2026-08-29, task-mte5zfw2-85jlu2, verdict: does not approve (2 findings, both major)
+
+Reviewed: commit `a7cb544` (spec after round-20 fixes, plus this log). Both accepted;
+fixed in the following commit. Both round-20 fixes were legally impossible under the
+repo's own rules; both resolutions reuse principles the repo already owns. Rows
+amended: round-20 rows 1 and 2.
+
+| # | Sev | Finding (compressed) | Verdict | Disposition |
+|---|---|---|---|---|
+| 1 | major | "The operator fixes the record" has no legal path — the halt rule needs an in-progress interview, and frozen layers cannot be edited | CONFIRMED | Fixed: the recovery is a new confirming turn (append-and-supersede); the aggregate reads each entry's most recent confirming layer. Amends round-20 row 1 |
+| 2 | major | The carried pending proposal is a rejected state (applied-beside-pending), and removing it fails the tripwire that demanded it — no valid landing sequence | CONFIRMED | Fixed: the first roster introduction is the bootstrap, non-escalating by the S2 principle (the commit creating the governed artifact cannot be governed by it); decision 8 binds from the first modification on, and its text now carries the operational scope plus the narrow delete-then-re-add analysis. Amends round-20 row 2 |
