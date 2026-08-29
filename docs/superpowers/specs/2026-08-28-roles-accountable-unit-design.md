@@ -222,9 +222,11 @@ established here.
    preserve the accepted findings and their dispositions in their bodies — sometimes
    with severities, as `f5ab4b6`'s "Two HIGH findings, both correct" — but what
    survives is only what each commit chose to quote: no complete round output
-   exists, rejected findings and full verdict text appear nowhere, and rounds whose
+   exists, rejected findings and full verdict text appear nowhere, and two rounds whose
    numbers left no commit (r3 and r9 in the `fix(build): Codex r…` sequence) are
-   unrecoverable. The honesty plan paid for the same loss earlier: its
+   unrecoverable. (Evidence corrected on branch `docs/review-record-rule`, Codex round 3:
+   the approving r16 left no numbered commit either, but `df6df21` carries its verdict, so
+   it is not among the unrecoverable. The decision itself is unchanged.) The honesty plan paid for the same loss earlier: its
    header says its three rounds' "review outputs were not retained", leaving the
    merge commit as "the durable record of the approval" with "no inspectable
    artifact" dating round 3 itself. The pattern data this rule exists to keep — the

@@ -29,11 +29,7 @@
    slice with a plan stores them beside it, at `docs/superpowers/plans/<slice>-reviews.md`;
    plan-less work uses `docs/superpowers/reviews/<branch>.md`, with any `/` in the branch
    name written as `-` so the log stays a single file directly under `reviews/`. The log is
-   appended per round, on the branch, so the merge carries the record. The last round's
-   verdict necessarily lands in a commit made after the state it reviewed: that commit
-   carries the record and no content change, so it needs no round of its own, and a
-   disposition that cannot name a hash which does not yet exist names the commit that
-   followed instead.
+   appended per round, on the branch, so the merge carries the record.
    *Evidence:* the session that landed rule 8 ran twenty-five rounds — sixteen on the
    groundwork branch, nine on the persona-company correction, per merge commit `df6df21` —
    and what survives is what the fix commits and the merge chose to quote. Three of the
