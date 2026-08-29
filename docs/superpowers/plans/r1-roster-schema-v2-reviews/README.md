@@ -21,16 +21,19 @@ keep changing.
 | 6 | `01414ed` | does not approve | 4 (2 BLOCKER, 2 LOW) | `a2bedcc` |
 | 7 | `b8f94b4` | does not approve | 6 (2 BLOCKER, 1 HIGH, 1 MEDIUM, 2 LOW) | `df99dc5` |
 | 8 | `37e449b` | does not approve | 6 (2 BLOCKER, 2 MEDIUM, 2 LOW) | `63211e4` |
+| 9 | `2bc94ce` | does not approve | 6 (1 BLOCKER, 1 HIGH, 2 MEDIUM, 2 LOW) | `a5ba199` |
 
-Forty-nine findings across eight rounds. Forty-eight fixed; one rejected with grounds.
+Fifty-five findings across nine rounds. Fifty-four fixed; one rejected with grounds.
 
 **Corrections to earlier entries live in later ones**, per rule 9: `round-03.md` corrects
 `round-02.md`'s axis split, and `round-04.md` corrects `round-03.md`'s claim that two changed
 test assertions were "strictly stronger" — one of them was not; `round-05.md` corrects
 two false narrative summaries in `round-04.md`; `round-06.md` corrects `round-05.md`'s
 "third consecutive round", which its own next paragraph contradicted; `round-07.md`
-corrects two overreaching claims in `round-06.md`; and `round-08.md` corrects two claims in
-`round-07.md` that described fixes as more complete than they were.
+corrects two overreaching claims in `round-06.md`; `round-08.md` corrects two claims in
+`round-07.md` that described fixes as more complete than they were; and `round-09.md`
+withdraws `round-08.md`'s claim that the invisible-character check was "complete by
+construction", which round 9 disproved.
 
 ## Open findings
 
