@@ -25,10 +25,11 @@ answered, in the directories that raised them:
 
 | Entry | Reviewed revision | Verdict | Fixes committed in |
 |---|---|---|---|
+| `round-01.md` | `85211b4` | 1 minor finding, 0 spec findings (no approval word given) | see the next entry |
 
 ## Open findings
 
-None yet — no round has run.
+None. Round 1's one finding is fixed.
 
 ## Rejected findings
 
@@ -36,4 +37,5 @@ None.
 
 ## Maintainer items
 
-None yet.
+None. The two maintainer decisions this slice implements were taken before it started, as
+decisions 5a and 5b of entry 12 in `docs/superpowers/plans/r1-roster-schema-v2-reviews/`.

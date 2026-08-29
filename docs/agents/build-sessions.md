@@ -73,8 +73,9 @@
    satisfied by any sentence at all. *Counter-argument, recorded:* a closed list cannot
    anticipate a legitimate reason nobody has hit yet, and when one arrives the builder
    either distorts a category to fit or routes the finding to the maintainer. Decided by
-   the maintainer 2026-08-29; entry 12 of `r1-roster-schema-v2-reviews/`, under
-   `docs/superpowers/plans/`, records the decision and the options it was chosen from.
+   the maintainer 2026-08-29. Entry 12 of `r1-roster-schema-v2-reviews/`, under
+   `docs/superpowers/plans/`, records the decision, its grounds and its counter-argument;
+   round 11 of `reviews/review-record-rule/` records the options it was chosen from.
 
    **`README.md` carries what keeps changing** — the full branch name, a row per entry, the
    commit that carried each round's fixes, the open findings, the rejected findings, and any
