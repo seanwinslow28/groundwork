@@ -45,12 +45,17 @@ Small, and none of it is promised by a date.
   becomes wrong without anyone editing it. It gets re-verified against the named projects
   rather than left to rot, on the same principle as this document's review date.
 
-## V2 — documented, not built
+## V2 — designed beyond V1
 
-Each of these is designed far enough to be described and deliberately absent from V1. The
-first one is the only one with a schema cost.
+Each of these was designed far enough to be described and deliberately left out of V1. The
+first two have since **landed**, at the v1→v2 schema bump, and say so in their own bullets;
+everything below them is still documented-not-built. The first one is the only one that
+carried a schema cost.
 
-- **The first `SCHEMA_VERSION` bump, and its two candidate passengers.** First, a
+- **The first `SCHEMA_VERSION` bump has landed, and neither candidate rode it.** v2 is
+  *roles as the accountable unit* — a roster at `governance/roles.md`, and an active rule's
+  owners must resolve against it ([MIGRATIONS.md](../MIGRATIONS.md)). The two passengers
+  this bullet named are recorded below, with what became of each. First, a
   health-metrics field: the interview already asks what must not degrade while a
   standard is met — the Goodhart guard — and there is nowhere typed to put the answer,
   so it lands in prose. The first end-to-end run was designed to measure whether that
@@ -59,15 +64,27 @@ first one is the only one with a schema cost.
   candidate with a measured instance behind it: **a representable form for *enforced,
   but nobody owns it***. That run's confirmed interview record carried a rule at
   `hard-block` whose ownership nobody claimed. Three outcomes were considered — omit the
-  rule, ship it and let the gate fail, or ship it as a declared draft — and the generation
-  contract permits only the first, since an artifact missing a required field does not
-  ship. The run shipped the draft and the validator accepted it with warnings, so a
+  rule, ship it and let the gate fail, or ship it as a declared draft — and at the time the
+  generation contract permitted only the first, since an artifact missing a required field
+  does not ship. **That has since changed:** the v2 contract permits a rule with a gap to
+  ship as a declared rungless draft that names its own gaps, subject to the safety-spine
+  exceptions, and requires the generation report to name every rule that shipped
+  incomplete. The run shipped the draft and the validator accepted it with warnings, so a
   structural consumer reads two drafts and zero active rules where the confirmed record
   says a hard gate. That the gate allowed it at all is a second finding, not a licence.
-  Either addition is a v2 change with a migration note, and the pull promise has been
-  binding since 2026-07-29.
-- **Per-check `since:` tags** and scatter-suppression, which is the other half of the
-  version-skew policy. Dormant at v1 by construction; wired at the first real bump.
+
+  The health-metrics field is **still unbuilt** and still a candidate for a later bump. The
+  second candidate was **superseded rather than delivered**: v2 chose held-to-activate over a
+  representable third state, so an unowned practice still reads as a draft in the machine
+  layer — by design now, with named WARNs, rather than by accident. The roles design records
+  that choice and its cost in full. Any further addition is another bump with its own
+  migration note; the pull promise has been binding since 2026-07-29.
+- **`since:` tags** and scatter-suppression, the other half of the version-skew policy.
+  **Wired at the v1→v2 bump**, as planned. The tag turned out to belong on a **finding**
+  rather than on a check: an untagged finding binds every pin, and a check that gained new
+  requirements at v2 tags only those — the high-risk appeal spine keeps ERRORing on its
+  original condition under any pin while its new resolution-based conditions demote to a
+  finger-pointing WARN behind an older pin's single migration-boundary error.
 - **The Classify, Consent, Enforce compliance pack:** a consent registry with approved and
   forbidden uses and expiry, CODEOWNERS on sensitive generated folders, a Gitleaks
   profile, an erasure runbook, and a data-protection impact template.

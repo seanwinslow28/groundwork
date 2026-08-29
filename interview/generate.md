@@ -47,6 +47,7 @@ Four preconditions. All four, every time.
     <name>/owner-card.md          its Owner's Card
   governance/
     constitution/<rule>.md        one file per kept rule
+    roles.md                      who holds each owner the rules name, typed
     changelog.md                  append-only, header only at generation
     review-gate.md                the #19 review-gate instruction, as prose
   memory/
@@ -60,8 +61,8 @@ Four preconditions. All four, every time.
 shape for each artifact, and this document names fields rather than showing files: the
 executive-view table is specified in [../ontologies/README.md](../ontologies/README.md),
 the card spine in [../skills/work-package-spec.md](../skills/work-package-spec.md), the
-memory-record schema in [../memory/README.md](../memory/README.md), the rule objects in
-[../governance/README.md](../governance/README.md), and the pin file in
+memory-record schema in [../memory/README.md](../memory/README.md), the rule objects and
+the roster in [../governance/README.md](../governance/README.md), and the pin file in
 [../MIGRATIONS.md](../MIGRATIONS.md). Read the shape before writing to it.
 
 **A company repo links only inside itself.** Never write a link that climbs out of the
@@ -77,16 +78,17 @@ after twenty.
 
 **1. `groundwork.pin` last — but decide it first.** Record which engine commit you
 generated against (`git -C <engine clone> rev-parse --short HEAD`) and
-`schema_version: 1`. The pin is a frontmatter-fenced file — the two keys between two
+`schema_version: 2`. The pin is a frontmatter-fenced file — the two keys between two
 `---` lines, exactly as [../MIGRATIONS.md](../MIGRATIONS.md) shows; bare `key: value`
 lines with no fences fail the gate. **Write the pin last, and commit it only in the final
 generation commit** — if generation takes more than one commit, the pin belongs in the last
 of them. That makes the commit creating the governed root and the last commit of generation
 the same commit, which is the one "Then prove it" names as the base. Once the pin is
-committed the repo is a governed root; whether a rule or skill then counts as an escalating
-change wanting a proposal (#18) turns on the base you diff against — it escalates when that
-base does not already hold it — not on the order you wrote files within a commit. Generate
-into a repo whose base already carries the pin and you will write a proposal per file.
+committed the repo is a governed root; whether a rule, skill, or the roster then counts as
+an escalating change wanting a proposal (#18) turns on the base you diff against — it
+escalates when that base does not already hold it — not on the order you wrote files within
+a commit. Generate into a repo whose base already carries the pin and you will write a
+proposal per file.
 
 **2. `ontologies/` first.** Every function gets an `_executive-view.md` listing every
 activity with a Direction — that is the whole executive tier, and most activities never
@@ -153,6 +155,60 @@ things the compiler does not negotiate: a `high-risk` rule must carry a human ap
 with an owner — **there is no rung six** — and a repealed ritual's surviving job must be
 reassigned to a named person before the repeal ships.
 
+**Then `governance/roles.md` — and invent nothing in it.** The roster is what makes an
+owner resolve, so a rule cannot carry a rung until its four owner values do. Write it from
+the confirmed answers you already have, by this rule and no wider:
+
+- **Enter a holder, typed `human`, only where the binding protocol guarantees a person:**
+  the acted-on activity's owner and the skill's owner — the answers under the row
+  [questions.md](questions.md) marks "A role is not an owner", and the person guarantee in
+  [protocol.md](protocol.md). Write each as a **holder-only row**: the Role cell empty.
+  Those questions yield a person's name, not a role, and a Role row would assert a role the
+  record never confirmed.
+- **The backup owner is not among them.** Its `(human-only)` marker denotes where the
+  answer came from, not the holder's humanity, and nothing forbids a role-shaped backup.
+- **Every other owner value is not entered at all.** A constitution rule's owners may be
+  roles, and a run has recorded one that disclaims an owner outright — "the function, no
+  person named". Writing such a value as a Role row would assert a role the record never
+  confirmed, a disclaimer least of all. Left out, the roster asserts nothing about it and
+  it simply fails to resolve, which is the true answer.
+- **`valid_at` is the earliest `confirmed_at` among the interview layers these entries
+  transcribe.** A conservative aggregate: layers freeze independently and a newer one
+  reconfirms nothing about older entries, so the earliest date masks no entry's staleness.
+  Never the generation date, which may fall later and confirms nothing.
+- **Precondition.** Every source layer's `confirmed_at` must parse as a real, non-future
+  ISO date. A malformed or future one **stops roster generation**, naming the offending
+  layer. The legal recovery is a **new confirming turn**, never an edit — frozen layers are
+  immutable, so the operator runs a correction layer re-confirming the affected entries
+  with a parseable date, and the aggregate reads each entry's most recent confirming layer.
+  Never invent a date.
+- **`review_by` is an interim policy default**: 90 days after `valid_at`, because no
+  question elicits a review cadence yet. Record it in the file as default-not-answered, so
+  a reader can tell a policy default from an answer.
+- **`source`** names where the org map came from — the interview layers, by name.
+
+Role rows and agent-typed holders arrive when the interview elicits them directly. A repo
+generated before then keeps its holder-only roster: that is valid content, and enriching it
+is the company's own edit.
+
+**A rule with a gap ships as a declared draft, or not at all.** A constitution rule
+carrying a gap in any of three classes — a required field that is **missing**, a field
+populated but **unresolvable** against the roster, or a field populated but recorded as
+**disputed** — may ship only as a **draft** (no rung) that declares those gaps in its own
+body. An undeclared incomplete rule does not ship.
+
+**One exception, and it outranks this permission:** a rule carrying a gate ERROR that fires
+regardless of rung does not ship at all, declared or not. That is a `high-risk` rule whose
+appeal path is missing, unresolvable, or resolves to no human holder, and a repealing rule
+whose surviving job is not reassigned. Where a recorded action-class dispute includes
+`high-risk` among the accounts, this exception applies as if the rule were high-risk, even
+when the scalar field carries the lower class — otherwise a dispute the validator cannot
+read would ship a rule the spine would reject.
+
+**And the obligation that pays for the permission:** the generation report must name every
+constitution rule that shipped incomplete, and why. The permission without the obligation
+would make declaring cheaper than completing.
+
 Then `changelog.md` with its header and no entries, and `review-gate.md` — the prose form
 of the action-class rule, the instruction every harness that ignores hooks falls back to.
 An instruction is not enforcement: on day one a generated repo has a review gate an agent
@@ -207,8 +263,9 @@ Do not.
 **The commit that creates the governed root is not subject to the consent gate.** #18
 routes an escalating change through a reviewable proposal, and generation cannot be its
 own proposal — it leaves nothing pending in `proposals/` for the gate to match a generated
-rule or skill against. Name the pre-generation commit as the base and you ask the gate to
-review the act that created the thing it governs: every generated constitution rule comes
+rule, skill, or roster against. Name the pre-generation commit as the base and you ask the
+gate to review the act that created the thing it governs: every generated constitution
+rule comes
 back as an escalating change with no pending proposal, so every generated OS carrying a
 constitution rule goes red against that base, correct or not. Measured on the OS generated
 in the 2026-07-31 persona-company run, which carries two constitution rules: the
@@ -220,9 +277,9 @@ alongside it is classified exactly as one committed after it.
 **What this run proves, and what it does not.** The comparison is the base tree against the
 working filesystem, not one commit against another. A clean result here says the stateful
 modes ran and found nothing; it does not say they were exercised. Later work exercises
-them: a new rule or skill is the #18 consent gate's case, while the frozen-layer and memory
-guards read from the base, so what they catch is a layer the base already held being
-edited or deleted — its interview manifest too, or the layer is not covered — and a
+them: a new rule, skill, or roster is the #18 consent gate's case, while the frozen-layer
+and memory guards read from the base, so what they catch is a layer the base already held
+being edited or deleted — its interview manifest too, or the layer is not covered — and a
 base-held memory record deleted or edited in a way the schema forbids.
 
 **Say what you generated and what you could not.** A list of the activities that got deep

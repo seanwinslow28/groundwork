@@ -1860,6 +1860,20 @@ class TestDiffCLIWiring(unittest.TestCase):
             self.assertEqual(code, 0)
 
 
+ROSTER_OK = """---
+valid_at: 2026-08-01
+review_by: 2099-01-01
+source: The maintainer's own statement
+---
+# Roles — who holds what
+
+| Role | Holder | Type |
+|---|---|---|
+| Head of IT | Sean Winslow | human |
+| CISO | Sean Winslow | human |
+"""
+
+
 RULE_OK = """---
 owner: Head of IT
 rung: human-decision
@@ -1882,8 +1896,13 @@ An agent may propose a grant; a named human approves it and is logged.
 
 
 class TestConstitution(unittest.TestCase):
-    def _rule(self, d, text=RULE_OK, name="access.md"):
+    def _rule(self, d, text=RULE_OK, name="access.md", roster=ROSTER_OK):
+        """RULE_OK's owners are the two roles ROSTER_OK holds, so the fixture
+        writes both: from v2 on, a valid ACTIVE rule is one whose owners resolve.
+        Pass roster=None for the no-roster case."""
         _write(d, "governance/constitution/%s" % name, text)
+        if roster is not None:
+            _write(d, "governance/roles.md", roster)
 
     def test_valid_rule_clean(self):
         with tempfile.TemporaryDirectory() as d:
@@ -2156,6 +2175,842 @@ class TestConstitutionProvenance(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             _write(d, "governance/worksheets/blank.md", "# Blank worksheet\n\nNothing filled in.\n")
             self.assertEqual(validate.check_constitution(d), [])
+
+
+class TestRoster(unittest.TestCase):
+    """governance/roles.md: the file that decides who holds every owner an active
+    rule names. Its own schema and integrity live here; resolving owner VALUES
+    against it lives with the rules, in check_constitution."""
+
+    def _roster(self, d, text=ROSTER_OK):
+        _write(d, "governance/roles.md", text)
+
+    def test_valid_roster_is_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d)
+            self.assertEqual(validate.check_roles(d), [])
+
+    def test_no_roster_is_silent_here(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/changelog.md", "# changelog\n")
+            self.assertEqual(validate.check_roles(d), [])
+
+    def test_roles_and_holders_parse(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d)
+            roster, findings = validate._load_roster(d, d)
+            self.assertEqual(findings, [])
+            self.assertEqual(roster.roles["Head of IT"], ["Sean Winslow"])
+            self.assertEqual(roster.holders["Sean Winslow"], "human")
+
+    def test_missing_frontmatter_field_errors(self):
+        for field in ("valid_at", "review_by", "source"):
+            with tempfile.TemporaryDirectory() as d:
+                self._roster(d, re.sub(r"(?m)^%s:.*\n" % field, "", ROSTER_OK))
+                errs = [f for f in validate.check_roles(d) if f.level == "ERROR"]
+                self.assertTrue(any(field in f.message for f in errs), field)
+
+    def test_every_roster_finding_carries_since_two(self):
+        """The roster does not exist below v2, so every finding about it must
+        demote behind a v1 pin. One untagged finding would ERROR a v1 repo on a
+        requirement that repo could not have met."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| Sean Winslow | Ada Byron | human |")
+                         .replace("review_by: 2099-01-01\n", ""))
+            findings = validate.check_roles(d)
+            self.assertGreater(len(findings), 1)
+            self.assertTrue(all(f.since == 2 for f in findings),
+                            [f for f in findings if f.since != 2])
+
+    def test_non_iso_valid_at_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("valid_at: 2026-08-01", "valid_at: someday"))
+            self.assertTrue(any(f.level == "ERROR" and "valid_at" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_future_valid_at_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("valid_at: 2026-08-01", "valid_at: 2099-01-01"))
+            self.assertTrue(any(f.level == "ERROR" and "future" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_passed_review_by_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("review_by: 2099-01-01", "review_by: 2020-01-01"))
+            findings = validate.check_roles(d)
+            self.assertTrue(any(f.level == "WARN" and "review_by" in f.message
+                                for f in findings))
+            self.assertFalse(any(f.level == "ERROR" for f in findings))
+
+    def test_namespace_collision_errors(self):
+        """A string that is both a Role and a Holder makes every owner reference
+        to it ambiguous, and no precedence rule is defined because none should
+        be needed."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| Sean Winslow | Ada Byron | human |"))
+            self.assertTrue(any(f.level == "ERROR" and "both a Role and a Holder" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_conflicting_holder_types_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO | Sean Winslow | agent |"))
+            self.assertTrue(any(f.level == "ERROR" and "typed both" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_invalid_holder_type_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO | Sean Winslow | person |"))
+            self.assertTrue(any(f.level == "ERROR" and "type" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_holder_only_row_is_legal(self):
+        """R1's generation writes person-confirmed owners as holder-only rows:
+        a name, no role asserted."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "|  | Ada Byron | human |"))
+            self.assertEqual([f for f in validate.check_roles(d) if f.level == "ERROR"], [])
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(roster.holders["Ada Byron"], "human")
+
+    def test_role_row_with_no_holder_is_legal_and_unheld(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO |  |  |"))
+            self.assertEqual([f for f in validate.check_roles(d) if f.level == "ERROR"], [])
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(roster.roles["CISO"], [])
+            self.assertEqual(validate._resolve_owner(roster, "CISO"), [])
+
+    def test_empty_row_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |", "|  |  |  |"))
+            self.assertTrue(any(f.level == "ERROR" and "neither a role nor a holder" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_type_without_a_holder_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO |  | human |"))
+            self.assertTrue(any(f.level == "ERROR" and "types a holder it does not name"
+                                in f.message for f in validate.check_roles(d)))
+
+    def test_markup_in_a_cell_errors(self):
+        """Resolution is by exact string, so a bolded name is a DIFFERENT string
+        from the one the rule carries — silently unresolvable."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO | **Sean Winslow** | human |"))
+            self.assertTrue(any(f.level == "ERROR" and "plain text" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_missing_header_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| Role | Holder | Type |\n", ""))
+            self.assertTrue(any(f.level == "ERROR" and "header" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_one_role_two_holders(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK + "| Head of IT | Ada Byron | human |\n")
+            self.assertEqual([f for f in validate.check_roles(d) if f.level == "ERROR"], [])
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(roster.roles["Head of IT"], ["Sean Winslow", "Ada Byron"])
+
+    def test_nested_instance_roster_is_checked(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "co/governance/roles.md",
+                   ROSTER_OK.replace("| CISO | Sean Winslow | human |", "|  |  |  |"))
+            self.assertTrue(any(f.level == "ERROR" and f.path.startswith("co/")
+                                for f in validate.check_roles(d)))
+
+    # --- Codex r1: the roster holds exactly ONE table, with a boundary ---
+
+    def test_a_fenced_example_row_is_not_a_holder(self):
+        """Codex r1, BLOCKER: scanning every canonical-looking line made a
+        fenced EXAMPLE row a live holder — enough to satisfy held-to-activate,
+        and even to make a high-risk appeal appear to reach a human."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK + "\n```\n| Ghost Role | Ghost Holder | human |\n```\n")
+            findings = validate.check_roles(d)
+            # Asserted on the CLASS of error, not one wording: the mechanism has
+            # changed three times and a wording assertion broke on each change.
+            # Codex r4 was right that bare any(ERROR) is weaker than what it
+            # replaced — an unrelated ERROR would satisfy it — so the assertion
+            # names the construct instead.
+            self.assertTrue(any(f.level == "ERROR" and ("fence" in f.message
+                                                        or "backtick" in f.message)
+                                for f in findings), findings)
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "Ghost Role"), [])
+            self.assertEqual(validate._resolve_owner(roster, "Ghost Holder"), [])
+
+    def test_a_table_living_entirely_inside_a_fence_is_no_table(self):
+        """Codex r2, BLOCKER: round 1 bounded the table but a roster whose ONLY
+        pipe-bearing block sat inside a fence still parsed, so example content
+        satisfied held-to-activate and the human-appeal gate."""
+        fenced = ROSTER_OK.split("# Roles")[0] + "# Roles\n\n```\n" + \
+            "| Role | Holder | Type |\n|---|---|---|\n| CISO | Sean Winslow | human |\n```\n"
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, fenced)
+            findings = validate.check_roles(d)
+            self.assertTrue(any(f.level == "ERROR" for f in findings), findings)
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "CISO"), [])
+            self.assertEqual(validate._resolve_owner(roster, "Sean Winslow"), [])
+
+    def test_a_table_living_entirely_inside_an_html_comment_is_no_table(self):
+        commented = ROSTER_OK.split("# Roles")[0] + "# Roles\n\n<!--\n" + \
+            "| Role | Holder | Type |\n|---|---|---|\n| CISO | Sean Winslow | human |\n-->\n"
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, commented)
+            self.assertTrue(any(f.level == "ERROR" for f in validate.check_roles(d)))
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "CISO"), [])
+
+    def test_a_longer_fence_cannot_be_closed_by_a_shorter_one(self):
+        """Codex r3, BLOCKER: round 2's masker normalized every fence opener to
+        three characters, so ``` closed a ```` fence and exposed the table inside
+        it — which CommonMark still renders as code."""
+        for ch in ("`", "~"):
+            head = ROSTER_OK.split("# Roles")[0] + "# Roles\n\n"
+            body = (ch * 4) + "\n" + (ch * 3) + "\n" + \
+                "| Role | Holder | Type |\n|---|---|---|\n| CISO | Ghost | human |\n" + (ch * 4) + "\n"
+            with tempfile.TemporaryDirectory() as d:
+                self._roster(d, head + body)
+                self.assertTrue(any(f.level == "ERROR" and ("fence" in f.message
+                                                            or "backtick" in f.message)
+                                    for f in validate.check_roles(d)), ch)
+                roster, _f = validate._load_roster(d, d)
+                self.assertEqual(validate._resolve_owner(roster, "CISO"), [], ch)
+                self.assertEqual(validate._resolve_owner(roster, "Ghost"), [], ch)
+
+    def test_stripping_a_comment_cannot_manufacture_a_row(self):
+        """Codex r3, BLOCKER: round 2 spliced comments out of a line, so
+        '<!-- t -->| a | b | c |' — which is not a table row in the source —
+        became a canonical row after masking."""
+        head = ROSTER_OK.split("# Roles")[0] + "# Roles\n\n"
+        body = "".join("<!-- template -->" + ln + "\n" for ln in
+                       ("| Role | Holder | Type |", "|---|---|---|", "| CISO | Ghost | human |"))
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, head + body)
+            self.assertTrue(any(f.level == "ERROR" and "angle-bracket" in f.message
+                                for f in validate.check_roles(d)))
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "CISO"), [])
+            self.assertEqual(validate._resolve_owner(roster, "Ghost"), [])
+
+    def test_a_table_inside_an_html_block_is_not_a_holder(self):
+        head = ROSTER_OK.split("# Roles")[0] + "# Roles\n\n"
+        body = "<div hidden>\n| Role | Holder | Type |\n|---|---|---|\n| CISO | Ghost | human |\n</div>\n"
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, head + body)
+            self.assertTrue(any(f.level == "ERROR" and "angle-bracket" in f.message
+                                for f in validate.check_roles(d)))
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "CISO"), [])
+
+    def test_no_html_block_opener_can_hide_a_table(self):
+        """Codex r4, BLOCKER: the round-3 pattern matched only '<' + letter or
+        '/', so `<?`, `<!DOCTYPE ...>` and `<![CDATA[` wrapped a canonical table
+        with zero findings and a resolving ghost holder."""
+        table = "| Role | Holder | Type |\n|---|---|---|\n| CISO | Ghost | human |\n"
+        for opener, closer in (("<?php", "?>"), ("<!DOCTYPE html>", ""),
+                               ("<![CDATA[", "]]>"), ("<div hidden>", "</div>")):
+            head = ROSTER_OK.split("# Roles")[0] + "# Roles\n\n"
+            with tempfile.TemporaryDirectory() as d:
+                self._roster(d, head + opener + "\n" + table + closer + "\n")
+                self.assertTrue(any(f.level == "ERROR" and "angle-bracket" in f.message
+                                    for f in validate.check_roles(d)), opener)
+                roster, _f = validate._load_roster(d, d)
+                self.assertEqual(validate._resolve_owner(roster, "CISO"), [], opener)
+                self.assertEqual(validate._resolve_owner(roster, "Ghost"), [], opener)
+
+    def test_an_autolink_is_refused_and_that_is_documented(self):
+        """Codex r4: an autolink is Markdown, not HTML, so refusing it is
+        over-catching. It is refused deliberately — one checkable rule beats a
+        grammar that has been wrong twice — and both docs say to write a plain
+        URL instead. Pinned so the choice cannot drift into an accident."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("# Roles — who holds what",
+                                              "# Roles — who holds what\n\nSee <https://example.com>."))
+            self.assertTrue(any(f.level == "ERROR" and "angle-bracket" in f.message
+                                for f in validate.check_roles(d)))
+        for doc in ("governance/README.md", "MIGRATIONS.md"):
+            text = (REPO / doc).read_text(encoding="utf-8")
+            self.assertIn("angle-bracket", text.lower(), doc)
+
+    def test_a_pipe_in_prose_outside_the_table_errors(self):
+        """Newly documented in governance/README.md and MIGRATIONS.md, so it is
+        pinned: explanatory prose carrying a '|' reads as a second table."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK + "\nRead this as role | holder pairs.\n")
+            self.assertTrue(any(f.level == "ERROR" and "one table" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_a_link_reference_definition_cannot_hide_a_table(self):
+        """Codex r5, BLOCKER: a link reference definition renders nothing and its
+        title may span lines, so the whole table lived inside one — zero
+        findings, and CISO resolved to a human."""
+        head = ROSTER_OK.split("# Roles")[0] + "# Roles\n\n"
+        body = '[x]: /url "\n| Role | Holder | Type |\n|---|---|---|\n| CISO | Ghost | human |\n"\n'
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, head + body)
+            self.assertTrue(any(f.level == "ERROR" and "link reference" in f.message
+                                for f in validate.check_roles(d)))
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "CISO"), [])
+            self.assertEqual(validate._resolve_owner(roster, "Ghost"), [])
+
+    def test_a_blockquoted_fence_is_a_fence(self):
+        """Codex r5: the docs said 'no code fence anywhere' while _fence_match
+        saw only top-level syntax, so a blockquoted fence passed."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK + "\n> ```\n> hidden\n> ```\n")
+            self.assertTrue(any(f.level == "ERROR" and ("fence" in f.message
+                                                        or "backtick" in f.message)
+                                for f in validate.check_roles(d)))
+
+    def test_an_ascii_arrow_in_prose_is_not_an_html_comment(self):
+        """Codex r5: checking for a bare '-->' ERRORed on ordinary prose. A
+        comment must OPEN with '<!--', which is caught on an earlier line."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("# Roles — who holds what",
+                                              "# Roles — who holds what\n\nEscalation runs support --> security."))
+            self.assertEqual([f for f in validate.check_roles(d) if f.level == "ERROR"], [])
+
+    def test_a_character_reference_cannot_be_a_holder(self):
+        """Codex r6, BLOCKER: '&#32;' passes _is_plain_text and resolved as a
+        holder, while Markdown renders the cell blank — a human appeal reaching
+        a holder the reader cannot see."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO | &#32; | human |"))
+            self.assertTrue(any(f.level == "ERROR" and "character reference" in f.message
+                                for f in validate.check_roles(d)))
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "CISO"), [])
+
+    def test_a_multiline_code_span_cannot_hide_a_table(self):
+        """Codex r6, BLOCKER: a single-backtick span opened before the table and
+        closed after it renders the whole block as code, and the scan saw only
+        fenced regions."""
+        head = ROSTER_OK.split("# Roles")[0] + "# Roles\n\n"
+        body = "`\n| Role | Holder | Type |\n|---|---|---|\n| CISO | Ghost | human |\n`\n"
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, head + body)
+            self.assertTrue(any(f.level == "ERROR" and "backtick" in f.message
+                                for f in validate.check_roles(d)))
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "CISO"), [])
+            self.assertEqual(validate._resolve_owner(roster, "Ghost"), [])
+
+    def test_a_list_contained_fence_is_caught(self):
+        """Codex r6: container-aware fence matching let '- ```' through. The
+        patterns are now flat, so position cannot matter."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK + "\n- ```\n  hidden\n")
+            self.assertTrue(any(f.level == "ERROR" for f in validate.check_roles(d)))
+
+    def test_an_ampersand_that_is_not_a_reference_is_fine(self):
+        """The character-reference rule is precise, not a ban on '&'."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO | Smith & Jones | human |"))
+            self.assertEqual([f for f in validate.check_roles(d) if f.level == "ERROR"], [])
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "CISO"),
+                             [("Smith & Jones", "human")])
+
+    def test_the_documented_example_parses(self):
+        """Codex r9: the authoritative example in governance/README.md placed the
+        table directly under the frontmatter, which the blank-line rule refuses —
+        an adopter copying the documented schema got a rejected roster. A schema
+        whose own example fails is not a schema, so the example is parsed here."""
+        text = (REPO / "governance" / "README.md").read_text(encoding="utf-8")
+        blocks = re.findall(r"^````\n(.*?)^````", text, re.S | re.M)
+        self.assertTrue(blocks, "no fenced roster example found in governance/README.md")
+        example = blocks[0]
+        self.assertIn("| Role | Holder | Type |", example)
+        # The example uses <angle> placeholders in its frontmatter, which the
+        # body rules do not police; substitute real values to parse the shape.
+        example = re.sub(r"<[^>]*>", "2026-01-01", example)
+        roster, findings = validate._parse_roster(example, "governance/README.md example")
+        self.assertEqual([f for f in findings if f.level == "ERROR"], [])
+        self.assertEqual(roster.roles["Head of IT"], ["Priya Vale"])
+        self.assertEqual(roster.holders["Ruth Okafor"], "human")
+
+    def test_the_engine_and_demo_rosters_obey_their_own_grammar(self):
+        """The rule is only credible if the two shipped rosters follow it."""
+        for rel in ("governance/roles.md", "demo/governance/roles.md"):
+            text = (REPO / rel).read_text(encoding="utf-8")
+            roster, findings = validate._parse_roster(text, rel)
+            self.assertEqual([f for f in findings if f.level == "ERROR"], [], rel)
+            self.assertTrue(roster.holders, rel)
+
+    def test_a_pipeless_continuation_row_is_not_invisible(self):
+        """Codex r7, BLOCKER: GFM continues a table across a pipe-less line, so a
+        trailing 'CISO' rendered as a Role cell while the parser stopped at the
+        last pipe — hiding a Role/Holder collision and resolving CISO as human."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| Head of IT | Sean Winslow | human |\n"
+                                              "| CISO | Sean Winslow | human |\n",
+                                              "|  | CISO | human |\nCISO\n"))
+            findings = validate.check_roles(d)
+            self.assertTrue(any(f.level == "ERROR" and "not canonical" in f.message
+                                for f in findings), findings)
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "CISO"), [])
+
+    def test_an_nbsp_line_does_not_end_the_table(self):
+        """Codex r8, BLOCKER: str.strip() treats U+00A0 as blank, but CommonMark
+        does not — so an NBSP line ended the block early and every row after it
+        became invisible, hiding a Role/Holder collision."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| Head of IT | Sean Winslow | human |\n"
+                                              "| CISO | Sean Winslow | human |\n",
+                                              "|  | CISO | human |\n\u00a0\nCISO\n"))
+            findings = validate.check_roles(d)
+            self.assertTrue(any(f.level == "ERROR" for f in findings), findings)
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "CISO"), [])
+
+    def test_every_invisible_category_is_caught_not_a_list_of_ranges(self):
+        """Codex r8, BLOCKER: round 7 enumerated ranges and missed U+061C. The
+        check is now by Unicode category, so there is nothing left to enumerate."""
+        for ch in ("\u061c", "\u200b", "\u2060", "\ufeff", "\u200e", "\u202e",
+                   "\u00ad", "\u2028", "\u0007"):
+            with tempfile.TemporaryDirectory() as d:
+                self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                                  "| CISO | %s | human |" % ch))
+                self.assertTrue(any(f.level == "ERROR" and "invisible" in f.message
+                                    for f in validate.check_roles(d)), repr(ch))
+
+    def test_invisible_characters_with_visible_categories_are_caught(self):
+        """Codex r9, BLOCKER: a category test is NOT complete. U+034F and U+FE0F
+        are Mn, the Hangul fillers are Lo, U+2800 is So — each renders as nothing
+        and each resolved as a human holder."""
+        for ch in ("\u034f", "\ufe0f", "\u3164", "\u115f", "\u1160", "\uffa0", "\u2800"):
+            with tempfile.TemporaryDirectory() as d:
+                self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                                  "| CISO | %s | human |" % ch))
+                self.assertTrue(any(f.level == "ERROR" for f in validate.check_roles(d)),
+                                repr(ch))
+                roster, _f = validate._load_roster(d, d)
+                self.assertEqual(validate._resolve_owner(roster, "CISO"), [], repr(ch))
+
+    def test_a_cell_with_no_letter_or_digit_is_refused(self):
+        """The third net: it refuses a cell built from marks or symbols without
+        needing to know which of them render."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO | --- | human |"))
+            self.assertTrue(any(f.level == "ERROR" and "letter or digit" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_zwnj_between_letters_is_allowed(self):
+        """Codex r9: ZWNJ is REQUIRED in some Persian names, so refusing the whole
+        Cf category made a valid person-named owner unrepresentable."""
+        name = "\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645"   # ZWNJ between letters
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO | %s | human |" % name))
+            self.assertEqual([f for f in validate.check_roles(d) if f.level == "ERROR"], [])
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "CISO"),
+                             [(validate._roster_key(name), "human")])
+
+    def test_a_bare_zwnj_is_still_refused(self):
+        """Allowed BETWEEN letters, and nowhere else."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO | \u200c | human |"))
+            self.assertTrue(any(f.level == "ERROR" for f in validate.check_roles(d)))
+
+    def test_a_symlinked_roster_does_not_resolve_ownership(self):
+        """Codex r9: _load_roster followed a symlink, so active-rule ownership
+        could resolve from unaudited content outside the governed artifact."""
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "elsewhere.md", ROSTER_OK)
+            os.makedirs(os.path.join(d, "governance"), exist_ok=True)
+            os.symlink(os.path.join(d, "elsewhere.md"),
+                       os.path.join(d, "governance", "roles.md"))
+            _write(d, "governance/constitution/access.md", RULE_OK)
+            findings = validate.check_roles(d)
+            self.assertTrue(any(f.level == "ERROR" and "symlink" in f.message
+                                for f in findings), findings)
+            roster, _f = validate._load_roster(d, d)
+            self.assertIsNone(roster)
+
+    def test_a_non_ascii_name_is_not_an_invisible_character(self):
+        """The category check must not reject legitimate names."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO | Tom\u00e1s Iglesias | human |"))
+            self.assertEqual([f for f in validate.check_roles(d) if f.level == "ERROR"], [])
+
+    def test_canonically_equivalent_names_resolve_and_collide(self):
+        """Codex r8: NFC and NFD spellings render identically, so they are one
+        name — an owner must resolve against either, and a Role that equals a
+        Holder under normalization is still a collision."""
+        nfd = "Jos\u0065\u0301"          # Jose + combining acute
+        nfc = "Jos\u00e9"                  # precomposed
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO | %s | human |" % nfd))
+            roster, findings = validate._load_roster(d, d)
+            self.assertEqual([f for f in findings if f.level == "ERROR"], [])
+            self.assertEqual(validate._resolve_owner(roster, nfc),
+                             [(validate._roster_key(nfd), "human")])
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| Head of IT | Sean Winslow | human |\n"
+                                              "| CISO | Sean Winslow | human |\n",
+                                              "| %s | Ada Byron | human |\n|  | %s | human |\n"
+                                              % (nfd, nfc)))
+            self.assertTrue(any(f.level == "ERROR" and "both a Role and a Holder" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_a_table_without_a_blank_line_above_it_errors(self):
+        """The other half of the block rule: with no blank line above, GFM reads
+        the table as a lazy continuation of the paragraph and renders prose."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("\n| Role | Holder | Type |",
+                                              "Who holds what:\n| Role | Holder | Type |"))
+            self.assertTrue(any(f.level == "ERROR" and "blank line" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_the_blank_line_is_required_at_the_body_start_too(self):
+        """Codex r8: the rule was skipped when the table was the body's first
+        line, so the code and the documented grammar disagreed. The rule is
+        unconditional, which is what the documentation already said."""
+        with tempfile.TemporaryDirectory() as d:
+            head = ROSTER_OK.split("# Roles")[0]
+            table = ROSTER_OK.split("|---|---|---|")[0].split("# Roles — who holds what")[1]
+            self._roster(d, head + "| Role | Holder | Type |\n|---|---|---|\n"
+                         "| CISO | Sean Winslow | human |\n")
+            self.assertTrue(any(f.level == "ERROR" and "blank line" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_invisible_and_bidi_characters_cannot_be_a_holder(self):
+        """Codex r7, BLOCKER: a zero-width or bidi control as the sole Holder
+        passed _is_plain_text and resolved as a human."""
+        for ch in ("\u200b", "\u2060", "\ufeff", "\u200e", "\u202e"):
+            with tempfile.TemporaryDirectory() as d:
+                self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                                  "| CISO | %s | human |" % ch))
+                self.assertTrue(any(f.level == "ERROR" and "invisible" in f.message
+                                    for f in validate.check_roles(d)), repr(ch))
+                roster, _f = validate._load_roster(d, d)
+                self.assertEqual(validate._resolve_owner(roster, "CISO"), [], repr(ch))
+
+    def test_strikethrough_cannot_be_a_holder(self):
+        """Codex r7: '~~Ghost~~' renders struck through, so the stored identity
+        differs from what a reader sees."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO | ~~Ghost~~ | human |"))
+            self.assertTrue(any(f.level == "ERROR" and "tilde" in f.message
+                                for f in validate.check_roles(d)))
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "CISO"), [])
+
+    def test_an_empty_roster_is_legitimate(self):
+        """Codex r2: a draft-only instance whose mapping nobody has confirmed has
+        a header and a delimiter and no rows. Generation must invent no entries,
+        so the parser must not force a row."""
+        empty = ROSTER_OK.split("| Head of IT")[0]
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, empty)
+            self.assertEqual([f for f in validate.check_roles(d) if f.level == "ERROR"], [])
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(roster.roles, {})
+            self.assertEqual(roster.holders, {})
+
+    def test_an_empty_roster_does_not_rescue_an_active_rule(self):
+        """The other half: an empty roster satisfies the missing-roster check but
+        resolves nothing, so an active rule is still red — four named ERRORs."""
+        empty = ROSTER_OK.split("| Head of IT")[0]
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/constitution/access.md", RULE_OK)
+            _write(d, "governance/roles.md", empty)
+            errs = [f for f in validate.check_constitution(d) if f.level == "ERROR"]
+            self.assertEqual(len([f for f in errs if "does not resolve" in f.message]), 4, errs)
+
+    def test_a_commented_out_row_is_not_a_holder(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK + "\n<!-- | Ghost | Ghost Holder | human | -->\n")
+            self.assertTrue(any(f.level == "ERROR" and "angle-bracket" in f.message
+                                for f in validate.check_roles(d)))
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "Ghost"), [])
+            self.assertEqual(validate._resolve_owner(roster, "Ghost Holder"), [])
+
+    def test_a_row_missing_its_trailing_pipe_errors_rather_than_vanishing(self):
+        """The other half: a visible operative row that silently disappeared."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                              "| CISO | Sean Winslow | human"))
+            self.assertTrue(any(f.level == "ERROR" and "not canonical" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_a_missing_delimiter_row_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("|---|---|---|\n", ""))
+            self.assertTrue(any(f.level == "ERROR" and "delimiter" in f.message
+                                for f in validate.check_roles(d)))
+
+    def test_a_pipe_in_a_source_value_does_not_hijack_the_block(self):
+        """The scan starts after the frontmatter, so a '|' in `source` is not
+        the head of the table block."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("source: The maintainer's own statement",
+                                              "source: HR export | 2026-08-01"))
+            self.assertEqual([f for f in validate.check_roles(d) if f.level == "ERROR"], [])
+
+    def test_a_malformed_frontmatter_finding_also_carries_since_two(self):
+        """Codex r1: the reader's own findings were appended raw, so a duplicate
+        key ERRORed undemoted under a v1 pin."""
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d, ROSTER_OK.replace("source: The maintainer's own statement",
+                                              "valid_at: 2026-08-02\nsource: x"))
+            dupes = [f for f in validate.check_roles(d) if "duplicate" in f.message]
+            self.assertTrue(dupes)
+            self.assertTrue(all(f.since == 2 for f in dupes), dupes)
+
+    def test_the_named_holes_are_documented(self):
+        """The design names four things R1 must record rather than solve. A
+        limitation nobody wrote down is a claim by omission."""
+        text = (REPO / "docs" / "known-limitations.md").read_text(encoding="utf-8")
+        for phrase in ("intent-blind", "stale roster",
+                       "outside the constitution", "deleted roster"):
+            self.assertIn(phrase, text.lower(), phrase)
+
+    def test_resolution_is_two_way_and_exact(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._roster(d)
+            roster, _f = validate._load_roster(d, d)
+            self.assertEqual(validate._resolve_owner(roster, "Head of IT"),
+                             [("Sean Winslow", "human")])
+            self.assertEqual(validate._resolve_owner(roster, "Sean Winslow"),
+                             [("Sean Winslow", "human")])
+            self.assertEqual(validate._resolve_owner(roster, "head of it"), [])
+            self.assertEqual(validate._resolve_owner(roster, "Ada Byron"), [])
+            self.assertEqual(validate._resolve_owner(None, "Head of IT"), [])
+
+
+class TestRosterResolution(unittest.TestCase):
+    """Decision 2, held-to-activate: a rule with a rung must have every owner
+    field resolve against the roster. A draft may not. The safety-spine checks
+    that already run on drafts are untouched."""
+
+    def _inst(self, d, rule=RULE_OK, roster=ROSTER_OK):
+        _write(d, "governance/constitution/access.md", rule)
+        if roster is not None:
+            _write(d, "governance/roles.md", roster)
+
+    def test_active_rule_with_resolving_owners_is_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d)
+            self.assertEqual([f for f in validate.check_constitution(d)
+                              if f.level == "ERROR"], [])
+
+    def test_active_rule_with_an_unheld_owner_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, roster=ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                                   "| CISO |  |  |"))
+            errs = [f for f in validate.check_constitution(d) if f.level == "ERROR"]
+            self.assertTrue(any("does not resolve" in f.message and "value_owner" in f.message
+                                for f in errs), errs)
+
+    def test_active_rule_with_an_absent_owner_row_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, roster=ROSTER_OK.replace("| Head of IT | Sean Winslow | human |\n", ""))
+            errs = [f for f in validate.check_constitution(d) if f.level == "ERROR"]
+            self.assertTrue(any("does not resolve" in f.message and "'owner'" in f.message
+                                for f in errs), errs)
+
+    def test_person_named_owner_resolves_through_a_holder_only_row(self):
+        """Decision 1 is ADDITIVE: a person's name stays a valid owner."""
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d,
+                       rule=RULE_OK.replace("Head of IT", "Ruth Okafor").replace("CISO", "Ruth Okafor"),
+                       roster=ROSTER_OK.replace("| Head of IT | Sean Winslow | human |\n"
+                                                "| CISO | Sean Winslow | human |\n",
+                                                "|  | Ruth Okafor | human |\n"))
+            self.assertEqual([f for f in validate.check_constitution(d)
+                              if f.level == "ERROR"], [])
+
+    def test_active_rule_and_no_roster_is_one_error_not_a_scatter(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, roster=None)
+            errs = [f for f in validate.check_constitution(d) if f.level == "ERROR"]
+            self.assertEqual(len(errs), 1, errs)
+            self.assertIn("governance/roles.md", errs[0].path)
+            self.assertEqual(errs[0].since, 2)
+
+    def test_drafts_only_and_no_roster_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, rule=RULE_OK.replace("rung: human-decision\n", ""), roster=None)
+            findings = validate.check_constitution(d)
+            self.assertFalse(any(f.level == "ERROR" and "roles.md" in f.path for f in findings))
+            self.assertTrue(any(f.level == "WARN" and "roles.md" in f.path for f in findings))
+
+    def test_no_rules_at_all_needs_no_roster(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/constitution/README.md", "# rules\n")
+            self.assertEqual(validate.check_constitution(d), [])
+
+    def test_resolution_errors_carry_since_two(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, roster=ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                                   "| CISO |  |  |"))
+            errs = [f for f in validate.check_constitution(d)
+                    if f.level == "ERROR" and "does not resolve" in f.message]
+            self.assertTrue(errs)
+            self.assertTrue(all(f.since == 2 for f in errs))
+
+    def test_v1_pinned_content_demotes_to_a_warn_behind_the_boundary(self):
+        """The whole point of the since: mechanism: a v1 repo has no roster, so
+        the resolution ERROR must not scatter — the pin's boundary ERROR is the
+        one red line, and this is the finger-pointing behind it."""
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "co/groundwork.pin", "---\nschema_version: 1\n---\n")
+            _write(d, "co/governance/constitution/access.md", RULE_OK)
+            findings = validate.validate(d)
+            roster_errs = [f for f in findings
+                           if f.level == "ERROR" and "roles.md" in f.path]
+            self.assertEqual(roster_errs, [])
+            demoted = [f for f in findings
+                       if f.level == "WARN" and "roles.md" in f.path]
+            self.assertTrue(demoted)
+            self.assertIn("new since schema v2", demoted[0].message)
+
+    def test_the_engine_root_resolves_its_own_active_rule(self):
+        """R1 without an engine-root roster would turn groundwork's own gate red."""
+        errs = [f for f in validate.check_constitution(str(REPO)) if f.level == "ERROR"]
+        self.assertEqual(errs, [])
+
+
+class TestAppealReachesAHuman(unittest.TestCase):
+    """Decision 3: the human_appeal_owner must resolve to at least one HUMAN
+    holder — an appeal path that terminates in a model is not an appeal path.
+    Decision 5: a draft's gaps are named WARNs, not silence."""
+
+    AGENT_ROSTER = ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                     "| CISO | triage agent | agent |")
+
+    def _inst(self, d, rule=RULE_OK, roster=ROSTER_OK):
+        _write(d, "governance/constitution/access.md", rule)
+        if roster is not None:
+            _write(d, "governance/roles.md", roster)
+
+    def test_active_rule_with_an_agent_only_appeal_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, roster=self.AGENT_ROSTER)
+            errs = [f for f in validate.check_constitution(d) if f.level == "ERROR"]
+            self.assertTrue(any("terminates in a model" in f.message for f in errs), errs)
+
+    def test_high_risk_draft_with_an_agent_only_appeal_errors(self):
+        """The safety spine runs draft-time: an appeal owner that resolves to a
+        model is affirmatively wrong, not merely incomplete."""
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, rule=RULE_OK.replace("rung: human-decision\n", ""),
+                       roster=self.AGENT_ROSTER)
+            errs = [f for f in validate.check_constitution(d) if f.level == "ERROR"]
+            self.assertTrue(any("terminates in a model" in f.message for f in errs), errs)
+
+    def test_high_risk_draft_with_an_appeal_resolving_to_nobody_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, rule=RULE_OK.replace("rung: human-decision\n", ""),
+                       roster=ROSTER_OK.replace("| CISO | Sean Winslow | human |", "| CISO |  |  |"))
+            errs = [f for f in validate.check_constitution(d) if f.level == "ERROR"]
+            self.assertTrue(any("reaches no human" in f.message for f in errs), errs)
+
+    def test_non_high_risk_draft_with_an_agent_only_appeal_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, rule=RULE_OK.replace("rung: human-decision\n", "")
+                       .replace("action_class: high-risk", "action_class: reversible-write"),
+                       roster=self.AGENT_ROSTER)
+            findings = validate.check_constitution(d)
+            self.assertFalse(any(f.level == "ERROR" for f in findings), findings)
+            self.assertTrue(any(f.level == "WARN" and "terminates in a model" in f.message
+                                for f in findings))
+
+    def test_non_high_risk_draft_with_an_unresolved_appeal_warns_once(self):
+        """Decision 5's three classes do not overlap: 'does not resolve' is one
+        class, 'resolvable but wrongly typed' is another. An unresolved appeal
+        owner on a plain draft is the FIRST, and must not also raise the second."""
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, rule=RULE_OK.replace("rung: human-decision\n", "")
+                       .replace("action_class: high-risk", "action_class: reversible-write"),
+                       roster=ROSTER_OK.replace("| CISO | Sean Winslow | human |", "| CISO |  |  |"))
+            appeal = [f for f in validate.check_constitution(d)
+                      if "human_appeal_owner" in f.message]
+            self.assertEqual(len(appeal), 1, appeal)
+            self.assertEqual(appeal[0].level, "WARN")
+
+    def test_draft_missing_owner_fields_warn_by_name(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, rule=RULE_OK.replace("rung: human-decision\n", "")
+                       .replace("owner: Head of IT\n", "", 1)
+                       .replace("value_owner: CISO\n", ""))
+            warns = [f.message for f in validate.check_constitution(d) if f.level == "WARN"]
+            self.assertTrue(any("'owner'" in m for m in warns), warns)
+            self.assertTrue(any("'value_owner'" in m for m in warns), warns)
+
+    def test_draft_unresolved_owner_warns_by_name(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, rule=RULE_OK.replace("rung: human-decision\n", ""),
+                       roster=ROSTER_OK.replace("| Head of IT | Sean Winslow | human |\n", ""))
+            warns = [f.message for f in validate.check_constitution(d) if f.level == "WARN"]
+            self.assertTrue(any("does not resolve" in m and "'owner'" in m for m in warns), warns)
+
+    def test_the_existing_draft_spine_error_is_untouched(self):
+        """decision 2's verbatim guarantee: a high-risk draft with no appeal path
+        must not leave the gate green — the ANSWERED-fields check, unchanged."""
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, rule=RULE_OK.replace("rung: human-decision\n", "")
+                       .replace("human_appeal: A denied or delayed grant escalates to the "
+                                "CISO, who decides within one business day\n", "")
+                       .replace("human_appeal_owner: CISO\n", ""))
+            errs = [f for f in validate.check_constitution(d) if f.level == "ERROR"]
+            self.assertTrue(any("rung six" in f.message for f in errs))
+            self.assertIsNone([f for f in errs if "rung six" in f.message][0].since,
+                              "the pre-existing v1 spine ERROR must NOT carry since=2 — it "
+                              "keeps firing under any pin")
+
+    def test_high_risk_draft_with_no_roster_at_all_still_errors(self):
+        """Codex r1, BLOCKER: with no roster the appeal owner resolves to nobody,
+        which is decision 3's high-risk-draft ERROR. It used to exit green behind
+        the draft WARN and the aggregate missing-roster WARN."""
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, rule=RULE_OK.replace("rung: human-decision\n", ""), roster=None)
+            errs = [f for f in validate.check_constitution(d) if f.level == "ERROR"]
+            self.assertTrue(any("reaches no human" in f.message for f in errs), errs)
+
+    def test_plain_draft_with_no_roster_names_each_gap(self):
+        """Codex r1: decision 5 wants one NAMED WARN per gap. Four unresolved
+        owner fields must not collapse into the one aggregate roster WARN."""
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, rule=RULE_OK.replace("rung: human-decision\n", "")
+                       .replace("action_class: high-risk", "action_class: reversible-write"),
+                       roster=None)
+            warns = [f.message for f in validate.check_constitution(d) if f.level == "WARN"]
+            for field in validate._RULE_OWNER_FIELDS:
+                self.assertTrue(any("does not resolve" in m and "'%s'" % field in m
+                                    for m in warns), (field, warns))
+
+    def test_appeal_findings_carry_since_two(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._inst(d, roster=self.AGENT_ROSTER)
+            new = [f for f in validate.check_constitution(d)
+                   if "terminates in a model" in f.message]
+            self.assertTrue(new)
+            self.assertTrue(all(f.since == 2 for f in new))
 
 
 class TestActionClassGate(unittest.TestCase):
@@ -2572,13 +3427,34 @@ class TestHooks(unittest.TestCase):
 
 
 PIN_OK = """---
-schema_version: 1
+schema_version: 2
 generated_by_commit: 0123456789abcdef0123456789abcdef01234567
 ---
 """
 
 
 class TestVersionPin(unittest.TestCase):
+    def test_schema_version_is_two(self):
+        self.assertEqual(validate.SCHEMA_VERSION, 2)
+
+    def test_v1_pin_hits_one_migration_boundary_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "groundwork.pin", "---\nschema_version: 1\n---\n")
+            errs = [f for f in validate.check_version_pin(d) if f.level == "ERROR"]
+            self.assertEqual(len(errs), 1, errs)
+            self.assertIn("v1->v2", errs[0].message)
+
+    def test_the_boundary_error_never_demotes(self):
+        """It carries no since:, so it binds under every pin — it IS the boundary."""
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "groundwork.pin", "---\nschema_version: 1\n---\n")
+            errs = [f for f in validate.validate(d) if f.level == "ERROR"]
+            self.assertTrue(any("v1->v2" in f.message for f in errs), errs)
+
+    def test_the_demo_pin_is_migrated(self):
+        text = (REPO / "demo" / "groundwork.pin").read_text(encoding="utf-8")
+        self.assertIn("schema_version: 2", text)
+
     def test_current_pin_is_exactly_silent(self):
         with tempfile.TemporaryDirectory() as d:
             _write(d, "your-company/groundwork.pin", PIN_OK)
@@ -2586,14 +3462,14 @@ class TestVersionPin(unittest.TestCase):
 
     def test_skew_forward_is_exactly_one_migration_error(self):
         with tempfile.TemporaryDirectory() as d:
-            _write(d, "your-company/groundwork.pin", PIN_OK.replace("schema_version: 1", "schema_version: 0"))
+            _write(d, "your-company/groundwork.pin", PIN_OK.replace("schema_version: 2", "schema_version: 0"))
             errs = [f for f in validate.check_version_pin(d) if f.level == "ERROR"]
             self.assertEqual(len(errs), 1)
             self.assertIn("MIGRATIONS", errs[0].message)
 
     def test_reverse_skew_warns_not_errors(self):
         with tempfile.TemporaryDirectory() as d:
-            _write(d, "your-company/groundwork.pin", PIN_OK.replace("schema_version: 1", "schema_version: 2"))
+            _write(d, "your-company/groundwork.pin", PIN_OK.replace("schema_version: 2", "schema_version: 3"))
             findings = validate.check_version_pin(d)
             self.assertTrue(any(f.level == "WARN" and "pull the engine" in f.message for f in findings))
             self.assertFalse(any(f.level == "ERROR" for f in findings))
@@ -2607,7 +3483,7 @@ class TestVersionPin(unittest.TestCase):
 
     def test_non_integer_schema_version_errors(self):
         with tempfile.TemporaryDirectory() as d:
-            _write(d, "your-company/groundwork.pin", PIN_OK.replace("schema_version: 1", "schema_version: v1"))
+            _write(d, "your-company/groundwork.pin", PIN_OK.replace("schema_version: 2", "schema_version: v1"))
             self.assertTrue(any(f.level == "ERROR" and "integer" in f.message
                                 for f in validate.check_version_pin(d)))
 
@@ -2644,15 +3520,78 @@ class TestVersionPin(unittest.TestCase):
 
     def test_missing_commit_warns(self):
         with tempfile.TemporaryDirectory() as d:
-            _write(d, "your-company/groundwork.pin", "---\nschema_version: 1\n---\n")
+            _write(d, "your-company/groundwork.pin", "---\nschema_version: 2\n---\n")
             findings = validate.check_version_pin(d)
             self.assertTrue(any(f.level == "WARN" and "generated_by_commit" in f.message for f in findings))
             self.assertFalse(any(f.level == "ERROR" for f in findings))
 
     def test_validate_wires_pin(self):
         with tempfile.TemporaryDirectory() as d:
-            _write(d, "your-company/groundwork.pin", PIN_OK.replace("schema_version: 1", "schema_version: 0"))
+            _write(d, "your-company/groundwork.pin", PIN_OK.replace("schema_version: 2", "schema_version: 0"))
             self.assertTrue(any(f.level == "ERROR" and "MIGRATIONS" in f.message for f in validate.validate(d)))
+
+
+class TestSinceDemotion(unittest.TestCase):
+    """#21's per-check `since:` mechanism, wired at the v1->v2 bump. A finding
+    introduced at schema vN demotes ERROR -> WARN for content pinned below N.
+    The gate is NOT softened: a pin below the engine is already red at
+    check_version_pin's single migration-boundary ERROR, and these demoted WARNs
+    are the precise finger-pointing MIGRATIONS.md promises behind it."""
+
+    def test_finding_defaults_to_no_since(self):
+        f = validate.Finding("ERROR", "x.md", None, "m")
+        self.assertIsNone(f.since)
+
+    def test_pin_versions_maps_dirs_to_ints(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "co/groundwork.pin", "---\nschema_version: 1\n---\n")
+            self.assertEqual(validate._pin_versions(d), {"co": 1})
+
+    def test_root_pin_maps_to_the_empty_key(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "groundwork.pin", "---\nschema_version: 1\n---\n")
+            self.assertEqual(validate._pin_versions(d), {"": 1})
+
+    def test_malformed_pin_is_absent_not_lenient(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "co/groundwork.pin", "---\nschema_version: someday\n---\n")
+            self.assertEqual(validate._pin_versions(d), {})
+
+    def test_error_demotes_behind_an_older_pin(self):
+        f = validate.Finding("ERROR", "co/governance/roles.md", None, "m", 2)
+        out = validate.apply_since_demotion([f], {"co": 1})
+        self.assertEqual(out[0].level, "WARN")
+        self.assertIn("new since schema v2", out[0].message)
+        self.assertIn("pinned at v1", out[0].message)
+
+    def test_error_stands_at_the_pinned_version(self):
+        f = validate.Finding("ERROR", "co/governance/roles.md", None, "m", 2)
+        self.assertEqual(validate.apply_since_demotion([f], {"co": 2})[0].level, "ERROR")
+
+    def test_unpinned_content_is_never_demoted(self):
+        """The engine root carries no pin, so its own content is current by
+        definition — demoting there would silently disarm the engine's own gate."""
+        f = validate.Finding("ERROR", "governance/roles.md", None, "m", 2)
+        self.assertEqual(validate.apply_since_demotion([f], {"co": 1})[0].level, "ERROR")
+
+    def test_nearest_enclosing_pin_wins(self):
+        f = validate.Finding("ERROR", "co/inner/governance/roles.md", None, "m", 2)
+        out = validate.apply_since_demotion([f], {"co": 1, "co/inner": 2})
+        self.assertEqual(out[0].level, "ERROR")
+
+    def test_migrations_documents_the_mechanism_as_wired(self):
+        """MIGRATIONS.md scheduled this for 'when the first breaking bump to v2 is
+        authored'. This is that bump; the deferral text must not survive it."""
+        text = (REPO / "MIGRATIONS.md").read_text(encoding="utf-8")
+        self.assertNotIn("Deferred: per-check", text)
+        self.assertIn("Current schema version: 2", text)
+        self.assertIn("v1 → v2", text)
+
+    def test_warns_and_untagged_findings_pass_through_unchanged(self):
+        warn = validate.Finding("WARN", "co/x.md", None, "m", 2)
+        plain = validate.Finding("ERROR", "co/x.md", None, "m")
+        out = validate.apply_since_demotion([warn, plain], {"co": 1})
+        self.assertEqual(out, [warn, plain])
 
 
 class TestSymlinkedDirs(unittest.TestCase):
@@ -2887,6 +3826,37 @@ class TestProposals(unittest.TestCase):
             self.assertFalse(any(f.level == "ERROR" and "reason" in f.message for f in findings))
 
 
+class TestRosterProposalTarget(unittest.TestCase):
+    """Decision 8 makes the roster a third proposal target. `_proposal` is
+    defined below this point in the module; module globals resolve at call
+    time, so it is available here."""
+
+    def test_roster_is_a_valid_proposal_target(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/roles.md", ROSTER_OK)
+            _write(d, "proposals/p1.md", _proposal("governance/roles.md"))
+            self.assertFalse(any(f.level == "ERROR" and "must be a skill" in f.message
+                                 for f in validate.check_proposals(d)))
+
+    def test_a_roster_target_must_be_the_roster_not_a_prefix_of_it(self):
+        """Codex r9: the bucket test was a prefix match, so a symlinked target
+        resolving to governance/roles.md.backup was accepted."""
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/roles.md.backup", ROSTER_OK)
+            os.symlink(os.path.join(d, "governance", "roles.md.backup"),
+                       os.path.join(d, "governance", "roles.md"))
+            _write(d, "proposals/p1.md", _proposal("governance/roles.md"))
+            self.assertTrue(any(f.level == "ERROR" and "resolves outside" in f.message
+                                for f in validate.check_proposals(d)))
+
+    def test_a_roster_proposal_can_never_be_track1_body(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "governance/roles.md", ROSTER_OK)
+            _write(d, "proposals/p1.md", _proposal("governance/roles.md", "track1-body"))
+            self.assertTrue(any(f.level == "ERROR" and "roster" in f.message
+                                for f in validate.check_proposals(d)))
+
+
 class TestChangelog(unittest.TestCase):
     def test_empty_changelog_clean(self):
         with tempfile.TemporaryDirectory() as d:
@@ -2991,6 +3961,22 @@ class TestGovernedClassify(unittest.TestCase):
     def test_rule_paths_are_governed(self):
         self.assertEqual(validate._governed_class("governance/constitution/access.md"), "rule")
         self.assertEqual(validate._governed_class("governance/constitution/sub/access.md"), "rule")
+
+    def test_roster_is_its_own_governed_class(self):
+        self.assertEqual(validate._governed_class("governance/roles.md"), "roster")
+        self.assertEqual(validate._governed_class("Governance/Roles.md"), "roster")
+        self.assertIsNone(validate._governed_class("governance/sub/roles.md"))
+        self.assertIsNone(validate._governed_class("governance/changelog.md"))
+
+    def test_a_roster_change_always_escalates(self):
+        for kind in ("added", "modified"):
+            radius, detail = validate.classify_governed_change(kind, "roster", "a\n", "b\n")
+            self.assertEqual(radius, "escalating")
+            self.assertIn("roster", detail)
+
+    def test_an_untouched_roster_is_not_a_change(self):
+        self.assertEqual(validate.classify_governed_change("modified", "roster", "a\n", "a\n"),
+                         (None, None))
 
     def test_skill_md_and_package_files(self):
         self.assertEqual(validate._governed_class("skills/weekly-digest/SKILL.md"), "skill-md")
@@ -3128,7 +4114,7 @@ class TestChangelogAppendOnly(unittest.TestCase):
         self.assertTrue(validate._changelog_append_only(self.BASE.replace("\n", "\r\n"), self.BASE))
 
 
-PIN_OK = "---\nschema_version: 1\ngenerated_by_commit: abc1234\n---\n"
+PIN_OK = "---\nschema_version: 2\ngenerated_by_commit: abc1234\n---\n"
 
 CHANGELOG_OK = ("# Governance changelog\n\n## Entries\n\n"
                 "<!-- appended by the auto-apply track; none yet -->\n")
@@ -3529,6 +4515,190 @@ class TestBlastRadiusDiff(unittest.TestCase):
             finally:
                 validate.subprocess.run = real_run
             self.assertTrue(any(f.level == "ERROR" for f in findings))
+
+
+class TestRosterIsGoverned(unittest.TestCase):
+    """Decision 8: the roster decides who holds every active rule's owners and
+    where its human appeal terminates, so editing it is governance, not
+    bookkeeping. One exemption: an ADDITION in the same diff that moves the
+    root's pin v1 -> v2 is the sanctioned migration crossing."""
+
+    def _repo(self, d, pin="1"):
+        """A committed governed root with a rule and no roster."""
+        _git(d, "init", "-q")
+        _git(d, "config", "user.email", "t@t.t")
+        _git(d, "config", "user.name", "t")
+        _write(d, "groundwork.pin", "---\nschema_version: %s\n---\n" % pin)
+        _write(d, "governance/constitution/access.md", RULE_OK)
+        _git(d, "add", "-A")
+        _git(d, "commit", "-qm", "base")
+
+    def test_a_roster_added_without_the_pin_moving_is_escalating(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "governance/roles.md", ROSTER_OK)
+            errs = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                    if f.level == "ERROR" and "roles.md" in f.path]
+            self.assertTrue(any("no pending proposal" in f.message for f in errs), errs)
+
+    def test_the_migration_bootstrap_exempts_the_addition(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "governance/roles.md", ROSTER_OK)
+            _write(d, "groundwork.pin", "---\nschema_version: 2\n---\n")
+            self.assertEqual([f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                              if "roles.md" in f.path], [])
+
+    def test_a_modification_is_never_exempt_even_across_the_boundary(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "governance/roles.md", ROSTER_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "roster")
+            _write(d, "governance/roles.md", ROSTER_OK + "|  | Ada Byron | human |\n")
+            _write(d, "groundwork.pin", "---\nschema_version: 2\n---\n")
+            errs = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                    if f.level == "ERROR" and "roles.md" in f.path]
+            self.assertTrue(errs, "a roster modification is escalating, boundary or not")
+
+    def test_a_re_add_at_v2_is_gated(self):
+        """The delete-then-re-add route: a root already at v2 gets no bootstrap."""
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d, pin="2")
+            _write(d, "governance/roles.md", ROSTER_OK)
+            errs = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                    if f.level == "ERROR" and "roles.md" in f.path]
+            self.assertTrue(errs)
+
+    def test_a_case_rename_at_the_boundary_is_not_a_bootstrap(self):
+        """Codex r1: a v1 root that ALREADY has a roster could bump its pin while
+        respelling the file, so the base spelling reads as a deletion and the new
+        one as a bootstrap-exempt addition — laundering a modification through an
+        addition-only exemption. A root with a roster at base never bootstraps."""
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "governance/roles.md", ROSTER_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "roster")
+            os.remove(os.path.join(d, "governance", "roles.md"))
+            _write(d, "governance/Roles.md", ROSTER_OK + "|  | Ada Byron | human |\n")
+            _write(d, "groundwork.pin", "---\nschema_version: 2\n---\n")
+            errs = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                    if f.level == "ERROR" and "oles.md" in f.path]
+            self.assertTrue(errs, "the respelled roster was exempted as a bootstrap addition")
+
+    def test_an_ancestor_symlink_at_base_is_not_a_bootstrap(self):
+        """Codex r2: a v1 base whose `governance` is a symlink already exposes a
+        roster the base FILE LIST never names, so replacing the symlink with a
+        real directory at the boundary made a modified roster look like an
+        exempt addition."""
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "groundwork.pin", "---\nschema_version: 1\n---\n")
+            _write(d, "real/constitution/access.md", RULE_OK)
+            _write(d, "real/roles.md", ROSTER_OK)
+            os.symlink("real", os.path.join(d, "governance"))
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "base")
+            os.remove(os.path.join(d, "governance"))
+            shutil.copytree(os.path.join(d, "real"), os.path.join(d, "governance"))
+            _write(d, "governance/roles.md",
+                   ROSTER_OK.replace("| CISO | Sean Winslow | human |",
+                                     "| CISO | triage agent | agent |"))
+            _write(d, "groundwork.pin", "---\nschema_version: 2\n---\n")
+            errs = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                    if f.level == "ERROR" and "roles.md" in f.path]
+            self.assertTrue(errs, "a roster reachable at base was exempted as a bootstrap")
+
+    def test_a_symlinked_roster_finding_demotes_behind_a_v1_pin(self):
+        """Codex r2: the pre-classification findings (symlink, unreadable,
+        deletion) were emitted before the roster's since=2 was computed, so a
+        v1-pinned root got an undemoted ERROR beside its boundary ERROR."""
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            os.symlink(os.path.join(d, "governance", "constitution", "access.md"),
+                       os.path.join(d, "governance", "roles.md"))
+            findings = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                        if "roles.md" in f.path]
+            self.assertTrue(findings)
+            self.assertTrue(all(f.since == 2 for f in findings), findings)
+
+    def test_an_unreadable_roster_finding_demotes_behind_a_v1_pin(self):
+        """Codex r3: the round-2 tagging covered the symlink branch but not the
+        working-tree read failure, so a non-UTF-8 roster stayed an undemoted
+        ERROR beside the migration-boundary ERROR."""
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write_bytes(d, "governance/roles.md", b"---\nvalid_at: 2026-01-01\n---\n\xff\xfe")
+            findings = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                        if "roles.md" in f.path]
+            self.assertTrue(findings)
+            self.assertTrue(all(f.since == 2 for f in findings), findings)
+
+    def test_a_malformed_base_pin_does_not_authorize_the_bootstrap(self):
+        """Codex r5: parse_frontmatter returns a value beside its ERROR — a
+        duplicate key keeps the first — so a broken v1 pin still read as 1 and
+        bought decision 8's proposal-free exemption."""
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "groundwork.pin", "---\nschema_version: 1\nschema_version: 9\n---\n")
+            _write(d, "governance/constitution/access.md", RULE_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "base")
+            _write(d, "governance/roles.md", ROSTER_OK)
+            _write(d, "groundwork.pin", "---\nschema_version: 2\n---\n")
+            errs = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                    if f.level == "ERROR" and "roles.md" in f.path]
+            self.assertTrue(errs, "a malformed base pin authorized the bootstrap exemption")
+
+    def test_a_symlinked_pin_does_not_authorize_the_bootstrap(self):
+        """Codex r7: the bootstrap followed a working-tree pin symlink, so a v1
+        root could point at v2 text and take the exemption without committing an
+        auditable v2 pin."""
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "elsewhere.pin", "---\nschema_version: 2\n---\n")
+            os.remove(os.path.join(d, "groundwork.pin"))
+            os.symlink(os.path.join(d, "elsewhere.pin"), os.path.join(d, "groundwork.pin"))
+            _write(d, "governance/roles.md", ROSTER_OK)
+            errs = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                    if f.level == "ERROR" and "roles.md" in f.path]
+            self.assertTrue(errs, "a symlinked pin authorized the bootstrap exemption")
+
+    def test_a_matching_proposal_clears_a_roster_change(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "governance/roles.md", ROSTER_OK)
+            _write(d, "proposals/p1.md", _proposal("governance/roles.md"))
+            self.assertEqual([f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                              if f.level == "ERROR" and "roles.md" in f.path], [])
+
+    def test_the_roster_gate_carries_since_two(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "governance/roles.md", ROSTER_OK)
+            gov = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                   if "roles.md" in f.path]
+            self.assertTrue(gov)
+            self.assertTrue(all(f.since == 2 for f in gov))
+
+    def test_a_deleted_roster_stays_a_warn(self):
+        """Deletions keep the documented WARN-only limitation all three governed
+        families share. Gating them was weighed and declined as a larger redesign."""
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d)
+            _write(d, "governance/roles.md", ROSTER_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "roster")
+            os.remove(os.path.join(d, "governance", "roles.md"))
+            findings = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                        if "roles.md" in f.path]
+            self.assertTrue(findings)
+            self.assertTrue(all(f.level == "WARN" for f in findings), findings)
 
 
 class TestAgentsChain(unittest.TestCase):
@@ -5123,6 +6293,10 @@ class TestNestedInstanceGovernance(unittest.TestCase):
     def test_clean_nested_rule_is_silent(self):
         with tempfile.TemporaryDirectory() as d:
             _write(d, "demo/governance/constitution/r.md", RULE_OK)
+            # From v2 on, "clean" for an ACTIVE rule includes owners that
+            # resolve — and resolution follows the instance, so the nested
+            # instance needs its OWN roster (the point this class exists to pin).
+            _write(d, "demo/governance/roles.md", ROSTER_OK)
             self.assertEqual([f for f in validate.check_constitution(d)
                               if f.level == "ERROR"], [])
 
@@ -6364,7 +7538,8 @@ file only routes.
 
 ## Proposing a change
 
-An agent may propose a change to a skill or a rule by writing a file in `proposals/`.
+An agent may propose a change to a skill, a rule, or the roster by writing a file in
+`proposals/`.
 Only the maintainer lands one. The rules that bind every agent, including the review
 gate on high-risk actions, are in `governance/`.
 
@@ -6396,6 +7571,15 @@ The interview is complete: five layers confirmed, committed, and generated from.
 Sales, engineering, and legal have executive views and nothing deeper — depth is
 earned by acting, not by planning to act.
 """
+
+    def test_the_manifest_specifies_the_roster_and_the_v2_pin(self):
+        """generate.md is the manifest a generator follows. If it still says
+        schema_version: 1, or never mentions the roster, a run against the R1
+        engine produces a repo that fails the gate on its first command."""
+        text = (REPO / "interview" / "generate.md").read_text(encoding="utf-8")
+        self.assertIn("schema_version: 2", text)
+        self.assertNotIn("schema_version: 1", text)
+        self.assertIn("governance/roles.md", text)
 
     def _unlink(self, dest, rel, target):
         """Rewrite [text](target) links in the copied file `rel` to plain text."""

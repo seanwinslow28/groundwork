@@ -22,7 +22,8 @@ it is also the allowlist every identifier here is checked against.
   captured baselines.
 - [`skills/`](skills/README.md) — four work packages, each a `SKILL.md` plus an Owner's
   Card naming a real person, citing the baseline captured before it was provisioned.
-- [`governance/`](governance/README.md) — three rules on three rungs, plus
+- [`governance/`](governance/README.md) — three rules on three rungs, the
+  [roster](governance/roles.md) their owners resolve against, plus
   [one runnable rule](governance/reminders/meeting-challenger/) you can pipe
   JSON into today.
 - [`interview/`](interview/00-manifest.md) — the interview this OS was generated from:
@@ -33,8 +34,8 @@ it is also the allowlist every identifier here is checked against.
 - [`proposals/`](proposals/refusal-names-next-step.md) — one pending proposal, waiting
   on a human. It is what an agent produces when a rule tells it no.
 - `groundwork.pin` — what makes this directory a **governed** instance rather than
-  example content: the validator's `--diff` mode holds changes to its skills and rules
-  to the same consent gate a real company repo gets.
+  example content: the validator's `--diff` mode holds changes to its skills, rules, and
+  roster to the same consent gate a real company repo gets.
 
 ## What this is not
 

@@ -31,8 +31,8 @@ transcript audited; nobody has run them on a real company — see `docs/known-li
   external-side-effect (`onboarding-orchestration`) and two reversible-write
   (`renewal-prep`, `feature-request-triage`), each with its `SKILL.md` and
   `owner-card.md`.
-- `governance/` — the constitution rule schema with one compiled rule, the
-  action-class hook set, and the append-only changelog.
+- `governance/` — the constitution rule schema with one compiled rule, the roster
+  holding its owners, the action-class hook set, and the append-only changelog.
 - `memory/` — the org-memory record schema with three captured baselines and an index.
 - `interview/` — the interview end to end, as documents: the **state format** (#9), the
   **consultant protocol** (§4), the **question skeleton** mapped onto the fields each
@@ -42,9 +42,10 @@ transcript audited; nobody has run them on a real company — see `docs/known-li
 - `proposals/` — the consent-gate convention for agent-proposed changes.
 - `demo/` — the pre-installed example company (**Umbercress**, ~20 people), complete:
   canon, eight executive views, seven deep records, org memory, four work packages,
-  three constitution rules, one runnable rung-3 reminder, one pending proposal, and the
+  three constitution rules and the roster that holds their owners, one runnable rung-3
+  reminder, one pending proposal, and the
   15-minute three-query walkthrough. It carries a `groundwork.pin`, so it is a
-  **governed root** — changes to its skills and rules run the #18 consent gate exactly
+  **governed root** — changes to its skills, rules, and roster run the #18 consent gate exactly
   as a company repo's would.
 - `delivery/` — the provisioning guide: the repo-local symlink layer that gives generated
   skills a harness-visible path in all four harnesses, the organization plugin upload and
@@ -60,7 +61,7 @@ transcript audited; nobody has run them on a real company — see `docs/known-li
 | `CONTEXT.md` | The glossary. Every resolved decision's vocabulary. Read this first. |
 | `ontologies/` | One directory per function. All 8 executive views; `people-hr/`, `customer-success/`, `product/`, and `engineering/` also carry a worked deep record. |
 | `skills/` | Work packages: `skills/<name>/SKILL.md` + `owner-card.md`. |
-| `governance/` | `constitution/` (typed rules), `hooks/` (the action-class gate), `changelog.md`. |
+| `governance/` | `constitution/` (typed rules), `roles.md` (who holds each owner), `hooks/` (the action-class gate), `changelog.md`. |
 | `memory/` | Org-memory records, one per file, with an index. |
 | `interview/` | The state format (#9), the consultant protocol (§4), the question skeleton, and the generation protocol (#10). |
 | `delivery/` | The provisioning guide: making a generated OS loadable, and distributing it. |

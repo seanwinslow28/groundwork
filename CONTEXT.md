@@ -54,11 +54,11 @@ _Avoid_: manual fields, human override
 ### Improvement proposals (three-bucket routing — ticket #17)
 
 **Improvement proposal**:
-An agent-authored proposed change to a skill or a constitution rule — the only two artifact kinds the three buckets route. Memory records, Owner's Cards, and ontology worksheets keep their own governance; a memory enters this routing only at the moment it graduates into a proposed rule/skill change.
+An agent-authored proposed change to a skill, a constitution rule, or the roles roster — the three artifact kinds the three buckets route. Memory records, Owner's Cards, and ontology worksheets keep their own governance; a memory enters this routing only at the moment it graduates into a proposed change to one of the three.
 _Avoid_: suggestion, self-improvement (the ungated kind is banned)
 
 **Blast-radius boundary**:
-The auto-apply test: a proposal auto-applies exactly when a bad version's worst case is bounded — a body-only edit to a track-1 (read-only / reversible-write) skill. Anything touching the description, governance frontmatter, or Owner's Card, or any change to a track-2 skill or a rule, escalates.
+The auto-apply test: a proposal auto-applies exactly when a bad version's worst case is bounded — a body-only edit to a track-1 (read-only / reversible-write) skill. Anything touching the description, governance frontmatter, or Owner's Card, any change to a track-2 skill or a rule, and any change to the roles roster, escalates.
 _Avoid_: low-risk (undefined on its own), trivial change
 
 **Proposal schema**:
@@ -118,7 +118,7 @@ The real enforcement layer: only the git-capable maintainer can *land* a change 
 _Avoid_: validator enforcement (the validator is a tripwire, not the teeth), branch protection
 
 **Blast-radius match check**:
-The validator `--diff` tripwire #18 adds: an escalating change (rule / track-2 skill / description / governance frontmatter / Owner's Card, per #17's boundary) must trace to an approved proposal whose *declared* blast-radius matches what the diff *actually* touches — mismatch or missing-proposal is an ERROR. Stops an agent smuggling a rule edit inside a proposal labelled "track-1 body-only." Cannot verify a human *truthfully* reviewed — that is the commit bit's job.
+The validator `--diff` tripwire #18 adds: an escalating change (rule / roster / track-2 skill / description / governance frontmatter / Owner's Card, per #17's boundary) must trace to an approved proposal whose *declared* blast-radius matches what the diff *actually* touches — mismatch or missing-proposal is an ERROR. Stops an agent smuggling a rule edit inside a proposal labelled "track-1 body-only." Cannot verify a human *truthfully* reviewed — that is the commit bit's job.
 _Avoid_: consent check (overstates what a stateless validator can prove)
 
 ### Synthetic-demo verification (demo data conventions — ticket #16)

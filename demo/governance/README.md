@@ -14,6 +14,18 @@ The rungs are the point. A reminder nudges and gets out of the way. A hard block
 the action. A human-owned decision never terminates in automation at all — which is why
 that rule carries a named appeal path. There is no rung six.
 
+## Who holds the owners
+
+[roles.md](roles.md) is the roster: every owner these three rules name resolves against it.
+These rules name people rather than offices, so every row is a holder with the Role cell
+left empty — a name, no role asserted. That is what makes `owner: Ruth Okafor` resolve. The
+offices those people hold are in [canon.md](../canon.md); no rule references one, so the
+roster asserts none.
+
+Its `review_by` has passed, and the gate says so. That is deliberate: the date is the
+90-day policy default, because nothing in the interview asked how often the org map should
+be re-confirmed, and a roster nobody has re-confirmed since May should not look fresh.
+
 ## What is runnable here
 
 One of the three ships as working machinery:

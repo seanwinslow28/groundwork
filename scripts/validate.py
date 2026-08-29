@@ -18,7 +18,11 @@ import sys
 import unicodedata
 from collections import namedtuple
 
-Finding = namedtuple("Finding", ["level", "path", "line", "message"])
+# `since` is the SCHEMA_VERSION a check was introduced at (#21's per-check
+# demotion), and defaults to None: a check that predates versioning binds every
+# pin. See apply_since_demotion.
+Finding = namedtuple("Finding", ["level", "path", "line", "message", "since"],
+                     defaults=(None,))
 
 SKIP_DIRS = {".git", ".remember", "__pycache__"}
 # Non-content trees, relative to the validated root: the validator's own test
@@ -27,7 +31,7 @@ SKIP_DIRS = {".git", ".remember", "__pycache__"}
 # Everything else is checked at full strictness.
 SKIP_RELPATHS = {"tests", os.path.join("docs", "superpowers")}
 
-SCHEMA_VERSION = 1  # bumped ONLY on a breaking schema change (#21). Never on additive commits.
+SCHEMA_VERSION = 2  # bumped ONLY on a breaking schema change (#21). Never on additive commits.
 
 
 def parse_frontmatter(text, path="<unknown>"):
@@ -1811,6 +1815,9 @@ def _substantive_line(ln):
 # its own message). Required in full once a rule is active (rung-placed).
 _RULE_OBJECT_FIELDS = ["value", "value_owner", "runtime_check", "runtime_check_owner",
                        "human_appeal", "human_appeal_owner"]
+# The four owner fields decision 2 requires to resolve once a rule is active.
+# `owner` is checked with its own message and is not in _RULE_OBJECT_FIELDS.
+_RULE_OWNER_FIELDS = ["owner", "value_owner", "runtime_check_owner", "human_appeal_owner"]
 _H1 = re.compile(r"^# \S", re.MULTILINE)
 
 
@@ -1835,6 +1842,10 @@ def _check_constitution_instance(inst, root, ignore=()):
     if _ignored("governance", ignore) or _ignored("constitution", ignore):
         return findings
     today = datetime.date.today()
+    # The roster resolves owner values. Its OWN findings belong to check_roles,
+    # so they are discarded here — one malformed roster is reported once.
+    roster, _rf = _load_roster(inst, root)
+    rules_seen = active_seen = False
     for name in sorted(os.listdir(base)):
         if not name.endswith(".md") or name in {"README.md", "_index.md"} \
                 or _ignored(name, ignore):
@@ -1854,8 +1865,28 @@ def _check_constitution_instance(inst, root, ignore=()):
         # with no appeal path must not leave the gate green.
         rung = data.get("rung")
         active = not _blank(rung)
+        rules_seen = True
+        active_seen = active_seen or active
         if not active:
             findings.append(Finding("WARN", rel, None, "rule not yet placed on a rung (draft)"))
+            # Decision 5, hole (a): a draft's gaps are named, not silent. Two
+            # classes here — a missing owner field, and one that does not resolve.
+            # The third (a resolvable but agent-only appeal owner) is below, with
+            # the rest of the appeal tiering.
+            for field in _RULE_OWNER_FIELDS:
+                v = data.get(field)
+                if not (isinstance(v, str) and _answered(v)):
+                    findings.append(Finding("WARN", rel, None,
+                                            "draft rule has no answered '%s' — an owner field "
+                                            "with no answer" % field, 2))
+                elif not _resolve_owner(roster, v):
+                    # No roster at all resolves to nothing, and decision 5 wants
+                    # the gap NAMED rather than collapsed into the aggregate
+                    # missing-roster WARN (Codex r1). _resolve_owner already
+                    # takes roster=None.
+                    findings.append(Finding("WARN", rel, None,
+                                            "draft rule's '%s' (%s) does not resolve in the "
+                                            "roster (unheld)" % (field, v.strip()), 2))
         else:
             if not (isinstance(rung, str) and rung in RUNGS):
                 findings.append(Finding("ERROR", rel, None,
@@ -1879,6 +1910,19 @@ def _check_constitution_instance(inst, root, ignore=()):
                 elif not _answered(v):
                     findings.append(Finding("ERROR", rel, None,
                                             "'%s' is a placeholder, not an answer" % field))
+            # Decision 2: held-to-activate. Only when a roster exists — with none,
+            # the single missing-roster ERROR below is the whole message, never a
+            # scatter of four.
+            if roster is not None:
+                for field in _RULE_OWNER_FIELDS:
+                    v = data.get(field)
+                    if not (isinstance(v, str) and _answered(v)):
+                        continue  # already ERRORed as missing or a placeholder
+                    if not _resolve_owner(roster, v):
+                        findings.append(Finding("ERROR", rel, None,
+                                                "active rule's '%s' (%s) does not resolve in "
+                                                "the roster — a role must be held to activate"
+                                                % (field, v.strip()), 2))
             # the rule statement is the H1 plus a substantive body, not a bare
             # title over placeholders, separators, or comments
             rendered = _HTML_COMMENT.sub("", body)
@@ -1909,6 +1953,34 @@ def _check_constitution_instance(inst, root, ignore=()):
             findings.append(Finding("ERROR", rel, None,
                                     "high-risk rule must carry a human-appeal path with an owner "
                                     "(there is no rung six)"))
+
+        # Decision 3: the human appeal must reach a HUMAN. Tiering, by the tiers
+        # that already exist: ERROR on any active rule, ERROR on a high-risk
+        # draft (the safety spine runs draft-time), WARN on a plain draft
+        # (decision 5's third class). The 'resolves to nothing' case is NOT
+        # repeated here for an active rule (the activation ERROR names it) or for
+        # a plain draft (decision 5's second class names it) — only a high-risk
+        # draft needs it, where neither of those fires as an ERROR.
+        # NOT guarded on a roster existing (Codex r1, BLOCKER): with no roster an
+        # answered appeal owner resolves to nobody, which is exactly decision 3's
+        # high-risk-draft ERROR. Guarding it let a high-risk draft with a missing
+        # roster exit green behind two WARNs.
+        high_risk = isinstance(ac, str) and ac == "high-risk"
+        hao = data.get("human_appeal_owner")
+        if isinstance(hao, str) and _answered(hao):
+            held = _resolve_owner(roster, hao)
+            if not held:
+                if high_risk and not active:
+                    findings.append(Finding("ERROR", rel, None,
+                                            "high-risk rule's 'human_appeal_owner' (%s) reaches "
+                                            "no human — it resolves to nobody, and an appeal "
+                                            "that reaches nobody is not an appeal path"
+                                            % hao.strip(), 2))
+            elif not any(t == "human" for _h, t in held):
+                findings.append(Finding("ERROR" if (active or high_risk) else "WARN", rel, None,
+                                        "'human_appeal_owner' (%s) resolves only to agent "
+                                        "holders — an appeal path that terminates in a model "
+                                        "is not an appeal path" % hao.strip(), 2))
         sunset = data.get("sunset")
         if _blank(sunset):
             findings.append(Finding("WARN", rel, None, "missing sunset date"))
@@ -1929,6 +2001,394 @@ def _check_constitution_instance(inst, root, ignore=()):
                 findings.append(Finding("ERROR", rel, None,
                                         "orphan-prohibition: a repealed ritual's surviving job must be "
                                         "reassigned ('surviving_job' + 'reassigned_to') before the repeal ships"))
+
+    if rules_seen and roster is None:
+        rel_roster = os.path.relpath(os.path.join(inst, *ROSTER_REL), root)
+        if active_seen:
+            findings.append(Finding("ERROR", rel_roster, None,
+                                    "an active constitution rule needs a roster — "
+                                    "governance/roles.md must say who holds every owner "
+                                    "it names (a role must be held to activate)", 2))
+        else:
+            findings.append(Finding("WARN", rel_roster, None,
+                                    "no governance/roles.md — a draft rule's owners resolve "
+                                    "against nothing until the roster exists", 2))
+    return findings
+
+
+
+# --- The roles roster (R1 / decision 4) -----------------------------------
+# One file per validated instance. It is the ONLY place resolution happens, so
+# it is one place to go stale — and a dated one. Written inline in every rule's
+# frontmatter instead, it would build the parallel-site drift class into every
+# adopter repo.
+ROSTER_REL = ("governance", "roles.md")
+ROSTER_FIELDS = ("valid_at", "review_by", "source")
+HOLDER_TYPES = {"human", "agent"}
+ROSTER_HEADER = ["role", "holder", "type"]
+# What a roster body may not contain, as flat line patterns. Five review rounds
+# argued for this shape: every attempt to decide what RENDERS — masking fenced
+# regions, measuring fence length, stripping blockquote markers — was wrong in
+# at least one direction, because that is CommonMark emulation and CommonMark is
+# large. These are checked against the raw line with no container semantics at
+# all, so there is nothing to be subtly wrong about. Over-catching is accepted
+# and documented in governance/README.md; a roster body is a few lines of prose
+# and one table, and none of these constructs belongs in it.
+# Characters that render as nothing (or as blank) while carrying a VISIBLE
+# general category, so no category test finds them: the Hangul fillers (Lo), the
+# Braille blank (So), the variation selectors and the combining grapheme joiner
+# (Mn), and the Mongolian and Khmer invisible marks. Round 8 claimed a category
+# check was complete by construction; round 9 disproved it with exactly these.
+_INVISIBLE_EXTRAS = frozenset(
+    "\u034f\u115f\u1160\u17b4\u17b5\u180b\u180c\u180d\u180e\u2800\u3164\uffa0"
+    + "".join(chr(c) for c in range(0xFE00, 0xFE10)))
+# Zero-width non-joiner and joiner: REQUIRED inside some Persian and Indic
+# names, and invisible anywhere else. Allowed only between two letters.
+_ZERO_WIDTH_JOINERS = ("\u200c", "\u200d")
+
+
+def _invisible_char(s):
+    """The first character in s that renders as nothing, renders as a space it is
+    not, or reorders what surrounds it — or None.
+
+    THIS IS HIGH-SIGNAL, NOT EXHAUSTIVE, and docs/known-limitations.md says so.
+    Round 7 enumerated ranges and missed U+061C; round 8 replaced that with a
+    Unicode category test and called it complete by construction; round 9
+    disproved that with U+034F and U+FE0F (Mn), the Hangul fillers (Lo), and
+    U+2800 (So). Visibility is a property of fonts and renderers, not of the
+    character database, so no local check can decide it. This one refuses the
+    invisible categories, names the known invisible-but-visibly-categorised
+    characters, and the caller additionally requires a cell to carry at least one
+    letter or digit — three overlapping nets rather than one claim of
+    completeness.
+
+    Tab and carriage return pass: a tab is visible whitespace that _canonical_row
+    strips from a cell, and a CR is a line ending the caller has not normalized."""
+    for i, ch in enumerate(s):
+        if ch in "\t\r":
+            continue
+        if ch in _ZERO_WIDTH_JOINERS:
+            prev = s[i - 1] if i else ""
+            nxt = s[i + 1] if i + 1 < len(s) else ""
+            if prev and nxt and unicodedata.category(prev).startswith("L") \
+                    and unicodedata.category(nxt).startswith("L"):
+                continue
+            return ch
+        if ch in _INVISIBLE_EXTRAS:
+            return ch
+        cat = unicodedata.category(ch)
+        if cat in ("Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp"):
+            return ch
+        if cat == "Zs" and ch != " ":
+            return ch
+    return None
+
+
+def _has_letter_or_digit(s):
+    """A role or holder names something, so it carries at least one letter or
+    digit. The third net under _invisible_char: it refuses a cell built entirely
+    from marks, symbols or punctuation without needing to know which of those
+    render."""
+    return any(unicodedata.category(ch)[0] in "LN" for ch in s)
+
+
+# Entries are (matcher, why): a compiled pattern, or a predicate over the line.
+_ROSTER_FORBIDDEN = (
+    (re.compile(r"`"),
+     "a backtick — a code span can run across lines and render a whole table as "
+     "code, and a backtick fence can hide one outright"),
+    (re.compile(r"~{2,}"),
+     "a run of tildes — a code fence can hide a table, and '~~' is strikethrough, "
+     "which makes a cell read as something other than what it stores"),
+    (lambda ln: _invisible_char(ln) is not None,
+     "an invisible or bidirectional control character — a holder must be text a "
+     "reader can see and read in the order it is written"),
+    (re.compile(r"<[A-Za-z/!?]"),
+     "an angle-bracket construct — an HTML tag, comment, doctype, CDATA section "
+     "or processing instruction can hide a table, and an autolink is refused "
+     "with them so the rule stays one a reader can check; write a plain URL or "
+     "an ordinary Markdown link"),
+    (re.compile(re.escape(_LINK_REF_SIG)),
+     "a link reference definition — it renders nothing and its title can span "
+     "lines, so a whole table can hide inside one"),
+    (re.compile(r"&(#[0-9]+|#[xX][0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]*);"),
+     "a character reference — it renders as something other than what is "
+     "written, so a holder can be text the reader cannot see"),
+)
+
+# roles: {role -> [holder, ...]}, where [] is a declared-but-unheld role.
+# holders: {holder -> "human" | "agent"}.
+Roster = namedtuple("Roster", ["roles", "holders"])
+
+
+def _parse_roster(text, rel):
+    """Parse one governance/roles.md into (Roster, findings).
+
+    The table grammar is _canonical_row — the SAME one the executive view uses.
+    A second table grammar in this repo is a decision nobody should make twice.
+
+    The scan starts after the frontmatter block, and the body is a RESTRICTED
+    GRAMMAR: one table, and no fence, HTML comment, or HTML tag anywhere. That
+    is the executive view's doctrine (parse_exec_table), and it is here because
+    the alternative failed three times. Round 1 scanned every canonical-looking
+    line, so a fenced example row was a live holder. Round 2 bounded the table,
+    but a table living entirely inside a fence still parsed. Round 3's masking
+    fix then broke two ways at once (Codex r3): normalizing a fence opener to
+    three characters let ``` close a ```` fence, and splicing a comment out of a
+    line MANUFACTURED a canonical row from source that was never a table row.
+
+    Forbidding the constructs outright removes the whole class rather than
+    handling it — there is nothing to hide a table inside, and nothing whose
+    removal can synthesize a row. Every line is read exactly as written.
+
+    Every finding here carries since=2. The roster does not exist below v2, so a
+    v1-pinned repo could not have met any of these requirements."""
+    findings = []
+    data, _body, fm = _frontmatter_and_body(text, rel)
+    # The reader's own findings are re-tagged, not appended raw (Codex r1): a
+    # roster cannot exist below v2, so a malformed one must demote behind an
+    # older pin like every other finding about this file.
+    findings += [f._replace(since=2) for f in fm]
+    today = datetime.date.today()
+
+    for field in ROSTER_FIELDS:
+        v = data.get(field)
+        if not (isinstance(v, str) and _answered(v)):
+            findings.append(Finding("ERROR", rel, None,
+                                    "roster missing '%s' — the roster is dated content "
+                                    "(valid_at, review_by, source), org-memory style" % field, 2))
+            continue
+        if field == "source":
+            continue
+        d = _parse_date(v)
+        if d is None:
+            findings.append(Finding("ERROR", rel, None,
+                                    "roster '%s' is not an ISO date (YYYY-MM-DD)" % field, 2))
+        elif field == "valid_at" and d > today:
+            findings.append(Finding("ERROR", rel, None,
+                                    "roster 'valid_at' is in the future — it records when "
+                                    "the mapping was last confirmed, never a plan", 2))
+        elif field == "review_by" and d < today:
+            findings.append(Finding("WARN", rel, None,
+                                    "roster 'review_by' has passed — who holds what may "
+                                    "have drifted", 2))
+
+    # ONE canonical table, with a boundary — the executive view's doctrine
+    # (parse_exec_table), applied to the second table surface. Scanning every
+    # canonical-looking line in the raw file made a fenced or comment-wrapped
+    # EXAMPLE row a live holder, and silently dropped a visible row missing its
+    # trailing pipe (Codex r1). Under a bounded single table the whole class —
+    # decoy tables, fenced examples, blockquoted rows — is unreachable rather
+    # than handled. The scan starts after the frontmatter so a '|' in a `source`
+    # value cannot hijack the block.
+    roles, holders = {}, {}
+    lines = text.split("\n")
+    body_start = 0
+    if lines and lines[0].strip() == "---":
+        for k in range(1, len(lines)):
+            if lines[k].strip() == "---":
+                body_start = k + 1
+                break
+
+    # Nothing a reader does not see may supply a holder. Forbidden constructs are
+    # refused outright rather than interpreted — see _ROSTER_FORBIDDEN.
+    for n in range(body_start, len(lines)):
+        for matcher, why in _ROSTER_FORBIDDEN:
+            hit = matcher(lines[n]) if callable(matcher) else matcher.search(lines[n])
+            if hit:
+                findings.append(Finding("ERROR", rel, n + 1,
+                                        "a roster body carries no %s" % why, 2))
+                return Roster(roles, holders), findings
+
+    pipe = [n for n in range(body_start, len(lines)) if "|" in lines[n]]
+    if not pipe:
+        findings.append(Finding("ERROR", rel, None,
+                                "roster has no '| Role | Holder | Type |' table", 2))
+        return Roster(roles, holders), findings
+    start = pipe[0]
+    # A GFM table runs to the next BLANK line, and a pipe-less line inside it is
+    # still a row — so ending the block at the last pipe left rows a reader sees
+    # invisible to the parser, which is how a namespace collision slipped past
+    # (Codex r7, BLOCKER). The block is the contiguous non-blank run, and every
+    # line in it must be canonical.
+    # Blankness is CommonMark's — only spaces and tabs (Codex r8). str.strip()
+    # also strips U+00A0, which is NOT a blank line to a renderer, so an NBSP
+    # line ended the block early and hid every row after it. A CR is tolerated
+    # so a CRLF file's blank lines are still blank.
+    def _blank_line(ln):
+        return ln.strip(" \t\r") == ""
+
+    if start == body_start or not _blank_line(lines[start - 1]):
+        findings.append(Finding("ERROR", rel, start + 1,
+                                "the roster table needs a blank line above it — without one "
+                                "it can read as a continuation of what precedes it rather "
+                                "than as a table", 2))
+        return Roster(roles, holders), findings
+    end = start
+    while end + 1 < len(lines) and not _blank_line(lines[end + 1]):
+        end += 1
+    outside = [n for n in pipe if not (start <= n <= end)]
+    if outside:
+        findings.append(Finding("ERROR", rel, outside[0] + 1,
+                                "a roster holds exactly one table; a block was read from "
+                                "line %d to line %d and this line carries a '|' outside "
+                                "it — an example row must never be readable as a holder"
+                                % (start + 1, end + 1), 2))
+        return Roster(roles, holders), findings
+    header = _canonical_row(lines[start])
+    if header is None or [c.casefold() for c in header] != ROSTER_HEADER:
+        findings.append(Finding("ERROR", rel, start + 1,
+                                "roster table header must be exactly "
+                                "'| Role | Holder | Type |'", 2))
+        return Roster(roles, holders), findings
+    if end < start + 1:
+        # A header and delimiter with no rows is LEGITIMATE (Codex r2): a
+        # draft-only instance whose mapping nobody has confirmed has an empty
+        # roster, and generation must invent no entries. Every owner then fails
+        # resolution, which is the true answer — an active rule stays red.
+        findings.append(Finding("ERROR", rel, start + 1,
+                                "roster table needs its delimiter row", 2))
+        return Roster(roles, holders), findings
+    delim = _canonical_row(lines[start + 1])
+    if delim is None or not all(_EXEC_DELIM_CELL.match(c) for c in delim):
+        findings.append(Finding("ERROR", rel, start + 2,
+                                "the row under the header must be the delimiter "
+                                "'|---|---|---|' — no alignment colons, exactly three "
+                                "cells", 2))
+        return Roster(roles, holders), findings
+
+    for lineno in range(start + 2, end + 1):
+        cells = _canonical_row(lines[lineno])
+        if cells is None:
+            # FAIL CLOSED, not skip: a line in the block that is not a canonical
+            # row means the parser's idea of the table disagrees with the
+            # reader's, so no row in it can be trusted — that disagreement is
+            # exactly how a pipe-less continuation row hid a collision (Codex
+            # r7). A bad CELL below is localized and does not void the rest.
+            findings.append(Finding("ERROR", rel, lineno + 1,
+                                    "roster row is not canonical — exactly three cells "
+                                    "between a leading and a trailing '|'; the table runs "
+                                    "to the next blank line, so every line until then is a "
+                                    "row", 2))
+            return Roster({}, {}), findings
+        role, holder, htype = cells
+        bad_cell = False
+        for label, cell in (("Role", role), ("Holder", holder), ("Type", htype)):
+            if cell and not _is_plain_text(cell):
+                findings.append(Finding("ERROR", rel, lineno + 1,
+                                        "roster %s cell carries markup — cells are plain "
+                                        "text, and resolution is by exact string" % label, 2))
+                bad_cell = True
+        if bad_cell:
+            continue
+        if not role and not holder:
+            findings.append(Finding("ERROR", rel, lineno + 1,
+                                    "roster row names neither a role nor a holder", 2))
+            continue
+        role, holder = _roster_key(role), _roster_key(holder)
+        for label, cell in (("Role", role), ("Holder", holder)):
+            if cell and not _has_letter_or_digit(cell):
+                findings.append(Finding("ERROR", rel, lineno + 1,
+                                        "roster %s cell carries no letter or digit — it names "
+                                        "nothing a reader can read" % label, 2))
+                bad_cell = True
+        if bad_cell:
+            continue
+        if holder:
+            if htype not in HOLDER_TYPES:
+                findings.append(Finding("ERROR", rel, lineno + 1,
+                                        "roster holder %r has type %r (one of %s) — the "
+                                        "human-appeal path depends on it"
+                                        % (holder, htype, sorted(HOLDER_TYPES)), 2))
+            elif holders.get(holder, htype) != htype:
+                findings.append(Finding("ERROR", rel, lineno + 1,
+                                        "roster holder %r is typed both %r and %r"
+                                        % (holder, holders[holder], htype), 2))
+            else:
+                holders[holder] = htype
+        elif htype:
+            findings.append(Finding("ERROR", rel, lineno + 1,
+                                    "roster row types a holder it does not name", 2))
+        if role:
+            roles.setdefault(role, [])
+            if holder:
+                roles[role].append(holder)
+
+    for name in sorted(set(roles) & set(holders)):
+        findings.append(Finding("ERROR", rel, None,
+                                "%r is both a Role and a Holder — every owner reference to "
+                                "it would be ambiguous, and no precedence rule is defined "
+                                "because none should be needed" % name, 2))
+    return Roster(roles, holders), findings
+
+
+def _load_roster(inst, root):
+    """(Roster, findings) for one instance, or (None, findings) when it has no
+    roster. The findings belong to check_roles; every other caller discards them,
+    so one malformed roster is reported once."""
+    abspath = os.path.join(inst, *ROSTER_REL)
+    rel = os.path.relpath(abspath, root)
+    # A symlinked roster is not the roster: os.path.isfile and _read_utf8 both
+    # follow the link, so active-rule ownership would resolve from unaudited
+    # content outside the artifact the gate governs (Codex r9). Treated as a
+    # broken roster, not an absent one — absent is a different finding.
+    if _has_symlink_component(root, os.path.relpath(abspath, root).replace(os.sep, "/")):
+        return None, [Finding("ERROR", rel, None,
+                              "the roster is or sits behind a symlink — ownership must "
+                              "resolve from the governed file itself, not from wherever a "
+                              "link points", 2)]
+    if not os.path.isfile(abspath):
+        return None, []
+    text, rd = _read_utf8(abspath, rel)
+    rd = [f._replace(since=2) for f in rd]
+    if text is None:
+        return None, rd
+    roster, findings = _parse_roster(text, rel)
+    return roster, rd + findings
+
+
+def _roster_key(s):
+    """A roster string as compared. NFC, because two spellings that RENDER
+    identically are the same name: without it an owner written NFC failed to
+    resolve against an NFD holder, and a canonically equivalent Role and Holder
+    evaded the collision ERROR (Codex r8). The repository already normalizes
+    this way for committed paths, and for the same reason."""
+    return unicodedata.normalize("NFC", s.strip())
+
+
+def _resolve_owner(roster, value):
+    """The holders an owner value resolves to, as [(holder, type)]. Empty means
+    UNHELD: no roster match, or a Role row carrying no holder.
+
+    Resolution is by EXACT string, two ways (decision 1 + decision 4): a value
+    matching a Role cell resolves to that row's holders; a value matching a
+    Holder cell resolves to that holder directly — which is what keeps a
+    person-named owner valid.
+
+    It is INTENT-BLIND: nothing marks a value as meant-as-role or meant-as-person,
+    so a forgotten role row whose title equals an existing holder name resolves as
+    that holder. Accepted and documented (docs/known-limitations.md); typed owner
+    references are the recorded alternative."""
+    if roster is None or not isinstance(value, str):
+        return []
+    v = _roster_key(value)
+    if v in roster.roles:
+        return [(h, roster.holders.get(h)) for h in roster.roles[v]]
+    if v in roster.holders:
+        return [(v, roster.holders[v])]
+    return []
+
+
+def check_roles(root, ignore=()):
+    """The roles roster's own schema and integrity, per instance (see
+    _instance_roots). Whether a rule's owners RESOLVE against it is
+    check_constitution's, where the rule frontmatter already is."""
+    findings = []
+    if _ignored("governance", ignore):
+        return findings
+    for inst in _instance_roots(root, ignore):
+        _roster, f = _load_roster(inst, root)
+        findings += f
     return findings
 
 
@@ -2379,6 +2839,76 @@ def check_version_pin(root):
     return findings
 
 
+def _pin_versions(root, ignore=()):
+    """{root-relative directory -> pinned schema version} for every readable
+    groundwork.pin under root, where "" is root itself.
+
+    A pin that is missing, unparseable, or non-integer is simply ABSENT here:
+    check_version_pin already ERRORs on it, and letting a malformed pin grant
+    leniency would make the broken state the quiet one. .gitignore is honored
+    (as check_version_pin does), so a pin hidden behind an ignore rule buys no
+    demotion — the safe direction."""
+    out = {}
+    for abspath in iter_files(root, ignore):
+        if os.path.basename(abspath) != "groundwork.pin":
+            continue
+        rel = os.path.relpath(abspath, root)
+        data, fm = _load_frontmatter(abspath, rel)
+        # Fail CLOSED on a malformed pin (Codex r5): parse_frontmatter still
+        # returns a value beside its ERROR — a duplicate key keeps the first —
+        # so trusting the value would let a broken pin grant leniency, which is
+        # exactly what this docstring promises it does not.
+        if data is None or any(f.level == "ERROR" for f in fm):
+            continue
+        sv = data.get("schema_version")
+        if not isinstance(sv, str):
+            continue
+        try:
+            pinned = int(sv.strip())
+        except ValueError:
+            continue
+        out[os.path.dirname(rel).replace(os.sep, "/")] = pinned
+    return out
+
+
+def apply_since_demotion(findings, pins):
+    """#21's per-check `since:` mechanism, wired at the v1->v2 bump (MIGRATIONS.md).
+
+    A finding carrying `since=N` demotes ERROR -> WARN when the nearest enclosing
+    pinned root pins BELOW N: a v1 repo has no roster, so a v2 resolution check
+    cannot bind content pinned before rosters existed. This never means a green
+    gate — that root is already red at check_version_pin's single
+    migration-boundary ERROR, and these WARNs are the finger-pointing behind it.
+
+    Content under no pin (the engine's own tree) is never demoted: it is current
+    by definition, which is what keeps groundwork's own gate armed.
+
+    Applied at the COMPOSITION points — validate() and main()'s diff passes. A
+    check called directly returns undemoted findings; only the caller that knows
+    the tree knows the pins."""
+    if not pins:
+        return findings
+    out = []
+    for f in findings:
+        if f.since is None or f.level != "ERROR":
+            out.append(f)
+            continue
+        parts = f.path.replace(os.sep, "/").split("/")
+        pinned = None
+        for n in range(len(parts) - 1, -1, -1):
+            d = "/".join(parts[:n])
+            if d in pins:
+                pinned = pins[d]
+                break
+        if pinned is not None and pinned < f.since:
+            out.append(f._replace(level="WARN", message=(
+                "%s [new since schema v%d; this content is pinned at v%d — "
+                "see MIGRATIONS.md]" % (f.message, f.since, pinned))))
+        else:
+            out.append(f)
+    return out
+
+
 def check_company_root(root):
     """What a company repo owes, checked only when the validated root carries a
     #21 groundwork.pin — which is exactly the statement 'this is a company repo'
@@ -2640,9 +3170,10 @@ def _check_proposals_instance(inst, root, ignore=()):
         target = data.get("target")
         target_is_rule = False
         target_is_skill = False
+        target_is_roster = False
         t = None
         if _blank(target):
-            findings.append(Finding("ERROR", rel, None, "proposal missing 'target' (the skill or rule it changes)"))
+            findings.append(Finding("ERROR", rel, None, "proposal missing 'target' (the skill, rule, or roster it changes)"))
         elif not isinstance(target, str):
             findings.append(Finding("ERROR", rel, None, "proposal 'target' must be a single path"))
         else:
@@ -2652,10 +3183,13 @@ def _check_proposals_instance(inst, root, ignore=()):
             t = os.path.normpath(target.strip().replace("\\", "/")).replace("\\", "/")
             target_is_skill = t.startswith("skills/")
             target_is_rule = t.startswith("governance/constitution/")
-            if not (target_is_skill or target_is_rule):
+            target_is_roster = t == "governance/roles.md"
+            if not (target_is_skill or target_is_rule or target_is_roster):
                 findings.append(Finding("ERROR", rel, None,
-                                        "proposal 'target' must be a skill (skills/) or a constitution rule "
-                                        "(governance/constitution/); other artifacts keep their own governance (#17)"))
+                                        "proposal 'target' must be a skill (skills/), a constitution rule "
+                                        "(governance/constitution/), or the roles roster "
+                                        "(governance/roles.md); other artifacts keep their own "
+                                        "governance (#17)"))
             elif not os.path.isfile(os.path.join(inst, t)):
                 findings.append(Finding("ERROR", rel, None, "proposal 'target' not found: %s" % t))
             else:
@@ -2665,8 +3199,14 @@ def _check_proposals_instance(inst, root, ignore=()):
                 resolved = os.path.relpath(
                     os.path.realpath(os.path.join(inst, t)),
                     os.path.realpath(inst)).replace("\\", "/")
-                bucket = "skills/" if target_is_skill else "governance/constitution/"
-                if not resolved.startswith(bucket):
+                bucket = ("skills/" if target_is_skill
+                          else "governance/constitution/" if target_is_rule
+                          else "governance/roles.md")
+                # The roster bucket is one FILE, so a prefix test would accept
+                # governance/roles.md.backup (Codex r9).
+                escaped = (resolved != bucket if target_is_roster
+                           else not resolved.startswith(bucket))
+                if escaped:
                     findings.append(Finding("ERROR", rel, None,
                                             "proposal 'target' resolves outside %s (symlink or filesystem "
                                             "alias: %s) — fail closed (#17)" % (bucket, resolved)))
@@ -2682,6 +3222,10 @@ def _check_proposals_instance(inst, root, ignore=()):
             findings.append(Finding("ERROR", rel, None,
                                     "a constitution rule can never be 'track1-body' — rules never auto-apply; "
                                     "they are escalating by construction (#17)"))
+        elif br == "track1-body" and target_is_roster:
+            findings.append(Finding("ERROR", rel, None,
+                                    "the roles roster can never be 'track1-body' — who holds an "
+                                    "owner is governance, and it never auto-applies (#17)", 2))
         elif br == "track1-body" and target_is_skill and not t.endswith("/SKILL.md"):
             findings.append(Finding("ERROR", rel, None,
                                     "'track1-body' touches only the SKILL.md body — %s is not a SKILL.md; "
@@ -2970,7 +3514,8 @@ def check_synthetic_identifiers(root, ignore=()):
 
 def _governed_class(rel):
     """Classify a path (relative to a governed root) into #17's routing domain:
-    'rule' (any constitution file), 'skill-md' (a package's own SKILL.md),
+    'rule' (any constitution file), 'roster' (the instance's governance/roles.md),
+    'skill-md' (a package's own SKILL.md),
     'skill-other' (anything else inside a skill package — the Owner's Card and
     every nested file), or None (not governed by the proposal routing at all).
     Top-level docs under skills/ (e.g. skills/work-package-spec.md) are not part
@@ -2987,6 +3532,8 @@ def _governed_class(rel):
     if len(parts) >= 3 and low[0] == "governance" and low[1] == "constitution" \
             and low[-1].endswith(".md"):
         return "rule"
+    if len(parts) == 2 and low[0] == "governance" and low[1] == "roles.md":
+        return "roster"
     if len(parts) >= 3 and low[0] == "skills":
         if len(parts) == 3 and parts[2] == "SKILL.md":
             return "skill-md"
@@ -3017,6 +3564,9 @@ def classify_governed_change(kind, cls, old_text, new_text):
             return None, None
     if cls == "rule":
         return "escalating", "a constitution rule (rules never auto-apply, #17)"
+    if cls == "roster":
+        return "escalating", ("the roles roster — it decides who holds every active rule's "
+                              "owners and where its human appeal terminates (#17)")
     if cls == "skill-other":
         return "escalating", "a skill-package file other than SKILL.md (Owner's Card / package content)"
     if kind == "added":
@@ -3084,6 +3634,7 @@ def validate(root):
     findings += check_owner_cards(root, ignore)
     findings += check_memory(root)
     findings += check_constitution(root, ignore)
+    findings += check_roles(root, ignore)
     findings += check_hooks(root)
     findings += check_version_pin(root)
     findings += check_symlinked_dirs(root)
@@ -3095,7 +3646,7 @@ def validate(root):
     findings += check_root_files(root)
     findings += check_interview_state(root, ignore)
     findings += check_company_root(root)
-    return findings
+    return apply_since_demotion(findings, _pin_versions(root, ignore))
 
 
 def _diff_in_workbench_skips(rel_from_root):
@@ -3385,6 +3936,23 @@ def _pin_dirs(root, base_files, scope, wt_files):
     return dirs
 
 
+def _pin_version_text(text):
+    """The integer schema_version in a pin file's text, or None. Parsing only —
+    check_version_pin owns the findings."""
+    data, fm = parse_frontmatter(text or "", "<pin>")
+    # Fail closed, as _pin_versions does: a malformed pin must not authorize
+    # decision 8's bootstrap exemption (Codex r5).
+    if any(f.level == "ERROR" for f in fm):
+        return None
+    sv = (data or {}).get("schema_version")
+    if not isinstance(sv, str):
+        return None
+    try:
+        return int(sv.strip())
+    except ValueError:
+        return None
+
+
 def _pending_proposal_radii(root, gov_rel):
     """{realpath(target) -> set(declared blast_radius)} for the pending proposals
     in <governed root>/proposals/. Targets resolve through the filesystem
@@ -3454,7 +4022,8 @@ def _changelog_appended_targets(root, gov_abs, appended_lines):
 
 
 def blast_radius_diff_findings(root, base):
-    """#18's blast-radius tripwire. On --diff, classify every changed skill/rule
+    """#18's blast-radius tripwire. On --diff, classify every changed skill, rule,
+    and roster
     under a governed root (a directory carrying a #21 groundwork.pin) and require
     each ESCALATING change to trace to a pending proposal whose DECLARED
     blast_radius matches what the diff ACTUALLY touches. A track-1 body-only
@@ -3491,6 +4060,61 @@ def blast_radius_diff_findings(root, base):
         # NFC first (git reports NFC while a mac filesystem lists NFD — the
         # same mismatch _committed_path_status already bridges), then casefold.
         return unicodedata.normalize("NFC", s).casefold()
+
+    def _bootstrap_roots():
+        """Decision 8's migration-scoped bootstrap: governed roots whose pin moves
+        v1 -> v2 in THIS diff. A roster ADDITION there is not escalating, because
+        every v1->v2 migration necessarily adds its roster — the exemption is
+        exactly the migration boundary, the sanctioned crossing mechanism.
+
+        Narrow on purpose. Only v1 -> v2 (the only bump for which "necessarily
+        adds its roster" is true), only when a base pin exists, and only for
+        additions — the caller enforces that last one. A root already at v2 gets
+        nothing, which is what closes the delete-then-re-add route."""
+        out = set()
+        for g in gov_roots:
+            pin_rel = (g + "/" if g else "") + "groundwork.pin"
+            bf = base_rels.get(pin_rel)
+            if bf is None:
+                continue
+            if _pin_version_text(_git_show(toplevel, base, bf)) != 1:
+                continue
+            # A root that ALREADY had a roster at base is migrating, not
+            # bootstrapping. Matching case- and normalization-insensitively
+            # (Codex r1): on a case-folding filesystem, renaming
+            # governance/roles.md to Governance/Roles.md while bumping the pin
+            # reads as a deletion plus an addition, which would launder a
+            # modification through an addition-only exemption.
+            # A root that could ALREADY reach a roster at base is migrating,
+            # not bootstrapping. Two shapes, both matched NFC+casefold:
+            #   - the roster itself in the base file list, under any spelling
+            #     (a case-rename at the boundary would otherwise read as an
+            #     addition — Codex r1);
+            #   - an ANCESTOR of that path present as a file entry, which for a
+            #     directory path means a symlink: a base whose `governance` is a
+            #     symlink already exposes a roster the file list never names, so
+            #     replacing it with a real directory would launder a
+            #     modification through an addition-only exemption (Codex r2).
+            target = ((g + "/") if g else "") + "governance/roles.md"
+            parts = target.split("/")
+            blocked = {_fold("/".join(parts[:n])) for n in range(1, len(parts) + 1)}
+            if any(_fold(r) in blocked for r in base_rels):
+                continue
+            abspath = os.path.join(root, *pin_rel.split("/"))
+            # A symlinked pin is not an auditable committed v2 pin: the diff
+            # would show a link, and its target can change after review. Neither
+            # check_version_pin nor _governed_class covers the pin file, so the
+            # exemption must refuse it here (Codex r7).
+            if _has_symlink_component(root, pin_rel):
+                continue
+            if not os.path.isfile(abspath):
+                continue
+            new_pin, _rd = _read_utf8(abspath, pin_rel)
+            if _pin_version_text(new_pin) == 2:
+                out.add(g)
+        return out
+
+    bootstrap = _bootstrap_roots()
 
     def governed_classes(rel):
         # EVERY containing root's classification (Codex r1+r2): picking one
@@ -3582,6 +4206,11 @@ def blast_radius_diff_findings(root, base):
         pairs = governed_classes(rel)
         if not pairs:
             continue
+        # The roster is v2-only, so the findings raised BEFORE classification —
+        # symlink, unreadable, deletion — must demote behind an older pin too
+        # (Codex r2). Mixed classification (also a rule or skill under another
+        # governed root) binds v1, so it stays untagged.
+        path_since = 2 if all(cls == "roster" for _g, cls in pairs) else None
 
         abspath = os.path.join(root, *rel.split("/"))
         bf = base_rels.get(rel)
@@ -3590,33 +4219,33 @@ def blast_radius_diff_findings(root, base):
             if status == "symlink":
                 findings.append(Finding("ERROR", rel, None,
                                         "governed file is or sits behind a symlink (cannot classify "
-                                        "its blast radius)"))
+                                        "its blast radius)", path_since))
                 continue
             if status == "unreadable":
                 # NOT the deletion WARN: an unlistable ancestor makes the change
                 # unclassifiable, and unclassifiable resolves to fail-closed.
                 findings.append(Finding("ERROR", rel, None,
                                         "cannot classify this change: a directory on its path is "
-                                        "unreadable — fail closed"))
+                                        "unreadable — fail closed", path_since))
                 continue
             if status == "missing":
                 findings.append(Finding("WARN", rel, None,
-                                        "governed file deleted — retiring a rule or skill is escalating, "
+                                        "governed file deleted — retiring a rule, skill, or roster is escalating, "
                                         "and its record is the maintainer's consent commit; a proposal "
-                                        "cannot name a target that no longer exists (#18)"))
+                                        "cannot name a target that no longer exists (#18)", path_since))
                 continue
             old = _git_show(toplevel, base, bf)
             if old is None:
                 findings.append(Finding("ERROR", rel, None,
                                         "cannot classify this change: the base version is unreadable "
-                                        "or not valid UTF-8"))
+                                        "or not valid UTF-8", path_since))
                 continue
             kind = "modified"
         else:
             if _has_symlink_component(root, rel):
                 findings.append(Finding("ERROR", rel, None,
                                         "governed file is or sits behind a symlink (cannot classify "
-                                        "its blast radius)"))
+                                        "its blast radius)", path_since))
                 continue
             if not os.path.isfile(abspath):
                 continue
@@ -3624,13 +4253,21 @@ def blast_radius_diff_findings(root, base):
 
         new, rd = _read_utf8(abspath, rel)
         if new is None:
-            findings += rd
+            # Codex r3: the round-2 tagging covered the symlink and base-read
+            # branches but not this one, so an unreadable v2-only roster stayed
+            # an undemoted ERROR beside the migration-boundary ERROR.
+            findings += [f._replace(since=path_since) for f in rd]
             continue
 
         for g, cls in pairs:
+            if cls == "roster" and kind == "added" and g in bootstrap:
+                continue  # decision 8's migration-scoped bootstrap
             radius, detail = classify_governed_change(kind, cls, old, new)
             if radius is None:
                 continue
+            # The roster is a v2 artifact: behind a v1 pin these demote to the
+            # finger-pointing WARN, in front of the one boundary ERROR.
+            since = 2 if cls == "roster" else None
 
             if g not in proposals_cache:
                 proposals_cache[g] = _pending_proposal_radii(root, g)
@@ -3642,12 +4279,12 @@ def blast_radius_diff_findings(root, base):
                     findings.append(Finding("ERROR", rel, None,
                                             "escalating change (%s) with no pending proposal — an escalating "
                                             "change reaches the main line only through a reviewable proposal "
-                                            "in %sproposals/ (#18)" % (detail, prefix)))
+                                            "in %sproposals/ (#18)" % (detail, prefix), since))
                 elif "escalating" not in radii:
                     findings.append(Finding("ERROR", rel, None,
                                             "declared-vs-actual blast-radius mismatch: the pending proposal "
                                             "declares 'track1-body' but this change actually touches %s — "
-                                            "that is escalating (#18)" % detail))
+                                            "that is escalating (#18)" % detail, since))
             elif not radii and os.path.realpath(abspath) not in appended_targets.get(g, set()):
                 findings.append(Finding("WARN", rel, None,
                                         "track-1 body-only change with no new governance changelog entry — "
@@ -3674,13 +4311,16 @@ def main(argv):
         # print it once. Each pass dedupes against the passes BEFORE it, never
         # against the stateless findings (Codex r2 of 1.5d-ii): a stateless
         # finding that legitimately recurs in a diff pass must not be swallowed.
+        # Dedupe on the RAW findings, then demote: demotion rewrites the message,
+        # so deduping after it would compare rewritten tuples against raw ones.
+        pins = _pin_versions(root, load_gitignore(root))
         seen = set()
         for diff_pass in (memory_diff_findings,
                           blast_radius_diff_findings,
                           interview_diff_findings):
             fresh = [f for f in diff_pass(root, diff_base) if f not in seen]
             seen.update(fresh)
-            findings += fresh
+            findings += apply_since_demotion(fresh, pins)
     errors = [f for f in findings if f.level == "ERROR"]
     warns = [f for f in findings if f.level == "WARN"]
     for f in findings:
