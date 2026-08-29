@@ -216,15 +216,25 @@ established here.
    the merge carries the record. Plan-less work uses
    `docs/superpowers/reviews/<branch>.md`, with any `/` in the branch name written
    as `-` so the log stays a single file directly under `reviews/`.
+   **Amended 2026-08-29 (maintainer):** `docs/agents/build-sessions.md` rule 9 is now the
+   operative text — one normative copy, which four review rounds of drift between these two
+   sites argued for. **The contract as stated in this decision is superseded by rule 9 and
+   retained unedited, as the record of what was decided rather than as instructions to
+   follow**; where the two differ, rule 9 governs. The storage convention above is the
+   clearest case: rule 9 replaces the single flattened file with one directory per branch
+   and one file per entry.
    The evidence: the prior session ran twenty-five review rounds — sixteen on the
    groundwork branch, nine on the persona-company correction, per the merge commit
    `df6df21` — and what survives is what its commits chose to carry. Fix commits
    preserve the accepted findings and their dispositions in their bodies — sometimes
    with severities, as `f5ab4b6`'s "Two HIGH findings, both correct" — but what
    survives is only what each commit chose to quote: no complete round output
-   exists, rejected findings and full verdict text appear nowhere, and rounds whose
+   exists, rejected findings and full verdict text appear nowhere, and two rounds whose
    numbers left no commit (r3 and r9 in the `fix(build): Codex r…` sequence) are
-   unrecoverable. The honesty plan paid for the same loss earlier: its
+   unrecoverable. (Evidence corrected on branch `docs/review-record-rule`, Codex round 3:
+   the approving r16 left no numbered commit either, but `df6df21` carries its verdict, so
+   it is not among the unrecoverable. The normative choice is unchanged; only this evidence
+   paragraph is.) The honesty plan paid for the same loss earlier: its
    header says its three rounds' "review outputs were not retained", leaving the
    merge commit as "the durable record of the approval" with "no inspectable
    artifact" dating round 3 itself. The pattern data this rule exists to keep — the

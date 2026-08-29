@@ -4,8 +4,34 @@
 > (decision 7), applied prospectively to the branch that proposes it. Plan-less work
 > uses this location (`docs/superpowers/reviews/<branch>.md`); slices with a plan use
 > `docs/superpowers/plans/<slice>-reviews.md`. Every round is appended here before the
-> branch may merge: verdict, each finding with severity and CONFIRMED/PLAUSIBLE
-> status, and its disposition.
+> branch may merge: verdict, each finding with its severity, and its disposition. The
+> CONFIRMED/PLAUSIBLE mark on each finding is this log's own addition — neither decision 7
+> nor rule 9 requires it. (Header amended on branch `docs/review-record-rule`, Codex round
+> 2, which found the original attributed that requirement to decision 7, which does not
+> state it. The round tables below are untouched.)
+
+
+### Fix commits, backfilled
+
+Rule 9 names this log as its worked example, and the dispositions below say "the following
+commit" rather than naming one, which rule 9 as first drafted asked for. (Rule 9 now puts
+the fix-commit map in a log's `README.md` instead; this table is that map for this log.) The map is derived from git and added here rather than by editing any round's table.
+Round 25 approved and raised no findings; `a4f2970` records its verdict and the closing
+totals.
+
+| Round | Fix commit | Round | Fix commit | Round | Fix commit |
+|---|---|---|---|---|---|
+| 1 | `1626d6c` | 9 | `8d68396` | 17 | `fddea1b` |
+| 2 | `7e24c6a` | 10 | `539dea5` | 18 | `8797115` |
+| 3 | `3c585d7` | 11 | `d39c8d6` | 19 | `c42c81d` |
+| 4 | `7c4aaeb` | 12 | `eb71da1` | 20 | `a7cb544` |
+| 5 | `9b98819` | 13 | `0df8977` | 21 | `352ba76` |
+| 6 | `dfe0b2c` | 14 | `faf8059` | 22 | `3bdc894` |
+| 7 | `86206b3` | 15 | `cfa80b2` | 23 | `41ee443` |
+| 8 | `de27a5e` | 16 | `7ccfa2c` | 24 | `acd729c` |
+
+(Backfilled on branch `docs/review-record-rule`, Codex round 6. No round's table is
+changed.)
 
 ## Round 1 — 2026-08-28, task-mtdq901q-mnnojt, verdict: does not approve (17 findings)
 
