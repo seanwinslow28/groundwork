@@ -96,3 +96,18 @@ accepted; fixed in the following commit. Rows amended: round-1 row 16, round-3 r
 | 1 | med | "Inspects owner fields only on active rules" is overbroad — the high-risk spine inspects appeal fields on drafts; this rule simply is not high-risk | CONFIRMED | Fixed: owner-completeness scoped, the exception named, and why it did not apply (action class `external-side-effect`). Amends round-1 row 16 |
 | 2 | med | The intake gate's gap enumeration omits its disputed, unresolved action class, which the file and the report both record | CONFIRMED | Fixed: the dispute joins the enumeration. Amends round-3 row 6 again |
 | 3 | med | Decision 6 still said "becomes unresolvable" unconditionally — a third occurrence the round-4 fix missed | CONFIRMED | Fixed: conditional added at the third site. Amends round-4 row 4 |
+
+## Round 6 — 2026-08-28, task-mtds8h5f-2uj0f1, verdict: does not approve (5 findings)
+
+Reviewed: commit `9b98819` (spec after round-5 fixes, plus this log). All 5 findings
+accepted; fixed in the following commit. The two highs are design-consistency gaps,
+not wording. Rows amended: round-2 row 2 (extended), round-4 row 3, round-5 rows 2
+and 3.
+
+| # | Sev | Finding (compressed) | Verdict | Disposition |
+|---|---|---|---|---|
+| 1 | high | Decision 6's antecedent ("missing required fields") did not cover its own central case — fields populated but unresolvable, or populated but disputed | CONFIRMED | Fixed: the contract names three gap classes (missing / unresolvable / disputed), mirroring decision 5 |
+| 2 | high | A high-risk draft with an answered appeal owner resolving to nothing stayed in the WARN tier — green gate, no human reachable, the spine's invariant broken | CONFIRMED | Fixed: on high-risk drafts, resolves-to-nothing ERRORs too (an appeal reaching no human is no appeal path); non-high-risk drafts keep the WARN tier. Decision 3 and the validator bullet both updated. Extends round-2 row 2 |
+| 3 | med | "A row with no holder is unheld" contradicted "listing it as a Role resolves it" — a holderless Role row does not resolve | CONFIRMED | Fixed at all three sites: resolution = Holder cell, or Role row with a holder. Amends round-5 row 3 |
+| 4 | low | "`_answered()` rejects only placeholders" is overbroad — it also rejects empty values and non-strings | CONFIRMED | Fixed: the full rejection set stated |
+| 5 | low | Round-5 row 2's amendment pointer named round-3 row 6 but not round-4 row 3, whose "matching the files" disposition the same omission falsified | CONFIRMED | Recorded here (append-and-supersede; prior rows stay as written): round-5 row 2 also amends round-4 row 3 |

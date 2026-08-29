@@ -39,7 +39,8 @@ owner-completeness fields only on active rules (`scripts/validate.py`, the rung
 branch; verified this session — the one exception, the high-risk safety spine that
 checks appeal fields on drafts too, did not apply: this rule's action class is
 `external-side-effect`, not `high-risk`). Had the rule been active, `_answered()`
-would have accepted the sentence anyway, since it rejects only placeholders. The quad-check correction
+would have accepted the sentence anyway — it rejects placeholders, empty values,
+and non-strings, and any substantive sentence passes. The quad-check correction
 (`~/Code-Brain/persona-company/runs/2026-07-31/quad-check-correction.md:114`) put the
 distinction this way: *"`Head of IT` names an accountable office, while "the function,
 no person named" disclaims one, and the check cannot tell them apart."* If any role
@@ -99,8 +100,12 @@ their shape from the holding semantics.
    appeal owner that resolves to agent-only holders is affirmatively wrong, not
    merely incomplete, so it ERRORs on a high-risk draft too — otherwise a high-risk
    draft with a model for an appeal path would leave the gate green, which the spine
-   forbids verbatim). An appeal owner that resolves to *nothing* on a draft stays in
-   decision 5's WARN tier — unheld is the drafting state. The tiers under a v1 pin
+   forbids verbatim). On a **high-risk draft** the same logic closes the remaining
+   gap: an answered appeal owner that resolves to *nothing* also ERRORs there — an
+   appeal reaching no human is no appeal path by this decision's own definition, and
+   a WARN would leave exit 0, exactly the green gate the spine forbids. On
+   non-high-risk drafts, an appeal owner resolving to nothing stays in decision 5's
+   WARN tier — unheld is the drafting state. The tiers under a v1 pin
    differ by age: the existing check — a high-risk rule whose appeal fields are not
    answered — is a v1 ERROR and keeps firing as one under any pin; only the **new**
    agent-only-resolution ERRORs are `since: 2` checks, demoted to WARN on v1-pinned
@@ -137,9 +142,14 @@ their shape from the holding semantics.
 
 6. **Hole (b), the shipping contract: permit declared drafts, for constitution
    rules.** `interview/generate.md` is amended where it governs constitution rules: a
-   rule missing required fields may ship only as a draft that declares its gaps
-   in-file, and the generation report must name every artifact that shipped incomplete
-   and why. An undeclared incomplete shipment stays prohibited. The other artifact
+   rule carrying a gap in any of three classes — a required field that is missing, a
+   field populated but unresolvable against the roster, or a field populated but
+   recorded as disputed — may ship only as a draft that declares those gaps in-file,
+   and the generation report must name every artifact that shipped incomplete and
+   why. (The three classes mirror decision 5's WARN classes; run 1's central case,
+   the populated-but-unresolvable `runtime_check_owner`, is the second, and its
+   disputed action class the third.) An undeclared incomplete shipment stays
+   prohibited. The other artifact
    kinds' no-ship rules — a deep record missing its Gate answer, a memory record
    missing its owner, a skill missing human-only answers — stand unchanged: they have
    no draft state to ship into, and this design does not invent one.
@@ -154,9 +164,9 @@ their shape from the holding semantics.
    "What did not ship, and why" (`generation-report.md:45–72`, verified this
    session). One gap
    it did not declare, because it was not yet one: the disclaiming
-   `runtime_check_owner` becomes unresolvable (absent a roster row carrying its
-   exact string) — and therefore a declared-draft obligation — only under this
-   design. The amendment makes the contract match the
+   `runtime_check_owner` becomes unresolvable (absent a roster entry that resolves
+   its exact string — a Holder cell, or a Role row with a holder) — and therefore a
+   declared-draft obligation — only under this design. The amendment makes the contract match the
    observed declaration behavior instead of prohibiting it.
    *Counter-argument, recorded:* declaring may become cheaper than completing; the
    generation report obligation is the pressure against that, and a run 2 can measure
@@ -251,10 +261,11 @@ biting. This is flagged for the maintainer at R1 plan review.
 - **Activation resolution** (`since: 2`): an active rule with an owner field that
   resolves to nothing in the roster → ERROR (WARN under a v1 pin).
 - **Appeal-human** (`since: 2`): a rule whose `human_appeal_owner` resolves to
-  agent-only holders → ERROR on any active rule, and on a **high-risk draft** too
-  (the safety-spine tier decision 3 defines) — WARN under a v1 pin. On a non-high-risk
-  draft, or where the appeal owner resolves to nothing, decision 5's WARN tier
-  applies instead.
+  agent-only holders — or, on a **high-risk draft**, to nothing at all — → ERROR on
+  any active rule and on high-risk drafts (the safety-spine tier decision 3
+  defines) — WARN under a v1 pin. On a non-high-risk draft, an appeal owner
+  resolving to agent-only holders or to nothing takes decision 5's WARN tier
+  instead.
 - **Draft visibility (hole a)** (`since: 2`): a draft rule missing any owner field,
   or carrying one that does not resolve → one WARN per gap, named. The existing
   draft-time safety-spine ERRORs are untouched.
@@ -269,9 +280,10 @@ biting. This is flagged for the maintainer at R1 plan review.
   `docs/known-limitations.md` in R1, until a later slice decides it.
 - **No reality check:** nothing verifies a roster row against the world. The
   disclaiming-owner problem ("the function, no person named") is caught at
-  activation by failed resolution, not by prose analysis — provided no roster row
-  carries that exact string; a roster that lists the disclaimer as a Role or Holder
-  resolves it, because the roster is trusted text. On a draft it surfaces as hole
+  activation by failed resolution, not by prose analysis — provided no roster entry
+  resolves that exact string; a roster listing the disclaimer as a Holder, or as a
+  Role row with a holder, resolves it, because the roster is trusted text (a Role
+  row with no holder still fails — it is unheld). On a draft it surfaces as hole
   (a)'s named WARN.
 
 ### The prose rewrite
@@ -331,4 +343,5 @@ review:
   "The roster", flagged for the maintainer at R1 plan review).
 - **It does not analyze owner prose.** A disclaiming owner string fails at
   activation only because it resolves to nothing, never because the validator
-  understands disclaimers — put the same string in the roster and it resolves.
+  understands disclaimers — put the same string in the roster as a Holder, or as a
+  Role row with a holder, and it resolves.
