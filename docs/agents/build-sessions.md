@@ -37,9 +37,9 @@
    leading `YYYY-MM-DD-` and the `.md` removed. `<slug>` is the branch name's last path
    component, ASCII-lowercased, with every character outside `[a-z0-9._-]` replaced by `-`.
    For **either** path: if a directory of that name already exists in the branch's merge
-   target, append `-2`, `-3`. The mapping is deliberately not injective — the directory's
-   `README.md` records the full branch name as it stood when the directory was made, which
-   is what disambiguates. A collision found only at merge time is resolved by renaming the
+   target, append `-2`, then `-3`, and so on until the name is free. The mapping is deliberately
+   not injective — the directory's `README.md` records the full branch name as it stood when
+   the directory was made, which is what disambiguates. A collision found only at merge time is resolved by renaming the
    directory; that is not an edit to any entry.
 
    **Entries.** `round-NN.md`, numbered consecutively from 01, every entry taking the next

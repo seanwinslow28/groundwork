@@ -35,14 +35,16 @@ the maintainer's at merge.
 | 9 | `21c6c74` | does not approve | 9 | `edce94b` |
 | 10 | `edce94b` | does not approve | 6 | `214c1b5` |
 | 11 | `214c1b5` | does not approve | 5 | `7f327ab` |
-| 12 | `7f327ab` | does not approve | 3 | see round-14 |
-| 13 | — | record correction, not a review round | — | see round-14 |
+| 12 | `7f327ab` | does not approve | 3 | `42ebcd8` |
+| 13 | — | record correction, not a review round | — | `42ebcd8` |
+| 14 | `42ebcd8` | does not approve | 5 | see round-15 |
 
-Eighty-one findings across eleven review rounds, all accepted, none rejected. **Seventeen**
+Eighty-four findings across twelve review rounds, all accepted, none rejected. **Seventeen**
 rows that had been escalated rather than closed are dispositioned across `round-09.md`,
 `round-10.md` and `round-11.md` — each table superseding the last, the seventeenth row found
-only at round 11 — and `round-13.md` reclassifies the last two that were recorded as
-"standing" rather than open.
+only at round 11. `round-13.md` reclassifies two rows recorded as "standing" rather than
+open, and `round-14.md` carries the final tally: **fourteen fixed, three open, none
+rejected**.
 
 ## Rejected findings
 
