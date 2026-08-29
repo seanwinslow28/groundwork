@@ -23,12 +23,14 @@ keep changing.
 | 8 | `37e449b` | does not approve | 6 (2 BLOCKER, 2 MEDIUM, 2 LOW) | `63211e4` |
 | 9 | `2bc94ce` | does not approve | 6 (1 BLOCKER, 1 HIGH, 2 MEDIUM, 2 LOW) | `a5ba199` |
 | 10 | — | maintainer decision, not a review round | — | — |
+| 11 | — | maintainer decisions, not a review round | — | — |
 
 Fifty-five findings across nine rounds. Fifty-four fixed; one rejected with grounds.
 
 **The review loop ended at the maintainer's instruction after round 9, without an approving
 verdict.** `round-10.md` records that decision, what the last verdict actually said, and
-which commits no round ever reviewed.
+which commits no round ever reviewed. `round-11.md` records the maintainer's answers to six
+of the items it left open; three remain open and are listed there.
 
 **Corrections to earlier entries live in later ones**, per rule 9: `round-03.md` corrects
 `round-02.md`'s axis split, and `round-04.md` corrects `round-03.md`'s claim that two changed
@@ -89,7 +91,7 @@ disagreeing with it is visible without reading every entry.
    must be proven to contain the generated root; and ratification of the rule-1 departure
    recorded in both merged logs.
 
-## Maintainer item raised by round 2 — prose inside an append-only file
+## Maintainer item raised by round 2 — prose inside an append-only file (DECIDED, entry 11)
 
 A governed append-only file carries explanatory prose that can go stale, and #17's
 append-only rule makes it uncorrectable. `demo/governance/changelog.md`'s preamble enumerates
@@ -98,7 +100,7 @@ guarantee means — exempting the preamble from the prefix check, supporting rot
 a documented V1 gap), or routing the edit through a proposal, which the changelog is
 deliberately not a target for. Recorded rather than resolved.
 
-## Maintainer question raised by round 1 — the demo's staleness WARN
+## Maintainer question raised by round 1 — the demo's staleness WARN (DECIDED, entry 11)
 
 Round-1 finding N1 was correct twice over: the demo roster's `review_by` carried a cadence
 no demo source records, and the plan's stated reason for it was false. Removing the invented
@@ -125,7 +127,7 @@ The tree currently carries the honest state. The maintainer's call is whether to
 The builder's original date was (b) with a false reason attached. Presented rather than
 decided, because it changes the gate output the maintainer reads every session.
 
-## Also open, not taken
+## Considered and not taken (CONFIRMED, entry 11)
 
 Whether `demo/governance/roles.md` should carry **Role rows** for the five offices
 `demo/canon.md` assigns (CEO, VP Customer Success, Director of Product, VP Engineering, Head
@@ -135,7 +137,9 @@ canon and would make a future role-named owner resolve.
 
 ## Status
 
-**The record rule 9 requires is complete**, and landing is the maintainer's (rule 3). Rounds
+**The record rule 9 requires is complete**, and landing is the maintainer's (rule 3). Six of
+entry 10's open items were decided in `round-11.md`, all of them "keep what is in the tree";
+5a, 5b and 5c stay open. Rounds
 1–9 each have an immutable entry carrying every finding, its reviewer's severity word
 verbatim, and its disposition; `round-10.md` records the decision to stop. No finding is
 open. One is rejected with grounds. **The last verdict does not approve, and no approving
