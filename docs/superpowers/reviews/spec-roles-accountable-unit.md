@@ -14,8 +14,8 @@
 ### Fix commits, backfilled
 
 Rule 9 names this log as its worked example, and the dispositions below say "the following
-commit" rather than naming one — which rule 9's own inventory ("fixed in commit X") asks
-for. The map is derived from git and added here rather than by editing any round's table.
+commit" rather than naming one, which rule 9 as first drafted asked for. (Rule 9 now puts
+the fix-commit map in a log's `README.md` instead; this table is that map for this log.) The map is derived from git and added here rather than by editing any round's table.
 Round 25 approved and raised no findings; `a4f2970` records its verdict and the closing
 totals.
 
