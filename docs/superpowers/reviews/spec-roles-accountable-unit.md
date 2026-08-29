@@ -234,3 +234,18 @@ fixed in the following commit. Rows amended: round-12 row 1 (again), round-14 ro
 | 3 | med | "Fails resolution by absence" is unconditional — a string coinciding with an entered holder resolves as that person | CONFIRMED | Fixed: the coincidence carve-out stated inline, tied to the documented blind spot. Amends round-14 row 1 |
 | 4 | med | R1's draft path invoked decision 6's permission while the landing order put that amendment in R2 | PLAUSIBLE-only | Fixed: the narrow declared-draft permission lands in R1's minimal edits; R2 carries the rest of the amendment |
 | 5 | med | The rewrite contract's target sentence ("an owner is a role, and the roster says who holds it") excluded person owners and holder-only rows | CONFIRMED | Fixed: "a role or a named holder, and the roster resolves it" — the additive form decision 1 requires |
+
+## Round 16 — 2026-08-29, task-mtdwdo7s-gc0i8d, verdict: does not approve (6 findings, 2 high)
+
+Reviewed: commit `cfa80b2` (spec after round-15 fixes, plus this log). All 6 accepted;
+fixed in the following commit. Rows amended: round-15 rows 2, 3, 4, and 5; round-10
+row 1 (per row 6 below).
+
+| # | Sev | Finding (compressed) | Verdict | Disposition |
+|---|---|---|---|---|
+| 1 | high | R1's inline exception narrowed back to appeal gaps, dropping the orphan prohibition decision 6 had just gained | CONFIRMED | Fixed: R1's paragraph states the full rung-independent exception. Amends round-15 row 2's completeness |
+| 2 | high | The R1/R2 split landed the declared-draft permission without its paired report obligation — removing decision 6's stated pressure | CONFIRMED | Fixed: permission, exceptions, and the constitution-rule report obligation land together in R1; R2 keeps the provisioned-no reconciliation and wider wording. Amends round-15 row 4 and round-10 row 1 |
+| 3 | med | "Ships rungless with its unresolved owners named" was unconditional — coincidence can resolve every owner, leaving no gap | CONFIRMED | Fixed: the draft path is conditioned on at least one unresolved owner; all-resolved proceeds ordinarily. Amends round-15 row 3 |
+| 4 | med | The rewrite preamble still said "the person holding one," excluding legal holder-only rows | CONFIRMED | Fixed: "a role or a named holder", with the holder-only case stated. Amends round-15 row 5 |
+| 5 | med | The generated roster's `review_by` had no source — no question elicits it, and R1 must not invent | CONFIRMED | Fixed: C10's derivation pattern — a stated 90-day interim default, recorded as derived-not-answered, elicited from R2 on |
+| 6 | low | Round-15 row 4's amendment inventory omitted round-10 row 1, whose "R2 keeps the contract amendment" it changed | CONFIRMED | Recorded here: round-15 row 4 also amends round-10 row 1 |

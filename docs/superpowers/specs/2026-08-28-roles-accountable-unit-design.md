@@ -328,9 +328,10 @@ biting. This is flagged for the maintainer at R1 plan review.
 
 ### The prose rewrite
 
-The sites above are rewritten to the new semantics: an owner is a role or the person
-holding one; a role must be held to activate; the interview elicits the roster (who
-holds what, typed) and records where the org map came from. The three explicit
+The sites above are rewritten to the new semantics: an owner is a role or a named
+holder (a person may be a holder without any role asserted — the holder-only row);
+a role must be held to activate; the interview elicits the roster (who holds what,
+typed) and records where the org map came from. The three explicit
 contradictions carry the change: `questions.md:93`'s "A role is not an owner",
 `protocol.md:247`'s "a **person**, not a role", and `interview/README.md:149`'s
 "a person, not a role?" all become *an owner is a role or a named holder, and the
@@ -377,17 +378,27 @@ review:
   its `(human-only)` marker denotes the answer's source, not the holder's
   humanity, and nothing forbids a role-shaped backup — so it is not entered.
   Person-confirmed owners are entered as **holder-only rows** (the Role cell
-  empty; those questions yield a person's name, not a role). Every other owner
+  empty; those questions yield a person's name, not a role). The roster's
+  `valid_at` is the generation date — a fact — and its `review_by`, which no
+  current question elicits, follows the C10 pattern already worked in run 1: a
+  derived date (a stated interim default of 90 days from generation), recorded in
+  the file as derived-not-answered, replaced by an elicited answer from R2 on. Every other owner
   value (a constitution rule's owners may be roles or disclaimers; run 1's
   `runtime_check_owner` proves it) is **not entered at all** — writing it as a
   Role row would assert a role the record never confirmed, a disclaimer least of
   all; the roster asserts nothing about it, it fails resolution by absence —
   unless the same string coincides with an entered holder, the documented
-  intent-blind blind spot, in which case it resolves as that person — and
-  the rule ships rungless as a declared draft under decision 6 — subject to its
-  safety-spine exception: a rule whose high-risk appeal gap takes any of the
-  three ERROR forms does not ship at all — with its unresolved owners named as
-  the gaps. Role rows, agent-typed holders, and typing for the rest arrive with
+  intent-blind blind spot, in which case it resolves as that person. Where at
+  least one owner remains unresolved, the rule ships rungless as a declared draft
+  under decision 6 — subject to its full safety-spine exception: a rule carrying
+  any rung-independent gate ERROR (a high-risk appeal gap in any of its three
+  forms, or the orphan prohibition unsatisfied) does not ship at all — with its
+  unresolved owners named as the gaps; a rule whose owners all resolve,
+  coincidence included, proceeds by the ordinary path. The minimal edits carry
+  the declared-draft permission **together with its paired accountability
+  condition** — the generation report must name every constitution rule that
+  shipped incomplete and why — because landing the permission without the
+  obligation would remove exactly the pressure decision 6 counts on. Role rows, agent-typed holders, and typing for the rest arrive with
   R2's elicitation — for repos generated **after** R2: a repo generated in the
   R1–R2 window keeps its holder-only roster, which stays valid v2 content, and
   enriching it is that company's own edit (content is never re-copied by an
@@ -397,12 +408,13 @@ review:
   migration boundary, and writing `2` without a roster fails the missing-roster
   check on any active rule. A generation run on the R1 engine must produce a
   passing repo.
-- **R2** — the rest of the `generate.md` contract amendment (hole b) — the report
-  obligations' wording and the `provisioned: no` reconciliation — and the prose
+- **R2** — the rest of the `generate.md` contract amendment (hole b) — the
+  `provisioned: no` reconciliation and the wider report wording — and the prose
   rewrite, including the full roster elicitation (typed holders asked for
   directly, rather than derived from the human-only markers). The narrow
-  declared-draft permission itself, with its exceptions, lands in R1's minimal
-  edits: the R1-window generation path depends on it, so it cannot wait for R2.
+  declared-draft permission, its exceptions, and its constitution-rule report
+  obligation land together in R1's minimal edits: the R1-window generation path
+  depends on the permission, and the obligation is its paired condition.
 - **C1–C13** grouped into slices after that; C13 stays held for the S6 decision.
 
 ## What this does not do
