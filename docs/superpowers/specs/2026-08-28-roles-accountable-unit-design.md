@@ -394,7 +394,11 @@ review:
   as holders, tests, and the `docs/rule-map.md`, `docs/known-limitations.md`, and
   `MIGRATIONS.md` entries, **and the demo pin migrated to `schema_version: 2`** —
   without that, the R1 engine's own gate goes red on `demo/groundwork.pin` at the
-  migration boundary. **The engine-root roster is maintainer-authored content, and
+  migration boundary. **The demo roster addition carries its matching proposal in
+  `demo/proposals/`**, because demo is a governed root and R1's own `--diff` gate
+  — the one this slice installs — will classify that addition as escalating: the
+  slice must pass the gate it creates, exactly as any escalating demo change
+  runs the consent gate. **The engine-root roster is maintainer-authored content, and
   R1's plan carries it as an explicit maintainer input:** the engine's own active
   rule names `Head of IT` and `CISO`, no file identifies who holds those roles for
   the groundwork instance, and the implementing agent must not invent the answer —
@@ -419,7 +423,13 @@ review:
   (R1's implementation plan may instead carry a per-row confirmed date, which
   dominates the aggregate; the file states whichever it uses.) Snapshot
   semantics, deliberately narrower than org-memory's when-the-fact-became-true
-  `valid_at`, and stated as such in the file. Its `review_by`, which no current question elicits, is a stated interim
+  `valid_at`, and stated as such in the file. **Generation precondition:** the
+  source layers' `confirmed_at` dates must parse as real, non-future ISO dates —
+  today the validator only WARNs on a malformed one, so a frozen interview can
+  carry `confirmed_at: someday`, leaving the aggregate undefined. A malformed or
+  future date halts roster generation with the offending layer named: the
+  operator fixes the record; the generator never invents a date. (The interview's
+  existing halt rule, applied at generation.) Its `review_by`, which no current question elicits, is a stated interim
   **policy default** (90 days from `valid_at`, matching the sketch), recorded in the file as
   default-not-answered — a weaker cousin of C10's derivation, which had an
   elicited cadence to derive from where this has none — replaced by an elicited

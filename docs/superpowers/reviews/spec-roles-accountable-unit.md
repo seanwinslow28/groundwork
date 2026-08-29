@@ -288,3 +288,14 @@ amended: round-17 row 1 (again), round-18 rows 1 and 2.
 | 2 | major | Latest-`confirmed_at` refreshes the whole roster — a newer layer reconfirms nothing about older entries, postponing every review_by | CONFIRMED | Fixed: earliest `confirmed_at` as the conservative aggregate (staleness never masked, reviews come sooner); per-row dates allowed by the R1 plan. Amends round-18 row 2 |
 | 3 | major | A decision-locked spec carried an undecided maintainer-owned decision — the #17 extension was only "flagged" | CONFIRMED | Fixed: put to the maintainer per rule 5 and locked as decision 8 (third family, adds/mods), dated 2026-08-29 in the header and heading |
 | 4 | minor | "Only two governed classes" — `_governed_class()` returns three values across two families | CONFIRMED | Fixed: two families, three classifier values; the roster is the third family, fourth value |
+
+## Round 20 — 2026-08-29, task-mte5oxmo-6e57wo, verdict: does not approve (2 findings, both major)
+
+Reviewed: commit `c42c81d` (spec after round-19 fixes, plus this log). Both accepted;
+fixed in the following commit. Both are bootstrap-class gaps in R1's own landing.
+Rows amended: round-19 row 2, round-11 row 2.
+
+| # | Sev | Finding (compressed) | Verdict | Disposition |
+|---|---|---|---|---|
+| 1 | major | `confirmed_at` malformed/future dates only WARN — a frozen interview can leave the earliest-date aggregate and the 90-day derivation undefined | CONFIRMED | Fixed: a generation precondition — unparseable or future dates halt roster generation with the layer named; the operator fixes, the generator never invents. Amends round-19 row 2 |
+| 2 | major | R1's own demo roster addition trips the escalating-change gate R1 installs — no matching proposal or exemption was scoped | CONFIRMED | Fixed: the demo roster addition carries its matching proposal in demo/proposals/; the slice must pass the gate it creates. Amends round-11 row 2 |
