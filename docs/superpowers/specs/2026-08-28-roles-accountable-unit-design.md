@@ -54,8 +54,10 @@ draft — of which the then-pinned contract permitted only omission, with invent
 owner as the standing temptation.
 
 This design also settles the two confirmed enforcement holes recorded in
-`quad-check-correction.md` and the durable-review-record rule, because all three take
-their shape from the holding semantics.
+`quad-check-correction.md`, which take their shape from the holding semantics — and,
+alongside them, the durable-review-record rule, which does not: it is settled in the
+same session because its evidence (the prior session's lost review record) was
+established here.
 
 ## Decisions locked (maintainer, 2026-08-28)
 

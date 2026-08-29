@@ -134,3 +134,16 @@ drew no findings; the one finding is this log's own bookkeeping.
 | # | Sev | Finding (compressed) | Verdict | Disposition |
 |---|---|---|---|---|
 | 1 | low | Round-6 row 3's "Fixed at all three sites" was falsified by round-7 finding 3, but round 7's amendment inventory never named round-6 row 3 | CONFIRMED | Recorded here: round-7 row 3 amends round-6 row 3 — the round-6 fix reached the validator section and the two prose sites but not decision 5 |
+
+## Round 9 — 2026-08-28, task-mtdt4fx6-852oq0, verdict: does not approve (2 findings, both minor)
+
+Reviewed: commit `de27a5e` (spec after round-8 fix, plus this log). Both findings
+accepted; fixed in the following commit. (Launch note: this round's job registered
+under the worktree's cwd-keyed state root; a status poll from the main repo returned
+"No job found", causing one duplicate launch, cancelled unrun. The lesson is
+recorded in session memory, not here — it is apparatus, not spec.)
+
+| # | Sev | Finding (compressed) | Verdict | Disposition |
+|---|---|---|---|---|
+| 1 | low | Round 3's amendment inventory omits round-2 row 2, which round-3 row 3 explicitly amends | CONFIRMED | Recorded here (append-and-supersede): round 3's inventory also includes round-2 row 2 |
+| 2 | low | "All three take their shape from the holding semantics" — the review-record rule does not; it shares only the session | CONFIRMED | Fixed: the sentence now separates the two holes (shaped by the semantics) from the review rule (settled alongside, on its own evidence) |
