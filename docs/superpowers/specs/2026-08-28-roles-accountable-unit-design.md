@@ -5,7 +5,9 @@
 > Brainstormed and decision-locked with the maintainer 2026-08-28, in one session,
 > seven decisions — the first carried in from the maintainer's own kickoff decision,
 > the other six each presented with options, a recommendation, and the honest
-> counter-argument (build-sessions rule 5), and each chosen by the maintainer. The
+> counter-argument (build-sessions rule 5), and each chosen by the maintainer. An
+> eighth decision was put to the maintainer the same way and locked 2026-08-29,
+> after adversarial review round 17 surfaced it (decision 8 below). The
 > decision list below is this session's own account; the durable record of the
 > maintainer's approval is the merge that lands this branch, the same way the honesty
 > plan's approval is dated by its merge. It feeds Fable implementation plans through
@@ -59,7 +61,7 @@ alongside them, the durable-review-record rule, which does not: it is settled in
 same session because its evidence (the prior session's lost review record) was
 established here.
 
-## Decisions locked (maintainer, 2026-08-28)
+## Decisions locked (maintainer, 2026-08-28 and 2026-08-29)
 
 1. **Roles are the accountable unit.** A role title is a valid value for every owner
    field. This is additive: a person's name stays valid too — the demo's active rules
@@ -233,6 +235,23 @@ established here.
    two of them approving, in that session), and appending during review adds a step
    to every round.
 
+8. **The roster joins the consent gate: a third governed artifact family, for
+   additions and modifications.** (Maintainer, 2026-08-29 — the one decision made
+   after the original brainstorm, when review round 17 found that an ungoverned
+   roster edit could redirect an active rule's appeal endpoint silently.) A change
+   to `governance/roles.md` in a governed root is an escalating change requiring a
+   matching proposal, extending locked #17's routing contract from two artifact
+   families to three. **Deletions keep the existing WARN-only limitation** that
+   `docs/known-limitations.md` already documents for rules and skills — so the
+   roster is governed exactly as they are, ungated deletion included, and a
+   deleted roster is loud anyway: every active rule then ERRORs on the missing
+   roster.
+   *Counter-argument, recorded:* deletion is an attacker's cheapest move against a
+   roster, and it stays loud-after-the-fact rather than gated; and every #17
+   extension grows the surface the two-family promise was meant to keep small.
+   Gating deletions for all three families was weighed and declined as a larger
+   redesign than R1 should carry.
+
 ## The design
 
 ### The roster
@@ -318,19 +337,18 @@ biting. This is flagged for the maintainer at R1 plan review.
   change with its own trade-offs (an ontology owner is descriptive; a rule owner is
   enforcement). The unresolved remainder is a **named remaining hole**, recorded in
   `docs/known-limitations.md` in R1, until a later slice decides it.
-- **Roster mutations are governed** (`--diff` mode, `since: 2`): a change to
-  `governance/roles.md` in a governed root is an **escalating change requiring a
-  matching proposal**, exactly as a constitution rule's is — the roster decides
-  who holds every active rule's owners and where its human appeal terminates, so
-  editing it is governance, not bookkeeping. Without this, an ungoverned roster
-  edit could redirect an active rule's appeal endpoint silently, hollowing out
-  the #18 gate from underneath. **This makes the roster a third governed class**,
-  and R1 changes every surface that today knows only two: the proposal target
-  schema (which currently ERRORs on non-constitution, non-skill targets),
-  `_governed_class()`, the #17 routing contract's two-artifact enumeration, the
-  blast-radius tripwire, `docs/rule-map.md`, and the tests. Extending #17 — a
-  locked decision — is flagged for the maintainer alongside the gate addition
-  itself.
+- **Roster mutations are governed** (decision 8; `--diff` mode, `since: 2`): an
+  addition to or modification of `governance/roles.md` in a governed root is an
+  **escalating change requiring a matching proposal**, exactly as a constitution
+  rule's is — the roster decides who holds every active rule's owners and where
+  its human appeal terminates, so editing it is governance, not bookkeeping.
+  Deletions keep the documented WARN-only limitation all governed families share.
+  **This makes the roster a third governed artifact family**, and R1 changes
+  every surface built for two: the proposal target schema (which currently ERRORs
+  on non-constitution, non-skill targets), `_governed_class()` (today three
+  classifier values across two families; the roster adds a fourth value, third
+  family), the #17 routing contract's enumeration, the blast-radius tripwire,
+  `docs/rule-map.md`, and the tests.
 - **No reality check:** nothing verifies a roster row against the world. The
   disclaiming-owner problem ("the function, no person named") is caught at
   activation by failed resolution, not by prose analysis — provided no roster entry
@@ -393,10 +411,15 @@ review:
   Person-confirmed owners are entered as **holder-only rows** (the Role cell
   empty; those questions yield a person's name, not a role). The roster's
   `valid_at` records when the mapping was last confirmed — for an R1-window
-  roster, the **latest `confirmed_at` among the interview layers its entries
-  transcribe**, never the generation date, which may fall later and confirms
-  nothing — snapshot semantics, deliberately narrower than org-memory's
-  when-the-fact-became-true `valid_at`, and stated as such in the file. Its `review_by`, which no current question elicits, is a stated interim
+  roster, the **earliest `confirmed_at` among the interview layers its entries
+  transcribe**: a conservative aggregate, since layers freeze independently and a
+  newer layer reconfirms nothing about older entries; the earliest date means no
+  entry's staleness is masked and the derived `review_by` comes sooner, never
+  later. Never the generation date, which may fall later and confirms nothing.
+  (R1's implementation plan may instead carry a per-row confirmed date, which
+  dominates the aggregate; the file states whichever it uses.) Snapshot
+  semantics, deliberately narrower than org-memory's when-the-fact-became-true
+  `valid_at`, and stated as such in the file. Its `review_by`, which no current question elicits, is a stated interim
   **policy default** (90 days from `valid_at`, matching the sketch), recorded in the file as
   default-not-answered — a weaker cousin of C10's derivation, which had an
   elicited cadence to derive from where this has none — replaced by an elicited

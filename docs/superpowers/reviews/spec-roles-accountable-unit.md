@@ -273,3 +273,18 @@ fixed in the following commit. Rows amended: round-17 rows 1 and 4.
 |---|---|---|---|---|
 | 1 | high | The consent-gate addition named no implementation surface — the proposal schema and `_governed_class()` know only two governed classes and would reject or ignore a roster target | CONFIRMED | Fixed: the roster is stated as a third governed class, with every two-class surface R1 must change enumerated; extending locked #17 flagged for the maintainer. Amends round-17 row 1 |
 | 2 | med | `valid_at` = generation date makes stale mappings look freshly confirmed — generation is not confirmation | CONFIRMED | Fixed: `valid_at` transcribes the latest `confirmed_at` among the source layers; the review_by default anchors to `valid_at`. Amends round-17 row 4 |
+
+## Round 19 — 2026-08-29, task-mtdxgrod-7euwj4, verdict: does not approve (4 findings, 3 major)
+
+Reviewed: commit `8797115` (spec after round-18 fixes, plus this log). All 4 accepted;
+fixed in the following commit — and the round's third major forced what it named: the
+roster-governance addition went to the maintainer as a proper decision (options,
+recommendation, counter-argument) and is now **decision 8**, locked 2026-08-29. Rows
+amended: round-17 row 1 (again), round-18 rows 1 and 2.
+
+| # | Sev | Finding (compressed) | Verdict | Disposition |
+|---|---|---|---|---|
+| 1 | major | "Exactly as a constitution rule's" silently promised gated deletions — governed deletions only WARN today, by documented design, and proposals cannot target a deleted file | CONFIRMED | Fixed by decision 8's scope: additions and modifications gated; deletions keep the shared WARN limitation, stated with the loud-failure consolation. Amends round-17 row 1 and round-18 row 1 |
+| 2 | major | Latest-`confirmed_at` refreshes the whole roster — a newer layer reconfirms nothing about older entries, postponing every review_by | CONFIRMED | Fixed: earliest `confirmed_at` as the conservative aggregate (staleness never masked, reviews come sooner); per-row dates allowed by the R1 plan. Amends round-18 row 2 |
+| 3 | major | A decision-locked spec carried an undecided maintainer-owned decision — the #17 extension was only "flagged" | CONFIRMED | Fixed: put to the maintainer per rule 5 and locked as decision 8 (third family, adds/mods), dated 2026-08-29 in the header and heading |
+| 4 | minor | "Only two governed classes" — `_governed_class()` returns three values across two families | CONFIRMED | Fixed: two families, three classifier values; the roster is the third family, fourth value |
