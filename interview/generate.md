@@ -288,13 +288,15 @@ and memory guards read from the base, so what they catch is a layer the base alr
 being edited or deleted — its interview manifest too, or the layer is not covered — and a
 base-held memory record deleted or edited in a way the schema forbids.
 
-**Say what you generated and what you could not.** The report names what shipped, what
-shipped incomplete, and what did not ship at all, each with its reason. The classes below
-are the ones this document's ordering rules carve out by name, gathered where they come
-due together. **They are not a closed list.** The general rule at the top of this file
-binds every required field, named here or not — a list with one bullet per field would
-have to enumerate every schema in the repository, and would go stale the first time one
-of them gained a field.
+**Say what you generated and what you could not.** List what was generated. Then name
+**every** artifact that shipped incomplete, and every one that did not ship at all, each
+with its reason. That obligation is exhaustive for the run in front of you — a report
+naming some of its gaps is the failure this section exists to prevent, and the obligation
+is what pays for the permissions above. The bullets below are **not its boundary**: they
+are the cases this document's ordering rules carve out by name, gathered where they come
+due together. A gap in a required field no bullet mentions is reported exactly the same
+way, because the general rule at the top of this file binds every required field, named
+here or not.
 
 - The activities that got deep records — and the ones that did not, because a Gate
   answer was missing from the layers.

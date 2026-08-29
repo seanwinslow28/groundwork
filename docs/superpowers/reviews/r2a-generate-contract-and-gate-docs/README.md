@@ -36,7 +36,8 @@ roster's staleness WARN belongs to R2b, which is what gives the demo an elicited
 | Round | Reviewed | Verdict | Findings | Fix commit |
 |---|---|---|---|---|
 | 01 | `4fbb9dd` | 1 finding, no approve/does-not-approve word | 1 | `a9e1171` |
-| 02 | `3d61902` | 3 findings, no approve/does-not-approve word | 3 | `<round-02 fixes>` |
+| 02 | `3d61902` | 3 findings, no approve/does-not-approve word | 3 | `a9bc5de` |
+| 03 | `a9bc5de` | does not approve as written | 4 | `<round-03 fixes>` |
 
 ## Open findings
 
