@@ -73,6 +73,12 @@ At PR time the validator classifies every changed skill, rule, and roster under 
 - A **track-1 body-only** change with no newly appended changelog line → WARN (an agent
   auto-apply must log its line; a maintainer's own edit needs none).
 - Any edit, reorder, or removal of an existing `governance/changelog.md` entry → ERROR.
+- A governed file **deleted** → WARN, not ERROR. Retiring a rule, skill, or roster is
+  escalating, but a proposal's `target` must be an existing file, so a deletion can never
+  be traced to one and the honest record is the maintainer's consent commit. This is a
+  documented limitation, not an oversight —
+  [docs/known-limitations.md](../docs/known-limitations.md) carries it for all three
+  governed families.
 
 The tripwire cannot prove a human truly reviewed the change — the commit bit does that.
 See [docs/known-limitations.md](../docs/known-limitations.md).

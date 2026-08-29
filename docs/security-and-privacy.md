@@ -148,9 +148,11 @@ Two things you can do now, neither of which groundwork implements for you: keep
 performance and assessment content out of organizational memory (the demo's
 performance-review rule models exactly this boundary), and decide deliberately whether
 your interview transcript is retained — **before the repository's first commit.** The
-generator's default is to keep `interview/`, and once confirmed layers are committed the
-`--diff` gate treats deleting one as an ERROR (frozen layers are the consent record), so
-retention is an upfront choice, not one you can quietly reverse later. Nothing in the
+generator's default is to keep `interview/`, and the `--diff` gate treats deleting a
+confirmed layer as an ERROR (frozen layers are the consent record) wherever the base being
+compared against holds both that layer and its `00-manifest.md` —
+[`interview/README.md`](../interview/README.md) states the condition. So retention is an
+upfront choice, not one you can quietly reverse later. Nothing in the
 validator requires an `interview/` directory to exist, and the demo retains its own as a
 disposition rather than a rule.
 

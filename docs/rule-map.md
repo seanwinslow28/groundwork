@@ -46,7 +46,7 @@ can ever ERROR.
 | The changelog entry format, per instance (17) | check_changelog | WARN |
 | The synthetic-identifier allowlist, scoped to demo content only (16) | check_synthetic_identifiers | ERROR |
 | The stateful memory pass under diff, driven by the base file list (7) | memory_diff_findings | ERROR |
-| The frozen-layer guard under diff (9) | interview_diff_findings | ERROR |
+| The frozen-layer guard under diff, for the layers the base holds alongside their 00-manifest.md (9) | interview_diff_findings | ERROR |
 | The blast-radius tripwire: declared against actual across three governed families, plus the append-only changelog (18 and 17) | blast_radius_diff_findings | ERROR on a missing or mismatched proposal and on a changelog rewrite or deletion, WARN on a governed deletion or a missing changelog line |
 
 ## Corrections the hand audit made
