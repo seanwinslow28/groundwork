@@ -40,6 +40,7 @@ rule 11 requires.
 | [03](round-03.md) | Codex review round | `cfb0c20` | Not clean — 1 Major + 1 Minor on classifier correctness, plus 3 Minor on prose | `d1ab4fc` |
 | [04](round-04.md) | Codex review round | `512126f` | Not clean — 4 Major + 1 Minor on classifier correctness, plus 2 Minor on prose and the record. One Major rejected. | `de7eaf8` |
 | [05](round-05.md) | Codex review round | `095ca91` | Not clean — 1 Major + 2 Minor. Entry 04's rejection independently confirmed. | `06184ce` |
+| [06](round-06.md) | Codex review round | `0d9fc74` | Not clean — 1 Major + 2 Minor. The round-05 repair audit came back clean. | (this branch's round-06 fix commit) |
 
 ## Open findings
 
@@ -93,6 +94,20 @@ times by a later entry because entry 01 is immutable:
   without qualification. It reads what this repository's configured `git log` will show it,
   which is narrower in four separate ways. Corrected in entry 03;
   `docs/known-limitations.md` carries the accurate statement.
+
+**Two more supersessions the entries record and this section did not, until entry 06 found
+them missing.** Committed entries are immutable, so the correction lives in the later entry;
+what belongs here is the pointer.
+
+- **The unreadable-tree repair.** Entry 02's fix for its own finding 8 suppressed EVERY
+  deletion finding whenever any directory was unreadable. Entry 03 finding 2 showed that
+  blinded candidates whose absence was independently provable, and narrowed it to candidates
+  under the unreadable prefix.
+- **The presence proof, three times.** Entry 03 replaced `lexists` with `isfile`; entry 04
+  made `isfile` the sole proof by removing the name-membership check; entry 05 finding 1 then
+  showed `isfile` resolves through a symlinked ANCESTOR directory that the working-tree scan
+  never descends, and replaced it with `_reachable_regular_file`. All three earlier proofs
+  were wrong about the same question, and each was found in the repair for the one before it.
 
 Entry 02's own account of finding 5 was superseded by entry 03: `lexists` was the wrong side
 of that problem. Three test docstrings credited it. Two —

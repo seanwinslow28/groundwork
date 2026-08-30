@@ -3876,6 +3876,24 @@ def _unsupported_root_finding(g):
                    "carrying this pin as the base")
 
 
+# Pathspec behaviour is configurable through the ENVIRONMENT, and two of these
+# turn a wildcard pathspec into a literal one — which silently matched nothing
+# and returned the walk to the exact silence issue #40 exists to end (Codex
+# round 06). Any git call that passes a pathspec scrubs them, so the answer
+# depends on the repository rather than on the shell the gate is run from.
+# ICASE and GLOB are scrubbed too: neither is harmful here, but leaving them
+# would make the result depend on the caller's environment for no reason.
+_PATHSPEC_ENV = ("GIT_LITERAL_PATHSPECS", "GIT_NOGLOB_PATHSPECS",
+                 "GIT_GLOB_PATHSPECS", "GIT_ICASE_PATHSPECS")
+
+
+def _git_env_without_pathspec_overrides():
+    env = dict(os.environ)
+    for name in _PATHSPEC_ENV:
+        env.pop(name, None)
+    return env
+
+
 # git's two regular-file blob modes. A marker is a FILE; a symlink (120000), a
 # gitlink (160000) and a tree are not one, on either side of the comparison.
 _REGULAR_MODES = (b"100644", b"100755")
@@ -4010,7 +4028,8 @@ def _markers_added_since_base(toplevel, base):
                               "--raw", "-z", "--format=",
                               "%s..HEAD" % base, "--",
                               "*groundwork.pin", "*" + INTERVIEW_MANIFEST],
-                             capture_output=True)
+                             capture_output=True,
+                             env=_git_env_without_pathspec_overrides())
     except OSError:
         return set()
     if log.returncode != 0:
@@ -4184,42 +4203,45 @@ def diff_base_findings(root, base):
     # and a marker the working tree holds is the loops above.
     #
     # Absence has to be PROVEN before it is reported, and the working-tree scan
-    # alone does not prove it. Three ways it can be wrong, all measured by Codex
-    # round 02:
+    # alone does not prove it. Four ways it can be wrong, each measured by a
+    # Codex round, and each of the last three found in a REPAIR for the one
+    # before it — presence is the question this slice kept getting wrong:
     #   - The scan could not read part of the tree (an unreadable directory).
     #     It cannot show anything under THAT subtree is missing, so a candidate
     #     under an unreadable prefix is skipped; `blast_radius_diff_findings`
     #     still raises the accurate unreadable-directory ERROR, so the run is red
-    #     for the true reason. The first version of this suppressed EVERY
-    #     deletion whenever any directory was unreadable, which blinded
-    #     candidates whose absence was independently provable — round 03
-    #     finding 2.
-    #   - Presence is proven by `os.path.isfile` ALONE, and by nothing that
-    #     matches on the pathname. `lexists` was tried and is wrong: a marker
-    #     replaced by a DIRECTORY of the same name still "exists" (round 03
-    #     finding 1). Membership in the working-tree scan was tried alongside it
-    #     and is wrong for the same reason one step earlier: it matched a broken
-    #     symlink left where the marker had been, before any type was checked
-    #     (round 04 finding 5). `isfile` is what a marker actually is.
+    #     for the true reason. The first version suppressed EVERY deletion
+    #     whenever any directory was unreadable, which blinded candidates whose
+    #     absence was independently provable (round 02 finding 8, narrowed by
+    #     round 03 finding 2).
+    #   - Presence is `_reachable_regular_file` and nothing else. Three earlier
+    #     proofs were each wrong: `lexists`, which a DIRECTORY of the same name
+    #     satisfies (round 03 finding 1); membership in the working-tree scan by
+    #     NAME, which a broken symlink satisfies (round 04 finding 5); and
+    #     `os.path.isfile` alone, which resolves through a symlinked ANCESTOR
+    #     directory that `os.walk(followlinks=False)` never descends, so it
+    #     called present exactly the markers no other pass can see (round 05
+    #     finding 1).
     #   - The BASE side is typed too, via `_base_markers`. `base_rels` comes from
     #     `ls-tree --name-only` and answers only "the base had this name", which
     #     let a base holding a SYMLINK of that name suppress the finding for a
     #     real marker added and deleted after it (round 04 finding 4).
     #   - git spells a path NFC while a macOS filesystem lists it NFD, and a
     #     case-folding filesystem spells it differently again, so the scan can
-    #     miss a marker that is still there. `lexists` asks the filesystem in
-    #     its own terms and is the whole answer: on a normalization- or
-    #     case-INSENSITIVE filesystem it finds the file under git's spelling,
-    #     and on a sensitive one the two spellings are genuinely different files
-    #     and the deletion is real. An NFC fold was tried here and REMOVED — no
-    #     test could be made to bite it behind `lexists`, and on a sensitive
-    #     filesystem it would have suppressed a true deletion.
+    #     miss a marker that is still there. Asking the filesystem in its own
+    #     terms covers it: on a normalization- or case-INSENSITIVE filesystem the
+    #     file is found under git's spelling, and on a sensitive one the two
+    #     spellings are genuinely different files and the deletion is real. An
+    #     NFC fold was tried here and REMOVED — no test could be made to bite it,
+    #     and on a sensitive filesystem it would have suppressed a true deletion.
     # `base_rels` stays an EXACT match: `_roots_missing_from_base` documents why
     # folding it is the fail-OPEN direction there, and that reasoning is
     # unchanged here.
     unreadable = tuple(sorted(f.path for f in wt_walk_findings))
     candidates = sorted(_markers_added_since_base(toplevel, base))
-    base_markers = _base_markers(toplevel, base)
+    # Only pay for the base listing when there is something to look up. Nearly
+    # every run has no candidates at all (round 06 finding 2).
+    base_markers = _base_markers(toplevel, base) if candidates else set()
     for repo_path in candidates:
         if scope != "." and not repo_path.startswith(scope + "/"):
             continue

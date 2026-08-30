@@ -9271,6 +9271,65 @@ class TestDiffBaseContract(unittest.TestCase):
             base = _git_out(d, "rev-parse", "HEAD")
             self.assertEqual(validate._base_markers(d, base), {"groundwork.pin"})
 
+    # --- Codex round 06 regressions.
+
+    def test_pathspec_environment_overrides_do_not_disable_the_walk(self):
+        """Round 06 finding 1, Major. The history walk limits itself with
+        WILDCARD pathspecs, and git lets the environment turn those literal:
+        `GIT_LITERAL_PATHSPECS` or `GIT_NOGLOB_PATHSPECS` made them match
+        nothing, so the walk found no candidates and the run returned to the
+        exact silence issue #40 exists to end — settable from the shell the gate
+        runs in, without touching the repository.
+
+        Round 05 removed the pathspec from `_base_markers` and left the sibling
+        `git log` call still using one; this is that miss. The call now scrubs
+        the pathspec environment variables.
+
+        `--glob-pathspecs` is not an alternative: git rejects it when the literal
+        setting is active."""
+        with tempfile.TemporaryDirectory() as d:
+            base = self._pre_marker(d, markers=False)
+            _write(d, "groundwork.pin", PIN_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "add the marker")
+            os.remove(os.path.join(d, "groundwork.pin"))
+            for var in ("GIT_LITERAL_PATHSPECS", "GIT_NOGLOB_PATHSPECS"):
+                had = os.environ.get(var)
+                os.environ[var] = "1"
+                try:
+                    self.assertEqual(
+                        [f.path for f in
+                         self._messages(validate.diff_base_findings(d, base),
+                                        "no longer holds")],
+                        ["groundwork.pin"],
+                        "%s must not disable the walk" % var)
+                finally:
+                    if had is None:
+                        del os.environ[var]
+                    else:
+                        os.environ[var] = had
+
+    def test_the_base_tree_is_not_listed_when_there_are_no_candidates(self):
+        """Round 06 finding 2, Minor, operational. `_base_markers` lists the whole
+        base tree, and the caller ran it even with nothing to look up — an
+        unconditional second full-tree traversal on every diff run, where nearly
+        every run has no candidates at all."""
+        with tempfile.TemporaryDirectory() as d:
+            base = self._root(d)
+            real = validate._base_markers
+            calls = []
+
+            def counting(*args, **kwargs):
+                calls.append(args)
+                return real(*args, **kwargs)
+
+            validate._base_markers = counting
+            try:
+                validate.diff_base_findings(d, base)
+            finally:
+                validate._base_markers = real
+            self.assertEqual(calls, [], "no candidates means no base listing")
+
     def test_the_changelog_pass_skips_an_unsupported_root(self):
         """The second place a governed finding is suppressed. The changelog
         pass keys on a changelog present AT BASE, which a root whose pin is not

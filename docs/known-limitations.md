@@ -112,7 +112,7 @@ Honest limits of the current build. This file grows as the product does (brief �
     history, a record counts only when its destination mode is a regular file, so a gitlink or
     symlink named like a marker is not evidence one existed. In the base tree, the same
     question is asked of the modes rather than of the pathname. In the working tree, presence
-    presence must be a regular file the working-tree scan could actually have reached — not
+    must be a regular file the working-tree scan could actually have reached — not
     `lexists`, which a directory of the same name satisfies; not membership in the scan by
     name, which a broken symlink satisfies; and not `isfile` alone, which resolves through a
     symlinked parent directory the scan never descends. A symlink pointing at a real pin file
