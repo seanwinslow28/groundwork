@@ -8334,6 +8334,60 @@ class TestDiffBaseContract(unittest.TestCase):
             self.assertEqual([f for f in validate.diff_base_findings(d, "HEAD")
                               if f.level == "ERROR"], [])
 
+    def test_deleting_the_marker_under_a_pre_marker_base_says_nothing(self):
+        """The contract is evidence-based, and this test pins where that runs
+        out. With the base predating the marker AND the working change deleting
+        it, the marker is in neither tree: nothing is discovered, nothing is
+        checked, nothing is said. Measured the same on the engine before this
+        check existed, so it is a standing gap rather than one the check made,
+        and no check here can close it — with the marker in neither tree there
+        is nothing to tell this apart from an ungoverned repository, which the
+        engine's own pin-less root is. Asserted rather than left implicit so
+        the silence is visible in the suite and cannot deepen unnoticed.
+        Recorded in docs/known-limitations.md; Codex round 4 found it."""
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "seed.md", "# Seed\n")
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "pre-generation")
+            pre = _git_out(d, "rev-parse", "HEAD")
+            _write(d, "groundwork.pin", PIN_OK)
+            _write(d, "governance/constitution/access.md", RULE_OK)
+            _iv_state(d)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "generation")
+
+            os.remove(os.path.join(d, "groundwork.pin"))
+            os.remove(os.path.join(d, "interview", validate.INTERVIEW_MANIFEST))
+
+            self.assertEqual(validate.diff_base_findings(d, pre), [])
+            self.assertEqual(validate.blast_radius_diff_findings(d, pre), [])
+            self.assertEqual(validate.interview_diff_findings(d, pre), [])
+
+    def test_deleting_the_marker_is_still_caught_when_the_base_holds_it(self):
+        """The control, and the reason the gap above is narrow rather than
+        general: `_pin_dirs` reads the base tree so deleting a pin cannot
+        un-govern the change that deleted it, and `interview_diff_findings`
+        derives its state directories from the base for the same reason. Both
+        guarantees hold wherever the base carries the marker."""
+        with tempfile.TemporaryDirectory() as d:
+            base = self._root(d)
+            os.remove(os.path.join(d, "groundwork.pin"))
+            os.remove(os.path.join(d, "interview", validate.INTERVIEW_MANIFEST))
+            _write(d, "governance/constitution/access.md", RULE_OK + "\nClause.\n")
+            _write(d, "interview/01-role-and-scope.md",
+                   IV_LAYER_OK.replace("The confirmed facts of the layer.",
+                                       "The rewritten facts of the layer."))
+            gated = [f for f in validate.blast_radius_diff_findings(d, base)
+                     if f.level == "ERROR"]
+            self.assertTrue(any("no pending proposal" in f.message for f in gated), gated)
+            frozen = [f for f in validate.interview_diff_findings(d, base)
+                      if f.level == "ERROR"]
+            self.assertTrue(any("frozen at its checkpoint" in f.message for f in frozen),
+                            frozen)
+
     # --- ancestry ---------------------------------------------------------
 
     def test_a_divergent_base_warns_and_does_not_error(self):

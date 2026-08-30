@@ -60,6 +60,17 @@ Honest limits of the current build. This file grows as the product does (brief �
     and reports nothing. That half was left out of the slice that added this one.
   - **A divergent base still runs.** Ancestry is a WARN, so a run against another line of
     history prints its findings — including findings naming changes this line never made.
+  - **Deleting the marker escapes the contract when the base predates it.** The contract is
+    evidence-based: it finds a governed root or an interview state by its `groundwork.pin`
+    or `00-manifest.md`, in the base tree or the working tree. Name a base from before that
+    marker was committed *and* delete it in the same working change, and it is in neither —
+    so nothing is discovered, nothing is checked, and nothing is said. `_pin_dirs` reads the
+    base tree precisely so deleting a pin cannot un-govern the change that deleted it, and
+    that guarantee holds only where the base carries the pin. Measured 2026-08-30 on that
+    exact setup: `0 error(s), 8 warning(s)` — and the same on the engine before this check
+    existed, so the check neither creates nor widens it. No check here can close it: with
+    the marker in neither tree there is nothing to tell this apart from an ungoverned
+    repository, which the engine's own pin-less root is.
   - **A root spelled differently at base and in the working tree reads as missing.** The pin
     lookup is exact, because folding it is the fail-open direction: a base holding
     `a/groundwork.pin` would otherwise satisfy a separate `A/` root and the tripwire would

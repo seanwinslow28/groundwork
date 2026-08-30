@@ -62,12 +62,14 @@ fail loud.** It fails silent, and exits 0.
   emitters use. `blast_radius_diff_findings` raises that ERROR for each unsupported root
   and drops those roots' findings, in two places: the candidate-file pass filters them out
   of `pairs`, and the changelog pass iterates `gov_roots - unsupported`. It does **not**
-  remove them from `gov_roots` — round 2 measured why. `main()` runs the contract before
-  the three passes that rest on it.
+  remove them from `gov_roots` — round 2 measured why. `main()` runs the contract first, ahead
+  of all three stateful passes; the two that rest on it are the tripwire and the frozen-layer
+  guard, and `memory_diff_findings` is deliberately unguarded.
 - `tests/test_validate.py` — `TestDiffBaseContract`. Each half has a paired control that
-  breaks the thing it guards, and every behaviour added or repaired here was
-  mutation-checked: the round entries carry those tables, and
-  `python3 -m unittest tests.test_validate.TestDiffBaseContract -v` lists what is there now.
+  breaks the thing it guards. Every behaviour added or repaired here has been
+  mutation-checked; `round-04.md` carries the full table, the earlier entries carry the
+  repairs they made, and `python3 -m unittest tests.test_validate.TestDiffBaseContract -v`
+  lists what is there now.
 - `docs/rule-map.md` — one row for `diff_base_findings`, which
   `test_every_shipped_check_is_mapped` requires of any new `*_findings` function.
 - `docs/known-limitations.md` — what the check does not do, including the two worth knowing:
@@ -103,14 +105,28 @@ invocation. The reasoning is in `diff_base_findings`' docstring so it travels wi
 |---|---|---|---|---|
 | 01 | `bf33166` | **does not approve** — Spec 3 (two Major, one Minor), Standards 0 | 3 | `ed47901` |
 | 02 | `ed47901` | **does not approve** — Spec 1 (Major), Standards 1 (Minor) | 2 | `55823e8` |
-| 03 | `55823e8` | **does not approve** — Standards 2 (worst Minor), Spec 0 | 2 | |
+| 03 | `55823e8` | **does not approve** — Standards 2 (worst Minor), Spec 0 | 2 | `a0fb017` |
+| 04 | `a0fb017` | **does not approve** — Spec 1 (Major), Standards 3 (worst Minor) | 4 | |
 
 A round's fix commit is filled in with the next entry: an entry cannot name the commit that
 carries its own fixes.
 
 ## Open findings
 
-**None.** Every finding raised on this branch is fixed.
+**One, and it is a Major.** Round 4's finding 1: with the `--diff` base predating a governed
+root or an interview state **and** the working change deleting that marker, the marker is in
+neither tree, so nothing is discovered and nothing is said.
+
+It stays open rather than fixed or rejected, by the maintainer's decision on 2026-08-30 under
+rule 5. It is **not a regression** — the same fixture measured `0 error(s), 8 warning(s)` on
+this branch and on `main` at `ea05b28` — and **no check in this pass can reach it**: with the
+marker in neither tree there is nothing to tell it apart from an ungoverned repository, which
+the engine's own pin-less root is. Rule 9's three rejection grounds are a closed list and none
+fits, so it is recorded as open rather than dressed as something else.
+
+Two tests pin it and its control, `docs/known-limitations.md` records it with the
+measurement, and the follow-up is filed as **issue #40**. Merging this branch means merging
+over one open Major; the grounds belong in the merge commit.
 
 ## Rejected findings
 
@@ -126,7 +142,7 @@ because the next session inherits it:
 | `python3 scripts/validate.py .` | 0 errors, 7 warnings, exit 0 | unchanged |
 | `python3 scripts/validate.py demo` | 0 errors, 2 warnings | unchanged |
 | `python3 scripts/validate.py . --diff main` | exit 0 | unchanged |
-| `python3 -m unittest discover -s tests -q` | OK, 824 tests, skipped=1 | OK, **842 tests**, skipped=1 |
+| `python3 -m unittest discover -s tests -q` | OK, 824 tests, skipped=1 | OK, **844 tests**, skipped=1 |
 
 The engine's own numbers do not move because `main` satisfies the contract it now states:
 it is an ancestor of any branch cut from it, and it holds both `demo/groundwork.pin` and
