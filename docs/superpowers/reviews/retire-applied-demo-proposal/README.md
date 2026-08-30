@@ -57,10 +57,8 @@ file, which after the deletion would have been a `check_links` ERROR:
 | Round | Reviewed | Verdict | Findings | Fix commit |
 |---|---|---|---|---|
 | 01 | `173978d` | **does not approve** — Standards 1 (worst Low), Spec 3 (worst Moderate) | 3 distinct | `17950e4` |
-| 02 | `17950e4` | **does not approve** — one finding, worst Moderate, reported on both axes | 1 | |
-
-A round's fix commit is filled in with the next entry: an entry cannot name the commit that
-carries its own fixes.
+| 02 | `17950e4` | **does not approve** — one finding, worst Moderate, reported on both axes | 1 | `f3840e5` |
+| 03 | `f3840e5` | **approve** | 0 | terminal |
 
 ## Open findings
 
@@ -83,9 +81,24 @@ carries its own fixes.
 
 There is no pytest; the suite is unittest.
 
+## What the rounds found, since it is the useful part
+
+Three rounds, five findings, every one fixed. Round 1 found the only defect in the original
+edits — and then rounds 1 and 2 both found their worst defect in the *previous* fix, in the
+same shape each time: **a repair reaching for a stronger claim than the one it replaced.**
+Round 1: "accepts any escalating change to a target a pending proposal names". Round 2, in
+the repair for it: "Changing the roster is escalating too and needs a proposal in the same
+way". Both were replaced by the narrow landed case, and round 3 approved with zero findings.
+
+Two fixes were made that no reviewer asked for, both recorded in the entry that made them,
+and both were the same sweep problem: this branch authored a new site while repairing an
+old one.
+
 ## Status
 
-Under review.
+**Ready for the maintainer to merge.** Round 3 approved with zero findings on both axes;
+all five findings are fixed; none is open and none rejected; the gate is green on all four
+commands and no baseline moved.
 
 ## Maintainer items
 
