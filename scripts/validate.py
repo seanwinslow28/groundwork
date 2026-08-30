@@ -3602,9 +3602,9 @@ CHANGELOG_REASONS = {
     None: "the governance changelog is append-only from its first entry on (#17)",
     "entries": "the governance changelog is append-only from its first entry on — an existing "
                "entry was edited, reordered, or removed (#17)",
-    "hidden": "the governance changelog's header carries markup that can reach the entries "
-              "below it — a header is prose, and may carry only inline code and a whole-line "
-              "closed HTML comment (#17)",
+    "hidden": "the governance changelog's header can reach the entries below it — a header "
+              "is prose, carries no code fence and no angle bracket that opens markup, and "
+              "ends with a blank line before the first entry (#17, #32)",
 }
 
 
@@ -3625,88 +3625,55 @@ def _changelog_first_entry(lines):
     return None
 
 
-def _find_backtick_run(line, start, length):
-    """PURE. Index of the next run of EXACTLY `length` backticks at or after start, or
-    None. CommonMark closes a code span with a run of the same length, not with any run
-    that contains one."""
-    i, n = start, len(line)
-    while i < n:
-        if line[i] != "`":
-            i += 1
-            continue
-        j = i
-        while j < n and line[j] == "`":
-            j += 1
-        if j - i == length:
-            return i
-        i = j
-    return None
-
-
-def _strip_inline_code(line):
-    """PURE. Replace matched backtick code spans in one line with a SPACE, so a construct
-    marker quoted as inline code is prose and not an opener — otherwise a header could not
-    document the syntax it is written in. A space rather than nothing, because deleting the
-    span would let the text on either side join into a marker nobody wrote: `</scr` + `ipt>`
-    is a closing script tag and `</scr x ipt>` is not. An UNCLOSED run is left in place,
-    which is what keeps a bare fence line a fence."""
-    out, i, n = [], 0, len(line)
-    while i < n:
-        if line[i] != "`":
-            out.append(line[i])
-            i += 1
-            continue
-        j = i
-        while j < n and line[j] == "`":
-            j += 1
-        k = _find_backtick_run(line, j, j - i)
-        if k is None:
-            out.append(line[i:j])
-            i = j
-            continue
-        out.append(" ")
-        i = k + (j - i)
-    return "".join(out)
-
-
 def _changelog_header_reaches_the_ledger(header_lines):
-    """PURE. True when the editable header carries markup that could reach the entries
-    below it. A header is PROSE: it may carry inline code spans and a whole-line closed
-    HTML comment, and nothing else a renderer treats as markup.
+    """PURE. True when the editable header could reach the entries below it — when what a
+    reader sees where the ledger should be is not the ledger.
 
-    Refused, on any line once its matched inline code spans are removed: a fenced-code
-    marker at an indent a fence can open at, because an unclosed fence runs to the end of
-    the document; and a "<" at all, because every construct that can swallow the ledger
-    begins with one — a comment, a declaration, a processing instruction, a CDATA section,
-    a raw HTML block of any type, an inline raw tag. The single exception is a line whose
-    whole content is one closed comment carrying no angle bracket of its own, because both
-    shipped changelogs use one and it cannot reach past its own line.
+    Organised by the three ways CommonMark ENDS a block, which is what makes the set
+    closed rather than a list of constructs somebody thought of:
 
-    This is narrower than what a renderer accepts, deliberately. It refuses a fenced
-    example and a raw-HTML line that are perfectly legible; the remedy is inline code or an
-    HTML entity. That trade was the maintainer's on 2026-08-30, after four review rounds
-    each breached a version of this check that tried to model CommonMark instead — the
-    earlier one is at b29d3fe. A rule small enough to read whole is worth more on this
-    surface than a rule wide enough to be convenient.
-    docs/known-limitations.md carries what it costs."""
-    for line in header_lines:
-        bare = _strip_inline_code(line)
-        stripped = bare.strip()
+    1. **Runs to the end of the document.** Only fenced code does. Refused: a fence marker
+       at an indent a fence can open at, on any line.
+    2. **Runs to an explicit closer.** HTML blocks of types 1 to 5, every one of which
+       begins with "<". Refused: a "<" followed by "!", "?", "/" or an ASCII letter. A "<"
+       that opens nothing, as in "a < b", is prose and is allowed.
+    3. **Runs to a blank line.** Everything else — a GFM table, a link reference
+       definition with a multiline title, an HTML block of type 6 or 7, a paragraph, a
+       block quote. Required: the line immediately above the first entry is blank, which
+       terminates any of them before the ledger begins.
+
+    The one exception to rule 2 is a line whose whole stripped content is a single closed
+    HTML comment carrying no angle bracket of its own; both shipped changelogs use one, and
+    it cannot reach past its own line.
+
+    There is no inline-code exception, deliberately. One existed, and a header could not
+    then be trusted: a backslash-escaped backtick made a live tag look quoted, and a
+    backtick inside the comment exception hid a live tag behind a comment that had already
+    closed. Both are review findings, not hypotheticals. A header that needs to show a
+    "<" writes it as an HTML entity, and the two shipped changelogs were rewritten to need
+    none.
+
+    Narrower than valid Markdown, on purpose. This shape was NOT approved under rule 5 — it
+    was taken by the builder on review evidence while the maintainer's answer was outstanding,
+    and the review record's README carries it as an open maintainer item.
+    docs/known-limitations.md carries the cost and the reason."""
+    for k, line in enumerate(header_lines):
+        stripped = line.strip()
         if (stripped.startswith("<!--") and stripped.endswith("-->")
                 and len(stripped) >= 5 and "<" not in stripped[4:-3]
                 and ">" not in stripped[4:-3]):
             continue
-        body = bare.lstrip(" ")
-        if len(bare) - len(body) <= 3 and (body.startswith("```") or body.startswith("~~~")):
+        body = line.lstrip(" ")
+        if len(line) - len(body) <= 3 and (body.startswith("```") or body.startswith("~~~")):
             return True
-        for k, ch in enumerate(bare):
+        for i, ch in enumerate(line):
             if ch != "<":
                 continue
-            after = bare[k + 1:k + 2]
-            # A "<" that opens nothing — "a < b", "3 < 4" — is arithmetic, not markup.
+            after = line[i + 1:i + 2]
             if after in ("!", "?", "/") or (after.isascii() and after.isalpha()):
                 return True
-    return False
+    # Rule 3. An empty header cannot reach anything; otherwise the last line must be blank.
+    return bool(header_lines) and header_lines[-1].strip() != ""
 
 
 def _changelog_appended_span(old_text, new_text):

@@ -119,24 +119,32 @@ Honest limits of the current build. This file grows as the product does (brief �
   There is no entry to launder until a first one exists, and the guard engages as soon as one
   does. Decided 2026-08-30 rather than discovered.
 - **The editable header must be prose, and that is narrower than valid Markdown.** A header
-  that opens markup the entries fall inside reaches the ledger without owning it: every entry
-  survives in the file's bytes while the rendered file shows a reader something else. Rather
-  than model when such markup is closed, the guard refuses markup in a header at all. On any
-  line, once its matched inline code spans are removed, it refuses a fenced-code marker at an
-  indent a fence can open at, and a `<` followed by `!`, `?`, `/` or a letter — every construct
-  that can swallow the ledger begins with one of those. A `<` that opens nothing, as in `a < b`,
-  is prose and is allowed. The one markup exception is a line whose whole content is a single
-  closed HTML comment carrying no angle bracket of its own; both shipped changelogs use one,
-  and it cannot reach past its own line.
+  that opens something the entries fall inside reaches the ledger without owning it: every entry
+  survives in the file's bytes while a reader sees something else where the ledger should be.
+  Rather than model when such a thing is closed, the guard is organised by the three ways
+  CommonMark **ends** a block, which is what makes the set closed rather than a list of
+  constructs somebody thought of. A block that runs to the end of the document is fenced code,
+  so a fence marker at an indent a fence can open at is refused. A block that runs to an explicit
+  closer is an HTML block of type 1 to 5, every one of which begins with `<`, so a `<` followed
+  by `!`, `?`, `/` or a letter is refused — a `<` that opens nothing, as in `a < b`, is prose.
+  Everything else ends at a blank line, so the line immediately above the first entry must be
+  blank. The one exception is a line whose whole content is a single closed HTML comment
+  carrying no angle bracket of its own; both shipped changelogs use one.
 
-  **What it costs.** A fenced example in a header is refused, as is a raw-HTML line, though a
-  renderer would accept both. The remedy is inline code or an HTML entity — the engine's own
-  changelog already writes its entry format in inline backticks. **Why it is shaped this way,
-  since the cost is real:** four consecutive review rounds each breached a version of this check
-  that tried to model CommonMark's block rules, and each round's repair also carried a claim
-  about its own completeness that the next round disproved. The narrow rule is small enough to
-  read whole, which is the property that surface needs. The earlier model is at `b29d3fe` if the
-  trade is ever revisited.- **A hyphen-bulleted line in the header pins the boundary early.** An entry is any line whose
+  **What it costs.** A fenced example is refused, a raw-HTML line is refused, and a header must
+  be separated from its entries by a blank line. There is **no inline-code exception**: a header
+  that needs to show a `<` writes it as an HTML entity, and both shipped changelogs were
+  rewritten to need none. That exception existed and was removed, because it could not be
+  trusted — a backslash-escaped backtick made a live tag look quoted, and a backtick inside the
+  comment exception hid a live tag behind a comment that had already closed.
+
+  **Why it is shaped this way, since the cost is real.** Five consecutive review rounds each
+  breached a version of this check that enumerated constructs, and each round's repair carried a
+  claim about its own completeness that the next round disproved. Organising by termination mode
+  is an argument for completeness, not a proof of it, and it is offered as the former. The
+  enumerating model is at `b29d3fe` if the trade is ever revisited.
+
+- **A hyphen-bulleted line in the header pins the boundary early.** An entry is any line whose
   `str.strip()` begins with `- `. A format example, or an ordinary bulleted list, written into
   the header without backticks counts as one and freezes everything from it down. Write header
   examples inside backticks, as both shipped changelogs do.

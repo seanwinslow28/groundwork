@@ -4193,8 +4193,7 @@ class TestChangelogAppendOnly(unittest.TestCase):
         self.assertIsNone(reason)
         self.assertEqual(appended, validate._changelog_lines(new))
 
-    # --- The header rule (#32). Every construction rounds 02 to 06 found is here, and
-    # --- each is refused by the one rule the maintainer chose on 2026-08-30.
+    # --- The header rule (#32), organised by the three ways CommonMark ends a block.
     def _hidden(self, opener, closer):
         """Open a construct in the header, close it after the ledger, append a
         replacement entry: every base entry survives verbatim and contiguous."""
@@ -4202,66 +4201,84 @@ class TestChangelogAppendOnly(unittest.TestCase):
         new += closer + "\n- 2026-07-28 | skills/a/SKILL.md | replacement | scribe | c3d4e5f\n"
         return validate._changelog_appended_span(self.HEADED, new)[0]
 
-    def test_every_construction_the_review_rounds_found_is_refused(self):
-        R = validate._changelog_header_reaches_the_ledger
-        for label, lines in (
-                ("round 02: an unclosed HTML comment", ["<!--"]),
-                ("round 04: an unclosed fence", ["```"]),
-                ("round 04: an unclosed raw HTML block", ["<script>"]),
-                ("round 05: a backtick fence closed by tildes", ["```", "~~~"]),
-                ("round 05: a four-backtick fence closed by three", ["````", "```"]),
-                ("round 05: a closer carrying an info string", ["```", "``` junk"]),
-                ("round 05: an unclosed type-4 declaration", ["<!DOCTYPE html"]),
-                ("round 05: a raw HTML line above the entries", ["header", "", "<div hidden>"]),
-                ("round 05: a closer fabricated out of inline code",
-                 ["<script>", "</scr`x`ipt>"]),
-                ("round 06: raw HTML that is not first in its block",
-                 ["# Header", "<div hidden>"]),
-                ("round 06: a multiline code span hiding a declaration",
-                 ["`<!DOCTYPE", "code`", "<script>"]),
-                ("round 06: a non-breaking space after a closing fence", ["```", "``` "]),
-                ("a live tag smuggled between two closed comments",
-                 ["<!-- a --><script><!-- c -->"]),
-        ):
+    # Each construction a review round measured as ACCEPTED, with the round that found it.
+    # Labels name what is actually in the input; a label naming something the input does not
+    # contain is how round 07 found this table claiming coverage it did not have.
+    FOUND_BY_REVIEW = (
+        ("02: an unclosed HTML comment", ["<!--"]),
+        ("04: an unclosed code fence", ["```"]),
+        ("04: an unclosed script block", ["<script>"]),
+        ("04: an unclosed style block", ["<style>"]),
+        ("05: a backtick fence with a tilde run below it", ["```", "~~~"]),
+        ("05: a four-backtick fence with a three-backtick run below it", ["````", "```"]),
+        ("05: a fence marker with trailing text below a fence", ["```", "``` junk"]),
+        ("05: a four-space-indented marker below a fence", ["```", "    ```"]),
+        ("05: a fence marker inside a comment, then a real fence",
+         ["<!--", "```", "-->", "```"]),
+        ("05: an unclosed type-4 declaration", ["<!DOCTYPE html"]),
+        ("05: a raw HTML line above the entries", ["header", "", "<div hidden>"]),
+        ("05: a closing tag split by backticks", ["<script>", "</scr`x`ipt>"]),
+        ("06: raw HTML that is not first in its block", ["# Header", "<div hidden>"]),
+        ("06: a code span opened on one line and closed on the next",
+         ["`<!DOCTYPE", "code`", "<script>"]),
+        ("06: a fence marker line ending in a space", ["```", "``` "]),
+        ("06: a fence marker line ending in U+00A0", ["```", "```\u00a0"]),
+        ("07: a link reference definition with an unterminated title", ['[x]: /url "']),
+        ("07: a GFM table header and delimiter row", ["Date | Path", "--- | ---"]),
+        ("07: a backslash-escaped backtick before a live tag", ["\\`<script>`"]),
+        ("07: backticks inside the comment exception",
+         ["<!-- x ` --> <script> ` -->"]),
+        # Blank-terminated on purpose: with a non-blank last line rule 3 would refuse this
+        # whatever the comment exception did, and the guard inside it would go untested.
+        ("07: a live tag between two closed comments",
+         ["<!-- a --><script><!-- c -->", ""]),
+        ("07: no blank line between the header and the entries", ["## Entries"]),
+    )
+
+    def test_every_construction_a_review_round_found_is_refused(self):
+        for label, lines in self.FOUND_BY_REVIEW:
             with self.subTest(label=label):
-                self.assertTrue(R(lines))
+                self.assertTrue(validate._changelog_header_reaches_the_ledger(lines))
 
     def test_the_header_a_changelog_actually_wants_is_allowed(self):
         R = validate._changelog_header_reaches_the_ledger
         for label, lines in (
                 ("ordinary prose", ["# Governance changelog", "", "Append-only.", ""]),
-                ("a whole-line closed comment", ["<!-- entries below, newest last -->"]),
-                ("an entry format written as inline code",
-                 ["Format: `- date | skills/<name>/SKILL.md | gist | agent | sha`"]),
-                ("a four-space-indented code block", ["    not a fence"]),
-                ("a less-than sign that opens nothing", ["a < b, and 3 < 4"]),
-                ("an entity where a tag would be refused", ["write &lt;script&gt; like this"]),
+                ("a whole-line closed comment", ["<!-- entries below, newest last -->", ""]),
+                ("an overlapping short comment", ["<!-->", ""]),
+                ("an empty comment", ["<!---->", ""]),
+                ("a four-space-indented code block", ["    not a fence", ""]),
+                ("a less-than sign that opens nothing", ["a < b, and 3 < 4", ""]),
+                ("an entity where a tag would be refused", ["write &lt;script&gt; so", ""]),
+                ("an entry format with no angle bracket",
+                 ["Format: `- date | skills/NAME/SKILL.md | gist | agent | sha`", ""]),
+                ("an empty header", []),
         ):
             with self.subTest(label=label):
                 self.assertFalse(R(lines))
 
     def test_both_shipped_changelog_headers_pass_the_rule(self):
-        # The rule is only worth having if the files that ship with groundwork clear it.
+        # The rule is only worth having if the files groundwork ships clear it — and they
+        # must still clear it after an entry is appended, which is when it first engages.
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         for rel in ("governance/changelog.md", "demo/governance/changelog.md"):
             with self.subTest(rel=rel):
                 with open(os.path.join(root, rel), encoding="utf-8") as fh:
                     lines = fh.read().split("\n")
                 self.assertFalse(validate._changelog_header_reaches_the_ledger(lines))
+                appended = lines[:-1] + [
+                    "- 2026-09-01 | skills/a/SKILL.md | first | scribe | abc1234", ""]
+                j = validate._changelog_first_entry(appended)
+                self.assertIsNotNone(j)
+                self.assertFalse(validate._changelog_header_reaches_the_ledger(appended[:j]))
 
     def test_a_fenced_example_is_refused_and_that_is_the_trade(self):
-        # Narrower than a renderer accepts, on purpose. Recorded as a test so the cost is
-        # asserted rather than described.
+        # Narrower than a renderer accepts, on purpose. Asserted so the cost is a fact in
+        # the suite rather than a sentence in a document.
         self.assertTrue(validate._changelog_header_reaches_the_ledger(
-            ["```", "- date | skills/x/SKILL.md | gist | agent | sha", "```"]))
-
-    def test_inline_code_spans_are_prose(self):
-        # A matched span becomes a SPACE, so the text on either side cannot join into a
-        # marker nobody wrote, and an N-backtick run closes only with a run of exactly N.
-        self.assertEqual(validate._strip_inline_code("a `b` c"), "a   c")
-        self.assertEqual(validate._strip_inline_code("</scr`x`ipt>"), "</scr ipt>")
-        self.assertEqual(validate._strip_inline_code("a `b `` c"), "a `b `` c")
-        self.assertEqual(validate._strip_inline_code("```"), "```")
+            ["```", "date | skill | gist | agent | sha", "```", ""]))
+        self.assertTrue(validate._changelog_header_reaches_the_ledger(
+            ["A tag written plainly: <script>", ""]))
 
     def test_the_end_to_end_error_names_the_header_rule(self):
         self.assertEqual(self._hidden("<!--", "-->"), "hidden")
@@ -4431,7 +4448,7 @@ class TestBlastRadiusDiff(unittest.TestCase):
                    CHANGELOG_WITH_ENTRY.replace("## Entries\n", "## Entries\n\n<!--\n")
                    + "-->\n- 2026-07-28 | skills/weekly-digest/SKILL.md | swapped | scribe | c3d4e5f\n")
             findings = validate.blast_radius_diff_findings(d, "HEAD")
-            self.assertTrue(any(f.level == "ERROR" and "carries markup that can reach"
+            self.assertTrue(any(f.level == "ERROR" and "can reach the entries below it"
                                 in f.message and f.path.endswith("changelog.md")
                                 for f in findings))
 
