@@ -35,11 +35,11 @@ a note that no longer exists.
 
 | Round | Reviewed | Verdict | Findings | Fix commit |
 |---|---|---|---|---|
-| 01 | pending | pending | — | — |
+| 01 | `038ddd2` | 7 findings, worst CRITICAL, no approve/does-not-approve word | 7 | `985d294` |
 
 ## Open findings
 
-None yet — no round has run.
+**None.** Every finding raised on this branch is fixed.
 
 ## Rejected findings
 
