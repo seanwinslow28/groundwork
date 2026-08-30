@@ -31,7 +31,8 @@ Small, and none of it is promised by a date.
 - **`SPDX-License-Identifier` headers** on the three shipped scripts. Deferred from V1
   deliberately: worth adding once, on purpose, rather than as a side effect of a
   documentation slice.
-- **Changelog rotation.** The append-only check compares against the full base file, so a
+- **Changelog rotation.** The append-only check requires every entry committed at base to
+  survive, so a
   long-lived changelog has no supported way to be archived.
 - **The generation protocol's one unresolved composition**, found by its first dry run:
   a skill missing a human-only answer ships `provisioned: no`, but when its deep record

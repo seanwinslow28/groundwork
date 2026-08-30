@@ -4113,11 +4113,98 @@ class TestChangelogAppendOnly(unittest.TestCase):
     def test_crlf_base_is_not_a_phantom_rewrite(self):
         self.assertTrue(validate._changelog_append_only(self.BASE.replace("\n", "\r\n"), self.BASE))
 
+    # --- #32: the header above the base's first entry is editable ------------
+    HEADED = ("# Governance changelog\n\n"
+              "Everything else — rules, Owner's Cards — escalates instead.\n\n"
+              "## Entries\n\n"
+              "- 2026-07-26 | skills/a/SKILL.md | one | scribe | a1b2c3d\n")
+
+    def test_header_edit_above_first_entry_is_allowed(self):
+        new = self.HEADED.replace("rules, Owner's Cards",
+                                  "rules, the roster, Owner's Cards")
+        self.assertNotEqual(new, self.HEADED)
+        self.assertTrue(validate._changelog_append_only(self.HEADED, new))
+
+    def test_header_edit_changing_line_count_is_allowed(self):
+        # The protected block is located by the new file's first entry, not by an
+        # offset carried over from the base, so the header may grow or shrink.
+        grown = self.HEADED.replace("## Entries\n", "A new paragraph.\n\n## Entries\n")
+        shrunk = self.HEADED.replace("Everything else — rules, Owner's Cards — "
+                                     "escalates instead.\n\n", "")
+        self.assertTrue(validate._changelog_append_only(self.HEADED, grown))
+        self.assertTrue(validate._changelog_append_only(self.HEADED, shrunk))
+
+    def test_entry_below_the_header_still_protected_after_header_edit(self):
+        new = self.HEADED.replace("rules, Owner's Cards", "rules, the roster")
+        new = new.replace("| one |", "| something else entirely |")
+        self.assertFalse(validate._changelog_append_only(self.HEADED, new))
+
+    def test_entryless_base_is_wholly_editable(self):
+        # Decided 2026-08-30: a base with no entry line protects nothing. This is
+        # the state of every freshly generated changelog.
+        base = "# Governance changelog\n\nAppend-only.\n\n<!-- none yet -->\n"
+        new = "# Governance changelog\n\nA completely different header.\n"
+        self.assertIsNone(validate._changelog_first_entry(base.split("\n")))
+        self.assertTrue(validate._changelog_append_only(base, new))
+
+    # --- #32: the laundering routes the narrowing had to close ---------------
+    def test_converting_the_only_entry_to_prose_rejected(self):
+        # The boundary is anchored in the BASE, so an entry cannot be edited into
+        # non-entry text and thereby join the editable header.
+        new = self.BASE.replace("- 2026-07-26 |", "2026-07-26 |")
+        self.assertFalse(validate._changelog_append_only(self.BASE, new))
+
+    def test_converting_the_first_of_two_entries_to_prose_rejected(self):
+        base = self.BASE + "- 2026-07-27 | skills/a/SKILL.md | two | scribe | b2c3d4e\n"
+        new = base.replace("- 2026-07-26 |", "2026-07-26 |")
+        self.assertFalse(validate._changelog_append_only(base, new))
+
+    def test_prose_inserted_between_entries_rejected(self):
+        base = self.BASE + "- 2026-07-27 | skills/a/SKILL.md | two | scribe | b2c3d4e\n"
+        new = base.replace("- 2026-07-27 |", "A note.\n- 2026-07-27 |")
+        self.assertFalse(validate._changelog_append_only(base, new))
+
+    def test_entry_definition_is_hyphen_space_after_strip(self):
+        lines = ["  - indented is an entry", "-\ttab is not", "-no space is not",
+                 "`- backticked is not`"]
+        self.assertEqual(validate._changelog_first_entry(lines), 0)
+        self.assertIsNone(validate._changelog_first_entry(lines[1:]))
+
+    # --- #32: the appended span is measured from the protected block's end ---
+    def test_appended_span_survives_header_growth(self):
+        # Measuring the span by the base's LINE COUNT would hand an old entry's
+        # auto-apply cover to a new edit whenever the header grew.
+        grown = self.HEADED.replace("## Entries\n", "A new paragraph.\n\n## Entries\n")
+        ok, appended = validate._changelog_appended_span(self.HEADED, grown)
+        self.assertTrue(ok)
+        self.assertEqual([l for l in appended if l.strip().startswith("- ")], [])
+
+    def test_appended_span_names_only_the_new_entry(self):
+        new = self.HEADED + "- 2026-07-27 | skills/a/SKILL.md | two | scribe | b2c3d4e\n"
+        ok, appended = validate._changelog_appended_span(self.HEADED, new)
+        self.assertTrue(ok)
+        self.assertEqual([l for l in appended if l.strip().startswith("- ")],
+                         ["- 2026-07-27 | skills/a/SKILL.md | two | scribe | b2c3d4e"])
+
+    def test_appended_span_of_an_entryless_base_is_the_whole_file(self):
+        base = "# Governance changelog\n\n<!-- none yet -->\n"
+        new = base + "- 2026-07-27 | skills/a/SKILL.md | two | scribe | b2c3d4e\n"
+        ok, appended = validate._changelog_appended_span(base, new)
+        self.assertTrue(ok)
+        self.assertEqual(appended, validate._changelog_lines(new))
+
 
 PIN_OK = "---\nschema_version: 2\ngenerated_by_commit: abc1234\n---\n"
 
 CHANGELOG_OK = ("# Governance changelog\n\n## Entries\n\n"
                 "<!-- appended by the auto-apply track; none yet -->\n")
+
+# #32 narrowed the append-only guard to the region from the first ENTRY line on, so a
+# fixture that exercises it needs an entry. CHANGELOG_OK has none and is now editable.
+CHANGELOG_WITH_ENTRY = ("# Governance changelog\n\nHeader prose that can go stale.\n\n"
+                        "## Entries\n\n"
+                        "- 2026-07-26 | skills/weekly-digest/SKILL.md | tightened it | "
+                        "scribe | a1b2c3d\n")
 
 
 def _proposal(target, radius="escalating"):
@@ -4132,7 +4219,7 @@ class TestBlastRadiusDiff(unittest.TestCase):
     """The #18 tripwire. Scoped to governed roots — a directory carrying a #21
     groundwork.pin — so every fixture repo plants one."""
 
-    def _repo(self, d, pin_at=""):
+    def _repo(self, d, pin_at="", changelog=CHANGELOG_OK):
         _git(d, "init", "-q")
         _git(d, "config", "user.email", "t@t.t")
         _git(d, "config", "user.name", "t")
@@ -4141,7 +4228,7 @@ class TestBlastRadiusDiff(unittest.TestCase):
         _write(d, pre + "skills/weekly-digest/SKILL.md", SKILL_T1)
         _write(d, pre + "skills/onboarding-orchestration/SKILL.md", SKILL_OK)
         _write(d, pre + "governance/constitution/access.md", RULE_OK)
-        _write(d, pre + "governance/changelog.md", CHANGELOG_OK)
+        _write(d, pre + "governance/changelog.md", changelog)
         _write(d, pre + "memory/onboarding-baseline.md", MEM_OK)
         _git(d, "add", "-A")
         _git(d, "commit", "-qm", "base")
@@ -4242,12 +4329,45 @@ class TestBlastRadiusDiff(unittest.TestCase):
             self.assertEqual(validate.blast_radius_diff_findings(d, "HEAD"), [])
 
     def test_changelog_rewrite_errors(self):
+        # #32: the base needs an ENTRY for the guard to have anything to protect.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d, changelog=CHANGELOG_WITH_ENTRY)
+            _write(d, "governance/changelog.md",
+                   CHANGELOG_WITH_ENTRY.replace("tightened it", "rewritten"))
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "append-only" in f.message
+                                for f in findings))
+
+    def test_changelog_header_edit_above_the_entries_is_clean(self):
+        # #32's whole point: a stale explanatory header can be corrected.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d, changelog=CHANGELOG_WITH_ENTRY)
+            _write(d, "governance/changelog.md",
+                   CHANGELOG_WITH_ENTRY.replace("Header prose that can go stale.",
+                                                "Header prose, corrected.\nAnd a second line."))
+            self.assertEqual(validate.blast_radius_diff_findings(d, "HEAD"), [])
+
+    def test_entryless_changelog_rewrite_is_clean(self):
+        # Decided 2026-08-30: with no entry at base there is nothing to protect.
         with tempfile.TemporaryDirectory() as d:
             self._repo(d)
             _write(d, "governance/changelog.md",
-                   CHANGELOG_OK.replace("appended by the auto-apply track", "rewritten"))
+                   "# Governance changelog\n\nA wholly different header.\n")
+            self.assertEqual(validate.blast_radius_diff_findings(d, "HEAD"), [])
+
+    def test_header_growth_does_not_cover_a_track1_edit(self):
+        # The appended span is measured from the protected block's END. Measuring it
+        # from the base's line count would let a grown header push the OLD entry into
+        # the span and silently excuse this edit from its own changelog line (#17).
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d, changelog=CHANGELOG_WITH_ENTRY)
+            _write(d, "skills/weekly-digest/SKILL.md", SKILL_T1 + "\nA body edit.\n")
+            _write(d, "governance/changelog.md",
+                   CHANGELOG_WITH_ENTRY.replace("## Entries\n",
+                                                "One more header line.\n\n## Entries\n"))
             findings = validate.blast_radius_diff_findings(d, "HEAD")
-            self.assertTrue(any(f.level == "ERROR" and "append-only" in f.message
+            self.assertTrue(any(f.level == "WARN" and "no new governance changelog entry"
+                                in f.message and "weekly-digest" in f.path
                                 for f in findings))
 
     def test_changelog_deletion_errors(self):

@@ -48,7 +48,7 @@ can ever ERROR.
 | The --diff base contract: a base holding each governed root's pin and each interview state's manifest, and standing in this branch's history; the tripwire skips a root the base predates (18, 9) | diff_base_findings | ERROR on a base missing a governed root's pin or an interview state's manifest, WARN on a base that is not an ancestor of HEAD and on an ancestry question git cannot answer |
 | The stateful memory pass under diff, driven by the base file list (7) | memory_diff_findings | ERROR |
 | The frozen-layer guard under diff, for the layers the base holds alongside their 00-manifest.md (9) | interview_diff_findings | ERROR |
-| The blast-radius tripwire: declared against actual across three governed families, the append-only changelog, and the base-contract ERROR for any governed root it skips (18 and 17) | blast_radius_diff_findings | ERROR on a missing or mismatched proposal and on a changelog rewrite or deletion, WARN on a governed deletion or a missing changelog line |
+| The blast-radius tripwire: declared against actual across three governed families, the append-only changelog, and the base-contract ERROR for any governed root it skips (18 and 17) | blast_radius_diff_findings | ERROR on a missing or mismatched proposal, on a changelog deletion, and on an edit at or below the changelog's first entry line, WARN on a governed deletion or a missing changelog line |
 
 ## Corrections the hand audit made
 
