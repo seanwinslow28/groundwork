@@ -37,6 +37,7 @@ a note that no longer exists.
 |---|---|---|---|---|
 | 01 | `038ddd2` | 7 findings, worst CRITICAL, no approve/does-not-approve word | 7 | `985d294` |
 | 02 | `c00b2b7` | 6 findings, worst HIGH on both axes, no approve/does-not-approve word | 6 | `8868b9e` |
+| 03 | `b8976c0` | 4 findings, worst HIGH, no approve/does-not-approve word | 4 | `1c6b4b1` |
 
 ## Open findings
 
