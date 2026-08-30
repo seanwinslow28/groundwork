@@ -6,7 +6,6 @@ one glance rather than a diff hunt. Everything else — rules, the roster, Owner
 descriptions, governance frontmatter, any track-2 skill — escalates to a proposal instead
 and never appears here.
 
-Format: `- date | skills/NAME/SKILL.md | one-line gist | agent | commit sha`
+Format: `- date | skills/<name>/SKILL.md | one-line gist | agent | commit sha`
 
 <!-- entries below, newest last -->
-

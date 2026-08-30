@@ -118,62 +118,25 @@ Honest limits of the current build. This file grows as the product does (brief �
   nothing — the state of every freshly generated repo, and of both changelogs shipped here.
   There is no entry to launder until a first one exists, and the guard engages as soon as one
   does. Decided 2026-08-30 rather than discovered.
-- **The editable header must be prose, and that is narrower than valid Markdown.** A header
-  that opens something the entries fall inside reaches the ledger without owning it: every entry
-  survives in the file's bytes while a reader sees something else where the ledger should be.
-  Rather than model when such a thing is closed, the guard is organised by how a block
-  relates to a blank line. That organising idea is what stops the rule being a list of
-  constructs somebody thought of; **it is not a proof of coverage, and has twice been found
-  incomplete** — once for indented code, once for list containers. What the guard does today:
+- **The guard protects the ledger's bytes, not how it renders.** #32 made the header editable,
+  and an editable header can change what a reader sees where the ledger should be — a fenced
+  block or an unclosed HTML comment opened above the entries swallows them; a GFM table header
+  turns them into table rows, the entries being pipe-delimited; a list item's content column
+  decides whether an indented entry is a list item or code. In every one of those the committed
+  entries survive **byte for byte**, which is what the append-only rule is about and what the
+  gate enforces; what changes is the rendering.
 
-  - A run of three backticks or tildes **anywhere on a line** is refused, fenced code running
-    to the end of the document. Anywhere rather than at the start, because a fence opens
-    behind a list or block-quote marker too.
-  - A `<` followed by `!`, `?`, `/` or an **ASCII** letter is refused, HTML block types 1 to 5
-    running to an explicit closer. A `<` that opens nothing, as in `a < b`, is prose, and so is
-    one followed by a non-ASCII letter, which opens no tag.
-  - The line immediately above the first entry must be blank — empty, or ASCII spaces and tabs
-    only, which is CommonMark's blank line and not Python's `str.strip()`, a difference that
-    was a review finding. Most block types end there: a GFM table, a link reference
-    definition, an HTML block of type 6 or 7, a paragraph, a setext heading.
-  - A line whose leading whitespace reaches **column four** is refused, indented code
-    surviving a blank line. A tab advances to the next multiple of four, as CommonMark counts
-    it.
-  - A line opening a **list item** is refused. A list item holds blocks across a blank line,
-    and its content column — which moves when the spaces after its marker change — decides
-    whether the entry below is a nested list item or indented code. A **block quote** is
-    refused alongside it, though a blank line does separate block quotes and the rule above
-    would already cover one; that refusal is conservative rather than necessary, and is
-    recorded as such rather than given a hazard it does not have. Ordered markers are one to
-    nine ASCII digits, as CommonMark defines them, so a line opening `١.` or `².` is prose;
-    `* * *` is a thematic break and is refused as though it were a bullet.
+  **The gate does not model any of that, deliberately.** A check that did would be a Markdown
+  parser, and this validator is conventions plus checks, with no runtime and no dependencies. A
+  header edit that changes how the ledger renders is caught the way any other misleading
+  documentation edit is caught: by a human reading the diff before merging, which is the consent
+  gate #18 rests on. One such check was built and then removed; the issue #32 review record under
+  `docs/superpowers/reviews/` carries the removal and its grounds, including the eight review
+  rounds that each found a construction the previous version of it accepted.
 
-  The one exception is a line whose whole content is a single closed HTML comment carrying no
-  angle bracket of its own, and it does not apply at column four, where such a line is code
-  rather than a comment.
-
-  **The entry grammar and a renderer disagree, and this guard does not reconcile them.** A line
-  counts as an entry when its `str.strip()` begins `- `, so a four-space-indented entry counts
-  though CommonMark renders it as code, and `- - -` counts though CommonMark renders it as a
-  thematic break. Tightening that test was considered and refused: a base holding only such a
-  line would then hold no entry at all, which leaves the whole file editable — the opposite of
-  what the guard is for, and a tightening inside a slice that only loosens. The three places
-  that share the test stay identical to each other instead.
-
-  **What it costs.** Any line carrying three backticks or tildes is refused, so a fenced
-  example cannot appear in a header and neither can prose that spells the sequence; a raw-HTML
-  line is refused; an indented code block is refused; a list or block quote cannot appear in a
-  header at all; and a header must be separated from its entries by a blank line. There is **no inline-code exception**: a header
-  that needs to show a `<` writes it as an HTML entity, and both shipped changelogs were
-  rewritten to need none. That exception existed and was removed, because it could not be
-  trusted — a backslash-escaped backtick made a live tag look quoted, and a backtick inside the
-  comment exception hid a live tag behind a comment that had already closed.
-
-  **Why it is shaped this way, since the cost is real.** Five consecutive review rounds each
-  breached a version of this check that enumerated constructs, and each round's repair carried a
-  claim about its own completeness that the next round disproved. Organising by termination mode
-  is an argument for completeness, not a proof of it, and it is offered as the former. The
-  enumerating model is at `b29d3fe` if the trade is ever revisited.
+  **What this means for an adopter:** treat a diff that edits a changelog header as a
+  documentation change to review on its merits, not as a change the gate has vouched for. The
+  gate vouches that no entry was edited, reordered or removed.
 
 - **A hyphen-bulleted line in the header pins the boundary early.** An entry is any line whose
   `str.strip()` begins with `- `. A format example, or an ordinary bulleted list, written into

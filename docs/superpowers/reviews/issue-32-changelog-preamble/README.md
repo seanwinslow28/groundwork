@@ -29,7 +29,7 @@ and [`round-01.md`](round-01.md) records them with their counter-arguments.
 
 | Site | Change |
 |---|---|
-| `scripts/validate.py` | `_changelog_append_only` narrowed; `_changelog_lines`, `_changelog_first_entry`, `_changelog_appended_span`, `_changelog_header_reaches_the_ledger` added; `CHANGELOG_REASONS` keys the ERROR text so an unknown reason cannot fall through the caller; the ERROR messages corrected and split |
+| `scripts/validate.py` | `_changelog_append_only` narrowed; `_changelog_lines`, `_changelog_first_entry`, `_changelog_appended_span` added; `CHANGELOG_REASONS` keys the ERROR text so an unknown reason cannot fall through the caller; the ERROR messages corrected and split |
 | `tests/test_validate.py` | new tests for the narrowing, the appended span, and the header rule; `_repo` gains a `changelog=` knob; `test_changelog_rewrite_errors` re-based on an entry-bearing fixture |
 | `governance/changelog.md` | "This file is never edited or reordered" was falsified by this change — corrected; its entry-format example rewritten to carry no angle bracket, and a blank line added for the header rule |
 | `demo/governance/changelog.md` | the defect itself: the roster added to the enumeration, and the "Append-only." claim narrowed; its format example rewritten to carry no angle bracket, and a blank line added |
@@ -65,7 +65,9 @@ this guard on it.
 | 12 | `074f752` | **does not approve** — Standards 1 Moderate, Spec 1 Low + 1 Minor. **No accepting-direction gap found** | 3 | `8888fae` |
 | 13 | `8888fae` | **does not approve** — Spec 1 Low, Standards 3 Low. **No accepting-direction gap, re-derived independently** | 4 | `3c35799` |
 | 14 | `3c35799` | **does not approve** — 4 Low. **No accepting-direction gap** | 4 | `c82aa4c` |
-| 15 | `c82aa4c` | **does not approve** — 2 Low. **No accepting-direction defect** | 2 | `PENDING-15` |
+| 15 | `c82aa4c` | **does not approve** — 2 Low. **No accepting-direction defect** | 2 | `8202ab6` |
+| 16 | `8202ab6` | **does not approve** — 2 Low. **No accepting-direction defect** | 2 | `PENDING-17` |
+| 17 | — | maintainer decision, not a review round: Option A | — | `PENDING-17` |
 
 ## Open findings
 
@@ -83,7 +85,9 @@ reading under which the finding is fair.
 
 ## Baselines
 
-The test count **moves**: 846 → 871. It rose to 883 by round 05 and then **fell twice**, as
+The test count **moves**: 846 → 861. It rose to 883 by round 05 and fell three times, as
+rounds 06, 07 and 17 each deleted code and took its tests with it. Stated as a fall rather than
+only as a net. It rose to 883 by round 05 and then **fell twice**, as
 round 06 deleted the CommonMark model and round 07 deleted the inline-code stripper, each taking
 the tests that covered it. What replaced them is denser — every construction a round found is
 one parametrised test — but fewer test methods. Stated as a fall rather than only as a net. The three validator commands are unchanged.
@@ -93,7 +97,7 @@ one parametrised test — but fewer test methods. Stated as a fall rather than o
 | `python3 scripts/validate.py .` | 0 errors, 7 warnings, exit 0 | unchanged |
 | `python3 scripts/validate.py demo` | 0 errors, 2 warnings | unchanged |
 | `python3 scripts/validate.py . --diff main` | exit 0 | exit 0 |
-| `python3 -m unittest discover -s tests -q` | OK, 846 tests, skipped=1 | OK, **871** tests, skipped=1 |
+| `python3 -m unittest discover -s tests -q` | OK, 846 tests, skipped=1 | OK, **861** tests, skipped=1 |
 
 There is no pytest; the suite is unittest.
 
@@ -160,11 +164,13 @@ alone, the suite run, and the file restored. Run with `PYTHONDONTWRITEBYTECODE=1
 | The ordered-marker branch accepts a space but not a tab (round 15) | 2 failures |
 | None (restored) | OK, 871 |
 
-The last seven were all green before round 13 added the cases they now fail. **Three of them
-are the over-refusing direction** — the two-character fence threshold, the Unicode-letter opener,
-and the space-only blank — where a rule silently narrows what an adopter may write. That edge is
-the one nobody thinks to test; round 14 then found a fourth there, the comment exception keyed on
-the raw line rather than the stripped one.
+Round 13's seven rows were all green before it added the cases they now fail. Three of those
+seven are the over-refusing direction — the two-character fence threshold, the Unicode-letter
+opener, and the space-only blank — where a rule silently narrows what an adopter may write. That
+edge is the one nobody thinks to test; round 14 found a fourth there, the comment exception keyed
+on the raw line rather than the stripped one, and rounds 15 and 16 found a fifth and a sixth.
+**Every one of those rows exercised the header guard that Option A removed**; they are kept
+because they are what the removal decision rests on.
 
 Rounds 4 and 5 added mutations against the CommonMark model that round 6 deleted; their rows
 are kept because they record what was measured, not what still exists. Round 5's
@@ -172,11 +178,22 @@ are kept because they record what was measured, not what still exists. Round 5's
 
 ## Status
 
-**Not ready.** No round has approved yet. Rounds 2 and 4 to 9 each did not approve. Rounds 3
-and 10 crashed without a verdict, both on the same provider-side refusal caused by the brief's
-adversarial wording rather than by anything in the branch — round 10's brief having drifted back
-to the framing round 03 had already been killed by. Review threads are not resumable, so each
-round is a new review.
+**Ready for the maintainer to merge, and the merge commit must carry two things.**
+
+**First: the final state is unreviewed.** Round 16 is the last review round, against `8202ab6`.
+The maintainer then chose Option A — see [`round-17.md`](round-17.md) — which removed the
+header-rendering guard. **No Codex round has run against the result.** Rule 9 accepts that a
+terminal record commit is unreviewed; this is more than that, and is said here rather than
+exempted.
+
+**Second: round 16 did not approve.** Its finding 1 is fixed; its finding 2 is **superseded** —
+it named a missing test for a branch of rule 2, and Option A deleted rule 2. No round approved
+this slice. The gate is the commit bit (rule 3); this rule governs the record.
+
+Rounds 3 and 10 crashed without a verdict, both on the same provider-side refusal caused by the
+brief's adversarial wording rather than by anything in the branch — round 10's brief having
+drifted back to the framing round 03 had already been killed by. Review threads are not
+resumable, so each round was a new review.
 
 **The arc so far, since it is the useful part.** Round 2 found a laundering route this branch
 created — the pre-#32 whole-file guard had closed it by accident — and the repair for it
@@ -235,17 +252,22 @@ previous round's correction had left standing beside its replacement, a docstrin
 written while fixing a false claim that was itself false, and a miscount of how many rounds had
 found a route.
 
-**Every round from 02 onward has found the previous round's self-description ahead of its code**,
-and the shapes are worth more than a tally: an overclaim replaced by a differently-wrong
-overclaim; a sentence written specifically to stop overclaiming that overclaimed; a review brief
-that reverted to wording an earlier round had been killed by; a claim that a sweep was complete,
-made in the entry that had not completed it; a justification for a refusal invented for a hazard
-that does not exist; a mutation row naming an edit other than the one run, twice; a test comment
-claiming a measurement behind a case that had none.
+**Most rounds that reviewed a previous round's repair found its self-description ahead of its
+code** — rounds 03 and 10 crashed with no findings, and round 02 had no previous repair to
+review, so it is not every round and this paragraph previously said it was. The shapes are worth
+more than a tally: an overclaim replaced by a differently-wrong overclaim; a sentence written
+specifically to stop overclaiming that overclaimed; a review brief that reverted to wording an
+earlier round had been killed by; a claim that a sweep was complete, made in the entry that had
+not completed it; a justification for a refusal invented for a hazard that does not exist; a
+mutation row naming an edit other than the one run, twice; a test comment claiming a measurement
+behind a case that had none; and a paragraph replacing a stale tally that was itself three
+overclaims, one of them an overstatement of how much this branch had overclaimed.
 
-Every count in this record that a reviewer has checked has been wrong, and every one in the
-direction of making the work sound larger. **That is why the record names cases rather than
-counting them** wherever naming is possible — including here. Round 7 also deleted the inline-code exception rather than
+Many counts in this record were checked and found wrong, always in the direction of making the
+work sound larger — though reviewers also reproduced counts correctly in rounds 13, 14 and 15,
+which an earlier version of this paragraph denied. **That is why the record names cases rather
+than counting them** wherever naming is possible, and why positional references like "the last
+seven" are no better: they go stale the same way. Round 7 also deleted the inline-code exception rather than
 repairing it, after two findings showed it could hide a live tag; the two shipped changelog
 headers were rewritten so they no longer need it.
 
@@ -261,6 +283,22 @@ HTML comment opened in the newly-editable header, closed after the ledger, hides
 committed entry from a reader while leaving all of them intact in the bytes. The narrowing now
 carries an explicit check for it. Its other real catch was the same sweep failure the previous
 slice measured — a claim corrected across `*.md` and not across the source's own docstrings.
+
+## Mutations on the shipped slice
+
+The tables above record every mutation run across sixteen rounds, and **most of them exercised
+the header guard Option A removed.** These six exercise the code that ships, re-run at the final
+state. Applied alone, suite run, file restored, `PYTHONDONTWRITEBYTECODE=1`.
+
+| Mutation | Result |
+|---|---|
+| The whole-file rule restored, undoing the narrowing | 18 failures |
+| The protected block matched anywhere, not at the new file's first entry | 1 failure |
+| The appended span measured from the base's line count | 2 failures |
+| The "no entry in the new file" branch dropped | 2 errors |
+| Contiguity relaxed to set membership | 3 failures |
+| An unknown reason no longer failing closed | 1 failure |
+| None (restored) | OK, 861 |
 
 ## Maintainer items
 

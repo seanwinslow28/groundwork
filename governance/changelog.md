@@ -14,9 +14,8 @@ track-1 defensible.
 
 Entry format:
 
-`- YYYY-MM-DD | SKILL PATH | GIST | PROPOSING AGENT | COMMIT SHA`
+`- YYYY-MM-DD | <skill path> | <gist> | <proposing agent> | <commit sha>`
 
 ## Entries
 
 <!-- appended by the auto-apply track; none yet -->
-

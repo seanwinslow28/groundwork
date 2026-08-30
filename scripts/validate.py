@@ -3602,10 +3602,6 @@ CHANGELOG_REASONS = {
     None: "the governance changelog is append-only from its first entry on (#17)",
     "entries": "the governance changelog is append-only from its first entry on — an existing "
                "entry was edited, reordered, or removed (#17)",
-    "hidden": "the governance changelog's header can reach the entries below it — a header "
-              "is prose: no code fence, no angle bracket that opens markup, nothing indented "
-              "to column four, no list or block quote, and a blank line before the first "
-              "entry (#17, #32)",
 }
 
 
@@ -3624,128 +3620,6 @@ def _changelog_first_entry(lines):
         if line.strip().startswith("- "):
             return i
     return None
-
-
-def _md_indent(line):
-    """PURE. (column reached by the leading whitespace, the rest of the line). A tab
-    advances to the next multiple of four, as CommonMark counts indentation — which is why
-    " \tcode" is an indented code block and a test for four literal spaces misses it."""
-    col = 0
-    i = 0
-    while i < len(line):
-        if line[i] == " ":
-            col += 1
-        elif line[i] == "\t":
-            col += 4 - (col % 4)
-        else:
-            break
-        i += 1
-    return col, line[i:]
-
-
-def _opens_a_container(rest):
-    """PURE. True when `rest` — a line with its leading whitespace removed — opens a list
-    item or a block quote.
-
-    A LIST ITEM is the one that matters: it holds blocks across a blank line, and its
-    content column moves with the spaces after its marker, so a header opening one decides
-    whether the entry below is a nested list item or indented code. That was a review
-    finding.
-
-    A BLOCK QUOTE does not survive a blank line — CommonMark separates two quotes with one —
-    so rule 3 already covers it. It is refused anyway, deliberately: a container is a
-    container, and one concept with one test is worth more here than a second rule about
-    when quoting is safe. Say that rather than inventing a hazard for it.
-
-    Deliberately conservative in one known place, refusing rather than accepting: `* * *`
-    is a thematic break and is refused as though it were a bullet. Digits are ASCII-only
-    and at most nine, as CommonMark requires, so `\u0661.` and `1234567890.` are both prose —
-    each of those bounds is pinned by a test, after a round found neither was."""
-    if rest.startswith(">"):
-        return True
-    if rest[:1] in ("-", "*", "+") and (len(rest) == 1 or rest[1] in " \t"):
-        return True
-    i = 0
-    while i < len(rest) and i < 9 and rest[i] in "0123456789":
-        i += 1
-    return bool(i) and rest[i:i + 1] in (".", ")") and (len(rest) == i + 1 or rest[i + 1] in " \t")
-
-
-def _changelog_header_reaches_the_ledger(header_lines):
-    """PURE. True when the editable header could reach the entries below it — when what a
-    reader sees where the ledger should be is not the ledger.
-
-    Organised by how a block relates to a blank line, because rule 3 turns on that. The
-    organising idea is what stops this being a list of constructs somebody thought of; it
-    has never yet been a proof of coverage. Rules 4 and 5 were each added when a review
-    round found the preceding set described as complete while that case was missing, so
-    read the rules below as what the guard does and nothing more:
-
-    1. **Runs to the end of the document.** Only fenced code does. Refused: a run of three
-       backticks or tildes ANYWHERE on a line. Not "at the start", because a fence opens
-       inside a list item or a block quote too and the container marker sits in front of
-       it — that gap was a review finding. Testing for containment rather than for position
-       refuses more than CommonMark would call a fence, and there is nothing a header needs
-       to say that requires the sequence.
-    2. **Runs to an explicit closer.** HTML blocks of types 1 to 5, every one of which
-       begins with "<". Refused: a "<" followed by "!", "?", "/" or an ASCII letter. A "<"
-       that opens nothing, as in "a < b", is prose and is allowed.
-    3. **Ends at a blank line.** A GFM table, a link reference definition with a multiline
-       title, an HTML block of type 6 or 7, a paragraph, a setext heading. Required: the
-       line immediately above the first entry is blank, blank
-       meaning CommonMark's blank — empty, or ASCII spaces and tabs only. Python's
-       str.strip() also removes U+00A0, which is NOT a Markdown blank and left a link
-       reference title running straight through the ledger; that was a review finding.
-    4. **Survives a blank line.** Indented code does, so mode 3 cannot reach it. Refused:
-       any line whose leading whitespace reaches column four or beyond, counting a tab as
-       advancing to the next multiple of four, as CommonMark counts it.
-    5. **Holds blocks across a blank line.** A list item does, and which block the entry
-       below becomes depends on the item's content column — which moves when the marker's
-       trailing spaces change. Refused: any line opening a list item. A block quote is
-       refused with it, though a blank line DOES separate block quotes and rule 3 would
-       cover one; that refusal is conservative, and _opens_a_container says so.
-
-    The one exception is a line whose whole stripped content is a single closed HTML
-    comment carrying no angle bracket of its own; both shipped changelogs use one, and it
-    cannot reach past its own line. It is checked AFTER rule 4, because at column four such
-    a line is indented code and not a comment at all — that ordering was a review finding.
-
-    There is no inline-code exception, deliberately. One existed, and a header could not
-    then be trusted: a backslash-escaped backtick made a live tag look quoted, and a
-    backtick inside the comment exception hid a live tag behind a comment that had already
-    closed. Both are review findings, not hypotheticals. A header that needs to show a
-    "<" writes it as an HTML entity, and the two shipped changelogs were rewritten to need
-    none.
-
-    Narrower than valid Markdown, on purpose. This shape was NOT approved under rule 5 — it
-    was taken by the builder on review evidence while the maintainer's answer was outstanding,
-    and the review record's README carries it as an open maintainer item.
-    docs/known-limitations.md carries the cost and the reason."""
-    for line in header_lines:
-        col, rest = _md_indent(line)
-        # Rule 4 FIRST: at column four a line is code, whatever it looks like. A comment
-        # written there is not a comment, so the exception below must not reach it. A line
-        # of whitespace alone is a blank line, not an indented block, so rule 3 has it.
-        if rest and col >= 4:
-            return True
-        stripped = line.strip()
-        if (stripped.startswith("<!--") and stripped.endswith("-->")
-                and len(stripped) >= 5 and "<" not in stripped[4:-3]
-                and ">" not in stripped[4:-3]):
-            continue
-        if "```" in line or "~~~" in line:
-            return True
-        if _opens_a_container(rest):
-            return True
-        for i, ch in enumerate(line):
-            if ch != "<":
-                continue
-            after = line[i + 1:i + 2]
-            if after in ("!", "?", "/") or (after.isascii() and after.isalpha()):
-                return True
-    # Rule 3, in CommonMark's sense of blank: empty, or ASCII spaces and tabs only. An
-    # empty header cannot reach anything.
-    return bool(header_lines) and header_lines[-1].strip(" \t") != ""
 
 
 def _changelog_appended_span(old_text, new_text):
@@ -3786,8 +3660,6 @@ def _changelog_appended_span(old_text, new_text):
     j = _changelog_first_entry(new_lines)
     if j is None or new_lines[j:j + len(protected)] != protected:
         return "entries", []
-    if _changelog_header_reaches_the_ledger(new_lines[:j]):
-        return "hidden", []
     return None, new_lines[j + len(protected):]
 
 
@@ -4366,9 +4238,7 @@ def blast_radius_diff_findings(root, base):
     change wants its changelog line (WARN — a stateless validator cannot tell an
     agent auto-apply from the maintainer's own edit); the changelog itself is
     append-only from its first entry line on (ERROR); the header above that line is
-    editable, and must be prose that cannot reach the entries below it — see
-    _changelog_header_reaches_the_ledger for what that means and what it does not
-    guarantee (ERROR, #32).
+    editable (#32).
 
     What this cannot do: prove a human truthfully reviewed anything. That is the
     commit bit's job (#18) — see docs/known-limitations.md."""
