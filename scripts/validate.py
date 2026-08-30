@@ -4217,8 +4217,10 @@ def blast_radius_diff_findings(root, base):
     # fallback — measured, a file under `A/` came back demanding a proposal in
     # `a/proposals/`, which cannot target outside `a`: an unsatisfiable gate,
     # raised for the very root the ERROR above says is not being gated. The
-    # roots stay; only their findings are dropped, at the one place a finding
-    # is attributed to a root.
+    # roots stay; only their findings are dropped, where the candidate-file
+    # pass attributes one to a root. That is not the only such place — the
+    # changelog pass below is per-root too, and takes `gov_roots - unsupported`
+    # for itself.
     unsupported = _roots_missing_from_base(gov_roots, base_rels)
     findings += [_unsupported_root_finding(g) for g in sorted(unsupported)]
     if unsupported == gov_roots:

@@ -57,9 +57,13 @@ fail loud.** It fails silent, and exits 0.
 
 ## What is on the branch
 
-- `scripts/validate.py` — `diff_base_findings`, plus `_base_is_ancestor` and
-  `_roots_missing_from_base`. `blast_radius_diff_findings` subtracts the unsupported roots
-  from `gov_roots`. `main()` runs the contract before the three passes that rest on it.
+- `scripts/validate.py` — `diff_base_findings`, plus `_base_is_ancestor`,
+  `_roots_missing_from_base` and `_unsupported_root_finding`, the one constructor both
+  emitters use. `blast_radius_diff_findings` raises that ERROR for each unsupported root
+  and drops those roots' findings, in two places: the candidate-file pass filters them out
+  of `pairs`, and the changelog pass iterates `gov_roots - unsupported`. It does **not**
+  remove them from `gov_roots` — round 2 measured why. `main()` runs the contract before
+  the three passes that rest on it.
 - `tests/test_validate.py` — `TestDiffBaseContract`. Each half has a paired control that
   breaks the thing it guards, and every behaviour added or repaired here was
   mutation-checked: the round entries carry those tables, and
@@ -98,7 +102,8 @@ invocation. The reasoning is in `diff_base_findings`' docstring so it travels wi
 | Round | Reviewed | Verdict | Findings | Fix commit |
 |---|---|---|---|---|
 | 01 | `bf33166` | **does not approve** — Spec 3 (two Major, one Minor), Standards 0 | 3 | `ed47901` |
-| 02 | `ed47901` | **does not approve** — Spec 1 (Major), Standards 1 (Minor) | 2 | |
+| 02 | `ed47901` | **does not approve** — Spec 1 (Major), Standards 1 (Minor) | 2 | `55823e8` |
+| 03 | `55823e8` | **does not approve** — Standards 2 (worst Minor), Spec 0 | 2 | |
 
 A round's fix commit is filled in with the next entry: an entry cannot name the commit that
 carries its own fixes.
