@@ -82,7 +82,7 @@ Honest limits of the current build. This file grows as the product does (brief Â
   someone edits it. A **stale roster** produces exactly the confident-error class the
   evidence floor documents, one level up: the gate goes green on an accountability structure
   nobody has confirmed. `valid_at` and `review_by` date the claim; nothing verifies it.
-- **Nothing asks a holder whether they accepted the role, and nothing verifies it.**
+- **No question asks a holder whether they accepted the role, and no check verifies it.**
   `interview/protocol.md` lists "whoever holds it knows" under what good looks like, and that
   is a goal rather than a mechanism: **no question in `interview/questions.md` asks it**, no
   schema field carries the answer, and no check looks for one. The holders in a roster are

@@ -179,7 +179,9 @@ the confirmed answers you already have, by this rule and no wider:
     named and each one's answered type. A role answered as held by **nobody yet** is still
     written — the Role cell filled, Holder and Type empty — which is a legal roster row and
     the honest one: it says the office exists and no one holds it. It does not resolve, so
-    the rules naming it stay drafts under the gap rule below;
+    it prevents activation: the rules naming it ship rungless under the gap rule below —
+    except where that unheld role is a **high-risk** rule's appeal owner, which does not ship
+    at all, declared or not, under the exception that outranks the permission;
   - **the Type cell takes `human` or `agent` and nothing else** — the roster has exactly two
     type values, and the question is asked in those words for that reason. An answer given
     in any other word ("a person", "a bot", a name) is written as whichever of the two it
@@ -221,6 +223,14 @@ the confirmed answers you already have, by this rule and no wider:
   the policy default of 90 days after `valid_at` — recorded in the file as
   default-not-answered, so a reader can tell a default from an answer, and named in the
   generation report below.
+- **Precondition: no string may be both a Role and a Holder.** The roster resolves an owner
+  value by matching it against either column, so a name appearing in both makes every
+  reference to it ambiguous — the validator ERRORs it and defines no precedence, because
+  none should be needed. The interview can produce this honestly: a role held by a person
+  whose own name is another role's title, or an office named as a holder of a second office.
+  **Stop and disambiguate with the company; never pick a winner.** The answer is theirs —
+  which of the two the owner values meant — and the roster is written after they say. Never
+  invent a suffix to break the tie.
 - **`source`** names where the org map came from — the interview layers, by name.
 
 A repo generated before the interview asked these questions keeps its holder-only roster:
@@ -233,13 +243,15 @@ populated but **unresolvable** against the roster, or a field populated but reco
 **disputed** — may ship only as a **draft** (no rung) that declares those gaps in its own
 body. An undeclared incomplete rule does not ship.
 
-**Unresolvable includes an appeal path that reaches no human.** A `human_appeal_owner` that
-matches the roster but resolves **only to agent-typed holders** has not resolved for the
-purpose of activation: an appeal that terminates in a model is not an appeal path, and the
-gate ERRORs it on **any** active rule, not only a high-risk one. So it is the second class,
-and the rule ships rungless with that gap declared. Reading it as resolved is the one way to
-generate a repo that fails its own gate on the first run: the field looks answered, no gap is
-listed, the rung stays on, and the validator refuses it.
+**A separate bar on carrying a rung: the appeal path must reach a human.** A
+`human_appeal_owner` that matches the roster but resolves **only to agent-typed holders** is
+*resolvable and wrongly typed* — a different state from unresolvable, and **not** one of the
+three gap classes above. It is an **activation** condition: an appeal that terminates in a
+model is not an appeal path, so the rule may not carry a rung, and the gate ERRORs it on
+**any** active rule rather than only a high-risk one. Ship it rungless, and declare it in the
+body and in the report the same way a gap is declared — more disclosure, never less. Treating
+the field as simply answered is a way to generate a repo that fails its own gate on the first
+run: it looks answered, nothing is listed, the rung stays on, and the validator refuses it.
 
 **One exception, and it outranks this permission:** a rule carrying a gate ERROR that fires
 regardless of rung does not ship at all, declared or not. That is a `high-risk` rule whose
