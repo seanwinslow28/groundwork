@@ -118,12 +118,18 @@ Honest limits of the current build. This file grows as the product does (brief �
   nothing — the state of every freshly generated repo, and of both changelogs shipped here.
   There is no entry to launder until a first one exists, and the guard engages as soon as one
   does. Decided 2026-08-30 rather than discovered.
-- **The editable header is prose the guard does not interpret, with one exception.** It
-  refuses a header that leaves an HTML comment open above the entries, because such a header
-  hides the committed ledger from a reader while every entry survives in the bytes. That check
-  is textual and conservative — a `<!--` inside a fenced code block counts — and it does not
-  model arbitrary raw HTML. A header that alters how the ledger renders by some other means is
-  caught by reading the diff, not by the gate.
+- **The editable header may not leave a block construct open above the entries, and what
+  counts as one is a fixed list.** A header that opens a construct and does not close it
+  reaches the ledger below without owning it: the entries survive in the bytes while the
+  rendered file shows a reader something else. The guard refuses an unclosed code fence and an
+  unclosed HTML comment, CDATA section, processing instruction, `script`, `style`, `pre`, or
+  `textarea` — CommonMark's HTML block types 1 to 5, plus fenced code. It is a fixed list, not
+  a derivation from a renderer, so a construct outside it is not modelled. It is also
+  deliberately conservative, and its mistakes are all in the refusing direction: fence lines
+  are counted rather than parsed, so a fence marker written inside a comment still counts
+  toward the parity and can refuse a header a renderer would accept. A refused header can be
+  reworded. Markers quoted as inline code are prose and do not count, so a header can still
+  document the syntax it is written in.
 - **A hyphen-bulleted line in the header pins the boundary early.** An entry is any line whose
   `str.strip()` begins with `- `. A format example, or an ordinary bulleted list, written into
   the header without backticks counts as one and freezes everything from it down. Write header

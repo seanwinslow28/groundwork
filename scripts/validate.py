@@ -3602,8 +3602,8 @@ CHANGELOG_REASONS = {
     None: "the governance changelog is append-only from its first entry on (#17)",
     "entries": "the governance changelog is append-only from its first entry on — an existing "
                "entry was edited, reordered, or removed (#17)",
-    "hidden": "the governance changelog's header leaves an HTML comment open above the entries, "
-              "hiding the committed ledger from a reader (#17)",
+    "hidden": "the governance changelog's header leaves a markdown or HTML block open above "
+              "the entries, so the committed ledger does not reach a reader as written (#17)",
 }
 
 
@@ -3617,27 +3617,87 @@ def _changelog_first_entry(lines):
     """PURE. Index of the first ENTRY line, or None when there is none. An entry is a
     line whose str.strip() begins with "- " — U+002D HYPHEN-MINUS then U+0020 SPACE.
     That is the same test the stateless check (_check_changelog_instance) and
-    _changelog_appended_targets apply, and the three are kept identical on purpose."""
+    _changelog_appended_targets apply, and they are kept identical on purpose."""
     for i, line in enumerate(lines):
         if line.strip().startswith("- "):
             return i
     return None
 
 
-def _changelog_header_leaves_a_comment_open(header_lines):
-    """PURE. True when the editable header leaves an HTML comment OPEN — the last
-    `<!--` in it has no `-->` after it, still inside the header. Such a header swallows
-    the protected ledger below it: every committed entry survives in the bytes, and a
-    reader of the rendered file sees none of them. Closing an entry-hiding comment is
-    the only way #32's editable header can reach content it does not own, and it is why
-    the narrowing needs this check and the whole-file guard did not.
+def _strip_inline_code(line):
+    """PURE. Drop matched backtick-delimited spans from one line, so a construct marker
+    quoted as inline code is prose and not an opener. An UNMATCHED run is left in place,
+    which is what keeps a bare fence line a fence."""
+    out, i, n = [], 0, len(line)
+    while i < n:
+        if line[i] == "`":
+            j = i
+            while j < n and line[j] == "`":
+                j += 1
+            run = line[i:j]
+            k = line.find(run, j)
+            if k != -1:
+                i = k + len(run)
+                continue
+            out.append(run)
+            i = j
+            continue
+        out.append(line[i])
+        i += 1
+    return "".join(out)
 
-    Deliberately textual and therefore conservative: a `<!--` inside a fenced code block
-    counts, which can only over-report. What it does not model is arbitrary raw HTML —
-    docs/known-limitations.md carries that."""
-    text = "\n".join(header_lines)
-    i = text.rfind("<!--")
-    return i != -1 and text.find("-->", i + 4) == -1
+
+# Constructs that run until their closer once opened: CommonMark's HTML blocks of types
+# 1 to 5. Fenced code is the sixth case and is line-oriented, so it is counted separately.
+_HEADER_BLOCK_PAIRS = (
+    ("<!--", "-->"),
+    ("<![cdata[", "]]>"),
+    ("<?", "?>"),
+    ("<script", "</script>"),
+    ("<style", "</style>"),
+    ("<pre", "</pre>"),
+    ("<textarea", "</textarea>"),
+)
+
+
+def _changelog_header_leaves_a_block_open(header_lines):
+    """PURE. True when the editable header opens a block construct it does not close.
+    Such a header reaches the ledger below it without owning it: every entry survives in
+    the file's bytes while the rendered file shows the reader something else — an
+    unclosed comment hides them, an unclosed fence or raw-HTML block re-renders them as
+    something other than the live list. #17's one-glance property is a property of
+    reading the file, so the guard has to hold there and not only in the bytes.
+
+    Deliberately conservative, and its errors are all in the refusing direction: fence
+    lines are counted rather than parsed, so a fence marker inside a comment still counts,
+    and a construct closed under different block context than a renderer would give it is
+    still read as closed here only when the closer literally follows. A refused header can
+    be reworded; docs/known-limitations.md carries what this does and does not model."""
+    stripped = [_strip_inline_code(line) for line in header_lines]
+    fences = sum(1 for line in stripped
+                 if line.strip().startswith("```") or line.strip().startswith("~~~"))
+    if fences % 2:
+        return True
+    text = "\n".join(stripped).lower()
+    pos = 0
+    while True:
+        best = None
+        for opener, closer in _HEADER_BLOCK_PAIRS:
+            k = text.find(opener, pos)
+            if k == -1:
+                continue
+            if best is None or k < best[0] or (k == best[0] and len(opener) > len(best[1])):
+                best = (k, opener, closer)
+        if best is None:
+            return False
+        k, opener, closer = best
+        # An HTML comment's closer may OVERLAP its opener: <!--> and <!---> are complete
+        # comments, so the search starts two characters in rather than four.
+        start = k + (2 if opener == "<!--" else len(opener))
+        c = text.find(closer, start)
+        if c == -1:
+            return True
+        pos = c + len(closer)
 
 
 def _changelog_appended_span(old_text, new_text):
@@ -3678,7 +3738,7 @@ def _changelog_appended_span(old_text, new_text):
     j = _changelog_first_entry(new_lines)
     if j is None or new_lines[j:j + len(protected)] != protected:
         return "entries", []
-    if _changelog_header_leaves_a_comment_open(new_lines[:j]):
+    if _changelog_header_leaves_a_block_open(new_lines[:j]):
         return "hidden", []
     return None, new_lines[j + len(protected):]
 
@@ -4258,7 +4318,7 @@ def blast_radius_diff_findings(root, base):
     change wants its changelog line (WARN — a stateless validator cannot tell an
     agent auto-apply from the maintainer's own edit); the changelog itself is
     append-only from its first entry line on (ERROR); the header above that line is
-    editable, and must not leave an HTML comment open over the entries (#32).
+    editable, and must not leave a block construct open over the entries (ERROR, #32).
 
     What this cannot do: prove a human truthfully reviewed anything. That is the
     commit bit's job (#18) — see docs/known-limitations.md."""

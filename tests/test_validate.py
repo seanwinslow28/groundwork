@@ -4194,7 +4194,7 @@ class TestChangelogAppendOnly(unittest.TestCase):
         self.assertEqual(appended, validate._changelog_lines(new))
 
     # --- Codex round 02, Major: an open comment in the header hides the ledger ---
-    def test_header_opening_an_unclosed_comment_is_rejected(self):
+    def test_header_opening_an_unclosed_comment_is_rejected(self):  # noqa: E301
         # Every base entry survives verbatim and contiguous, so the entry rule alone
         # accepts this. Rendered, the reader sees only the replacement entry.
         attack = self.HEADED.replace("## Entries\n", "## Entries\n\n<!--\n")
@@ -4222,9 +4222,60 @@ class TestChangelogAppendOnly(unittest.TestCase):
         new = self.HEADED + "<!-- a trailing note\n"
         self.assertTrue(validate._changelog_append_only(self.HEADED, new))
 
-    def test_stray_close_marker_in_the_header_is_not_an_open_comment(self):
-        self.assertFalse(validate._changelog_header_leaves_a_comment_open(["--> alone"]))
-        self.assertTrue(validate._changelog_header_leaves_a_comment_open(["<!-- alone"]))
+    def test_stray_close_marker_in_the_header_is_not_an_open_block(self):
+        self.assertFalse(validate._changelog_header_leaves_a_block_open(["--> alone"]))
+        self.assertTrue(validate._changelog_header_leaves_a_block_open(["<!-- alone"]))
+
+    # --- Codex round 04: any block construct left open, not only a comment ----
+    def _hidden(self, opener, closer):
+        """Open a construct in the header, close it after the ledger, append a
+        replacement entry: every base entry survives verbatim and contiguous."""
+        new = self.HEADED.replace("## Entries\n", opener + "\n\n## Entries\n")
+        new += closer + "\n- 2026-07-28 | skills/a/SKILL.md | replacement | scribe | c3d4e5f\n"
+        return validate._changelog_appended_span(self.HEADED, new)[0]
+
+    def test_unclosed_fence_in_the_header_is_rejected(self):
+        self.assertEqual(self._hidden("```", "```"), "hidden")
+        self.assertEqual(self._hidden("~~~", "~~~"), "hidden")
+
+    def test_unclosed_raw_html_block_in_the_header_is_rejected(self):
+        for opener, closer in (("<script>", "</script>"), ("<style>", "</style>"),
+                               ("<pre>", "</pre>"), ("<textarea>", "</textarea>"),
+                               ("<?php", "?>"), ("<![CDATA[", "]]>")):
+            with self.subTest(opener=opener):
+                self.assertEqual(self._hidden(opener, closer), "hidden")
+
+    def test_raw_html_opener_is_matched_case_insensitively(self):
+        self.assertEqual(self._hidden("<SCRIPT>", "</SCRIPT>"), "hidden")
+
+    def test_a_closed_fence_in_the_header_is_allowed(self):
+        new = self.HEADED.replace("## Entries\n",
+                                  "```\nformat: date, skill, gist, agent, sha\n```\n\n## Entries\n")
+        self.assertTrue(validate._changelog_append_only(self.HEADED, new))
+
+    def test_a_closed_raw_html_block_in_the_header_is_allowed(self):
+        new = self.HEADED.replace("## Entries\n", "<pre>a note</pre>\n\n## Entries\n")
+        self.assertTrue(validate._changelog_append_only(self.HEADED, new))
+
+    def test_a_marker_quoted_as_inline_code_is_prose(self):
+        # Otherwise a header could not document the syntax it is written in.
+        for quoted in ("The token `<!--` opens a comment.",
+                       "Fence with ``` to quote a line.",
+                       "A `<script>` tag is raw HTML."):
+            with self.subTest(quoted=quoted):
+                self.assertFalse(validate._changelog_header_leaves_a_block_open([quoted]))
+
+    def test_an_unmatched_backtick_run_is_left_alone(self):
+        # Stripping it would turn a real fence line into prose.
+        self.assertEqual(validate._strip_inline_code("```"), "```")
+        self.assertEqual(validate._strip_inline_code("a `b` c"), "a  c")
+
+    def test_overlapping_comment_closers_are_complete_comments(self):
+        # CommonMark: <!--> and <!---> are complete comments.
+        self.assertFalse(validate._changelog_header_leaves_a_block_open(["<!-->"]))
+        self.assertFalse(validate._changelog_header_leaves_a_block_open(["<!--->"]))
+        self.assertFalse(validate._changelog_header_leaves_a_block_open(["<!---->"]))
+        self.assertTrue(validate._changelog_header_leaves_a_block_open(["<!----"]))
 
 
 PIN_OK = "---\nschema_version: 2\ngenerated_by_commit: abc1234\n---\n"
@@ -4389,8 +4440,9 @@ class TestBlastRadiusDiff(unittest.TestCase):
                    CHANGELOG_WITH_ENTRY.replace("## Entries\n", "## Entries\n\n<!--\n")
                    + "-->\n- 2026-07-28 | skills/weekly-digest/SKILL.md | swapped | scribe | c3d4e5f\n")
             findings = validate.blast_radius_diff_findings(d, "HEAD")
-            self.assertTrue(any(f.level == "ERROR" and "hiding the committed ledger" in f.message
-                                and f.path.endswith("changelog.md") for f in findings))
+            self.assertTrue(any(f.level == "ERROR" and "leaves a markdown or HTML block open"
+                                in f.message and f.path.endswith("changelog.md")
+                                for f in findings))
 
     def test_an_unrecognized_reason_still_errors(self):
         # The caller keys the message off the reason instead of branching on each one,
