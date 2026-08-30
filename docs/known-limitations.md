@@ -129,8 +129,9 @@ Honest limits of the current build. This file grows as the product does (brief Â
   - A run of three backticks or tildes **anywhere on a line** is refused, fenced code running
     to the end of the document. Anywhere rather than at the start, because a fence opens
     behind a list or block-quote marker too.
-  - A `<` followed by `!`, `?`, `/` or a letter is refused, HTML block types 1 to 5 running to
-    an explicit closer. A `<` that opens nothing, as in `a < b`, is prose.
+  - A `<` followed by `!`, `?`, `/` or an **ASCII** letter is refused, HTML block types 1 to 5
+    running to an explicit closer. A `<` that opens nothing, as in `a < b`, is prose, and so is
+    one followed by a non-ASCII letter, which opens no tag.
   - The line immediately above the first entry must be blank â€” empty, or ASCII spaces and tabs
     only, which is CommonMark's blank line and not Python's `str.strip()`, a difference that
     was a review finding. Most block types end there: a GFM table, a link reference

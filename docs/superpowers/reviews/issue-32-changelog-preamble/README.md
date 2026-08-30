@@ -62,7 +62,8 @@ this guard on it.
 | 09 | `e37197e` | **does not approve** — Spec 1 **Major** + 1 Moderate, Standards 1 Moderate + 1 Low | 4 | `17b8d7f` |
 | 10 | `17b8d7f` | **crashed — no verdict returned** (task `task-mtg24k42-6skvmf`) | — | `daf26a5` |
 | 11 | `daf26a5` | **does not approve** — Spec 1 **Major** + 1 Moderate, Standards 1 Moderate | 3 | `074f752` |
-| 12 | `074f752` | **does not approve** — Standards 1 Moderate, Spec 1 Low + 1 Minor. **No accepting-direction gap found** | 3 | `PENDING-12` |
+| 12 | `074f752` | **does not approve** — Standards 1 Moderate, Spec 1 Low + 1 Minor. **No accepting-direction gap found** | 3 | `8888fae` |
+| 13 | `8888fae` | **does not approve** — Spec 1 Low, Standards 3 Low. **No accepting-direction gap, re-derived independently** | 4 | `PENDING-13` |
 
 ## Open findings
 
@@ -138,7 +139,6 @@ alone, the suite run, and the file restored. Run with `PYTHONDONTWRITEBYTECODE=1
 | Rule 5, the container check, removed (round 11) | 7 failures |
 | Rule 4 back to a literal four-space test (round 11) | 1 failure |
 | A tab advances one column instead of to a multiple of four (round 11) | 3 failures |
-| Rule 4 moved back after the comment exception (round 11) | 4 failures |
 | The container check misses block quotes (round 11) | 1 failure |
 | The container check misses ordered markers (round 11) | 3 failures |
 | A bullet marker needs no space after it (round 11) | 3 failures, and **0** before round 11 added the prose cases it wrongly refuses |
@@ -146,7 +146,18 @@ alone, the suite run, and the file restored. Run with `PYTHONDONTWRITEBYTECODE=1
 | Ordered-marker digit limit raised past nine (round 12) | 1 failure |
 | Rule 4 **moved** after the comment exception (round 12 — the edit round 11's row described) | 1 failure |
 | Rule 4 **deleted** (round 12 — the edit round 11's row measured; read that row as this one) | 4 failures |
+| Rule 2 drops `?` from its opener set (round 13) | 1 failure |
+| Rule 5 drops the hyphen bullet (round 13) | 2 failures |
+| Rule 5's marker requires a space, not a tab (round 13) | 1 failure |
+| Rule 5's ordered marker requires content after it (round 13) | 2 failures |
+| Fence threshold tightened to two characters (round 13) | 2 failures |
+| Rule 2 treats any Unicode letter as an opener (round 13) | 1 failure |
+| Rule 3's blank means space-only, not space-or-tab (round 13) | 2 failures |
 | None (restored) | OK, 871 |
+
+The last seven were all green before round 13 added the cases they now fail. **Four of them are
+the over-refusing direction** — a rule silently narrowing what an adopter may write. That edge is
+the one nobody thinks to test, and three of this branch's coverage gaps were found there.
 
 Rounds 4 and 5 added mutations against the CommonMark model that round 6 deleted; their rows
 are kept because they record what was measured, not what still exists. Round 5's
@@ -209,10 +220,20 @@ previous round's sweep had missed while claiming to have swept everything, a mut
 labelled as an edit other than the one run, and a justification for refusing block quotes that
 was simply untrue, block quotes being ended by a blank line like most things.
 
-Nine consecutive rounds found the previous round's self-description ahead of its code — one in a
+Round 13 then re-derived the coverage question independently rather than taking round 12's word
+for it, and **agreed: no accepting-direction gap.** Two rounds now reach that conclusion
+separately, after eight rounds that each found a way through — 02, 04, 05, 06, 07, 08, 09 and 11.
+Its four findings were all Low: seven rule boundaries no test pinned, a stale mutation row the
+previous round's correction had left standing beside its replacement, a docstring sentence
+written while fixing a false claim that was itself false, and a miscount of how many rounds had
+found a route.
+
+Ten consecutive rounds found the previous round's self-description ahead of its code — one in a
 sentence written specifically to stop overclaiming, one in a review brief that reverted to
-wording an earlier round had been killed by, and one in the sentence claiming the sweep for
-these was complete. The claim in the record now is only what the guard does. Round 7 also deleted the inline-code exception rather than
+wording an earlier round had been killed by, one in the sentence claiming the sweep for these
+was complete, and one inside a repair for a false justification. Seven counts have been
+corrected, three of them ordinals, and every single one was wrong in the direction of making the
+work sound larger. The record now names things instead of counting them wherever it can. Round 7 also deleted the inline-code exception rather than
 repairing it, after two findings showed it could hide a live tag; the two shipped changelog
 headers were rewritten so they no longer need it.
 

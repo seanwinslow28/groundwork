@@ -4255,6 +4255,14 @@ class TestChangelogAppendOnly(unittest.TestCase):
         ("11: a block quote", ["> quoted", ""]),
         ("11: an ordered marker with a paren delimiter", ["1) item", ""]),
         ("11: nine digits, the longest marker CommonMark allows", ["123456789. x", ""]),
+        # Round 13: boundaries the suite passed through. Each of these survived a
+        # regression that removed exactly one character or marker shape from a rule.
+        ("13: an unclosed processing instruction", ["<?pi", ""]),
+        ("13: a bare hyphen bullet with no content", ["-", ""]),
+        ("13: a hyphen bullet separated by a tab", ["-\titem", ""]),
+        ("13: a bare ordered marker with no content", ["1.", ""]),
+        ("13: a bare ordered marker with a paren", ["1)", ""]),
+        ("13: a bare block quote marker", [">", ""]),
     )
 
     def test_every_construction_a_review_round_found_is_refused(self):
@@ -4285,6 +4293,14 @@ class TestChangelogAppendOnly(unittest.TestCase):
                 ("an Arabic-Indic digit, which is not a marker", ["\u0661. release notes", ""]),
                 ("a superscript digit, which is not a marker", ["\u00b2. note", ""]),
                 ("ten digits, which is past CommonMark's limit", ["1234567890. x", ""]),
+                # Round 13: the OTHER direction. Each of these was accepted by the code
+                # and asserted by nothing, so a rule tightened by one character stayed
+                # green. A rule needs pinning at both edges, not only the leaky one.
+                ("two tildes, which open no fence", ["~~struck~~ text", ""]),
+                ("two backticks, which open no fence", ["``quoted`` text", ""]),
+                ("a non-ASCII letter after a bracket", ["3 <\u00e9tude, oddly", ""]),
+                ("a tab-only line, which is a blank line", ["text", "\t"]),
+                ("a space-and-tab line, which is a blank line", ["text", " \t "]),
                 ("an entity where a tag would be refused", ["write &lt;script&gt; so", ""]),
                 ("an entry format with no angle bracket",
                  ["Format: `- date | skills/NAME/SKILL.md | gist | agent | sha`", ""]),

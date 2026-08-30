@@ -3657,11 +3657,10 @@ def _opens_a_container(rest):
     container, and one concept with one test is worth more here than a second rule about
     when quoting is safe. Say that rather than inventing a hazard for it.
 
-    Deliberately conservative in two known places, both refusing rather than accepting:
-    `* * *` is a thematic break and is refused as though it were a bullet, and an ordered
-    marker of ten or more digits is not a marker to CommonMark but the ASCII digits before
-    it may still trip the bullet or quote tests. Digits are ASCII-only, as CommonMark
-    requires, so an Arabic-Indic or superscript digit is prose."""
+    Deliberately conservative in one known place, refusing rather than accepting: `* * *`
+    is a thematic break and is refused as though it were a bullet. Digits are ASCII-only
+    and at most nine, as CommonMark requires, so `\u0661.` and `1234567890.` are both prose —
+    each of those bounds is pinned by a test, after a round found neither was."""
     if rest.startswith(">"):
         return True
     if rest[:1] in ("-", "*", "+") and (len(rest) == 1 or rest[1] in " \t"):
