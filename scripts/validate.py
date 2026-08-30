@@ -3751,6 +3751,129 @@ def _git_show(toplevel, base, repo_path):
         return None
 
 
+def _base_is_ancestor(toplevel, base):
+    """True when <base> is an ancestor of HEAD, False when it is not, None when
+    the question cannot be answered — an unborn or unresolvable HEAD, or a git
+    that would not run. A commit is its own ancestor, so base == HEAD is True.
+    None is a third answer, never a stand-in for either of the other two."""
+    try:
+        head = subprocess.run(["git", "-C", toplevel, "rev-parse", "--verify", "--quiet",
+                               "HEAD^{commit}"], capture_output=True)
+        if head.returncode != 0:
+            return None
+        anc = subprocess.run(["git", "-C", toplevel, "merge-base", "--is-ancestor",
+                              base, "HEAD"], capture_output=True)
+    except OSError:
+        return None
+    # git documents 0 for yes and 1 for no; any other status is an error, not a
+    # verdict, and must not be read as one.
+    return True if anc.returncode == 0 else (False if anc.returncode == 1 else None)
+
+
+def _roots_missing_from_base(gov_roots, base_rels):
+    """The governed roots whose `groundwork.pin` the BASE tree does not hold —
+    the bases that predate the root they are being asked to gate.
+
+    Matched NFC+casefold, the same fold `blast_radius_diff_findings` uses: on a
+    case-folding filesystem a base holding `Demo/groundwork.pin` and a working
+    tree holding `demo/groundwork.pin` are one root, and an exact-case lookup
+    would report the contract broken when it is not."""
+    have = {unicodedata.normalize("NFC", r).casefold() for r in base_rels}
+    out = set()
+    for g in gov_roots:
+        pin_rel = ((g + "/") if g else "") + "groundwork.pin"
+        if unicodedata.normalize("NFC", pin_rel).casefold() not in have:
+            out.add(g)
+    return out
+
+
+def diff_base_findings(root, base):
+    """The --diff BASE CONTRACT. Two of the stateful passes promise something
+    the base has to be able to support, and until this check existed nothing
+    verified that it could: `_git_diff_context` proved only that the ref
+    resolves and that its tree lists.
+
+    Three conditions, and they are not the same severity because they do not
+    fail the same way.
+
+    - **A governed root the base does not hold** is an ERROR, and
+      `blast_radius_diff_findings` skips that root. A base predating the root
+      over-gates: a governed file absent at base is an ADDITION, and every
+      governed class escalates on an addition, so the #18 pass returns the act
+      of creating the root as a wall of unproposed escalating changes. One
+      accurate ERROR replaces that wall; the run is red either way, so nothing
+      lands green on the strength of the skip.
+    - **An interview state directory whose 00-manifest.md the base does not
+      hold** is an ERROR, and needs no skip. `interview_diff_findings` derives
+      its state directories from the base file list, so such a directory is
+      already contributing nothing — the failure it fixes is not noise but
+      SILENCE: a confirmed layer edited under such a base draws no finding at
+      all and the run exits 0.
+    - **A base that is not an ancestor of HEAD** is a WARN. Every finding in the
+      run is then a difference between two lines of history rather than a change
+      made on this one, so the findings are unreliable in both directions — but
+      `--diff <remote>/main` on a branch behind its remote is a real workflow
+      where the base legitimately is not an ancestor, and refusing it would
+      block work to sharpen a message. The WARN says what the run is comparing.
+
+    None of the three carries a `since:` tag. The demotion in MIGRATIONS.md is
+    for requirements on CONTENT SHAPE, so that a repo pinned below the version
+    that introduced one is not failed for content a v1 reader accepted. These
+    reject no content: the same tree under the same pin passes against a base
+    that meets the contract. What they constrain is the invocation."""
+    ctx, ctx_findings = _git_diff_context(root, base)
+    if ctx is None:
+        return ctx_findings
+    toplevel, scope, base_files = ctx["toplevel"], ctx["scope"], ctx["base_files"]
+    findings = []
+
+    ancestor = _base_is_ancestor(toplevel, base)
+    if ancestor is False:
+        findings.append(Finding("WARN", root, None,
+                                "--diff base %s is not an ancestor of HEAD — this run "
+                                "compares two lines of history, so a finding may name a "
+                                "change this one never made" % base))
+    elif ancestor is None:
+        findings.append(Finding("WARN", root, None,
+                                "could not check whether --diff base %s is an ancestor of "
+                                "HEAD — the run continues, but nothing here shows the base "
+                                "is in this history" % base))
+
+    base_rels = {}
+    for bf in base_files:
+        if scope != "." and not bf.startswith(scope + "/"):
+            continue
+        base_rels[(bf if scope == "." else bf[len(scope) + 1:])] = bf
+
+    # The walk's OWN findings (an unreadable directory) belong to the tripwire,
+    # which reports them whether or not it is dormant; taking them here too
+    # would only duplicate them into main()'s dedupe.
+    wt_files, _wt_findings = _walk_working_tree(root)
+
+    for g in sorted(_roots_missing_from_base(_pin_dirs(root, base_files, scope, wt_files),
+                                             base_rels)):
+        findings.append(Finding("ERROR", ((g + "/") if g else "") + "groundwork.pin", None,
+                                "--diff base predates this governed root: its groundwork.pin "
+                                "is not in the base tree. A governed file the base does not "
+                                "hold is an addition, and an addition escalates, so the #18 "
+                                "consent gate is skipped for this root rather than run "
+                                "against a base that cannot support it — name the commit "
+                                "carrying this pin as the base"))
+
+    for abspath in sorted(wt_files):
+        if os.path.basename(abspath) != INTERVIEW_MANIFEST:
+            continue
+        rel = os.path.relpath(abspath, root).replace(os.sep, "/")
+        if _diff_in_workbench_skips(rel) or rel in base_rels:
+            continue
+        findings.append(Finding("ERROR", rel, None,
+                                "--diff base does not hold this interview state's manifest, "
+                                "so the frozen-layer guard covers no layer in this directory "
+                                "— a confirmed layer here could be edited or deleted and this "
+                                "run would report nothing (#9)"))
+    return findings
+
+
 def memory_diff_findings(root, base):
     """Compare memory records that existed at <base> (a git ref) against the
     working tree. Scoped to memory folders under root. New records are fine;
@@ -4053,6 +4176,12 @@ def blast_radius_diff_findings(root, base):
     findings += wt_findings
 
     gov_roots = _pin_dirs(root, base_files, scope, wt_files)
+    # A root whose pin the base does not hold predates the thing it is being
+    # asked to gate: every file it was created with is an addition, and every
+    # governed class escalates on an addition. diff_base_findings ERRORs on
+    # exactly this set, so the run is already red; running the pass anyway
+    # would only bury that one accurate finding under the wall it explains.
+    gov_roots = gov_roots - _roots_missing_from_base(gov_roots, base_rels)
     if not gov_roots:
         return findings  # no company instance in scope: the tripwire is dormant
 
@@ -4315,7 +4444,8 @@ def main(argv):
         # so deduping after it would compare rewritten tuples against raw ones.
         pins = _pin_versions(root, load_gitignore(root))
         seen = set()
-        for diff_pass in (memory_diff_findings,
+        for diff_pass in (diff_base_findings,
+                          memory_diff_findings,
                           blast_radius_diff_findings,
                           interview_diff_findings):
             fresh = [f for f in diff_pass(root, diff_base) if f not in seen]

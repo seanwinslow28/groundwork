@@ -8017,5 +8017,246 @@ class TestRuleMap(unittest.TestCase):
                          "exactly one" % len(headers))
 
 
+
+def _git_out(d, *args):
+    return _sp.run(["git", "-C", d, *args], check=True,
+                   capture_output=True, text=True).stdout.strip()
+
+
+class TestDiffBaseContract(unittest.TestCase):
+    """The --diff base contract. Two stateful passes promise something the base
+    has to be able to support, and until diff_base_findings existed nothing
+    verified that it could: _git_diff_context proved only that the ref resolves
+    and that its tree lists.
+
+    The two halves failed in OPPOSITE directions, which is why each test below
+    pins the direction and not just the finding. A base predating a governed
+    root over-gated LOUDLY — every governed file it did not hold read as an
+    unproposed escalating change. A base predating an interview state failed
+    SILENTLY — the frozen-layer guard derives its state directories from the
+    base file list, so it covered nothing and said nothing, and the run exited
+    0 on a tree with an edited confirmed layer."""
+
+    def _root(self, d):
+        """A governed root and an interview state, all committed at base: the
+        contract met. Returns the base SHA."""
+        _git(d, "init", "-q")
+        _git(d, "config", "user.email", "t@t.t")
+        _git(d, "config", "user.name", "t")
+        _write(d, "groundwork.pin", PIN_OK)
+        _write(d, "governance/constitution/access.md", RULE_OK)
+        _write(d, "governance/changelog.md", CHANGELOG_OK)
+        _iv_state(d)
+        _git(d, "add", "-A")
+        _git(d, "commit", "-qm", "base")
+        return _git_out(d, "rev-parse", "HEAD")
+
+    # --- the contract met -------------------------------------------------
+
+    def test_a_base_meeting_the_contract_is_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._root(d)
+            self.assertEqual(validate.diff_base_findings(d, "HEAD"), [])
+
+    def test_an_unresolvable_base_is_still_fatal_here(self):
+        """The pre-existing plumbing ERROR must survive the new pass, or a
+        typo'd base would reach the contract checks and be judged by them."""
+        with tempfile.TemporaryDirectory() as d:
+            self._root(d)
+            findings = validate.diff_base_findings(d, "no-such-ref")
+            self.assertTrue(any(f.level == "ERROR" and "base ref not found" in f.message
+                                for f in findings), findings)
+
+    # --- the governed root: the loud half ---------------------------------
+
+    def test_a_base_without_the_pin_errors_and_names_the_pin(self):
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "governance/constitution/access.md", RULE_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "pre-generation")
+            _write(d, "groundwork.pin", PIN_OK)          # generated, uncommitted
+            errs = [f for f in validate.diff_base_findings(d, "HEAD") if f.level == "ERROR"]
+            self.assertTrue(any("predates this governed root" in f.message
+                                and f.path == "groundwork.pin" for f in errs), errs)
+
+    def test_a_base_without_the_pin_skips_the_tripwire_for_that_root(self):
+        """The over-gating half. The rule below is ADDED relative to the base,
+        and every governed class escalates on an addition, so before the
+        contract check this returned it as an unproposed escalating change."""
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "seed.md", "# Seed\n")
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "pre-generation")
+            _write(d, "groundwork.pin", PIN_OK)
+            _write(d, "governance/constitution/access.md", RULE_OK)
+            self.assertEqual([f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                              if f.level == "ERROR"], [])
+
+    def test_the_tripwire_still_gates_when_the_base_holds_the_pin(self):
+        """The control for the test above: the suppression must be the base
+        contract's, not a hole. Break the thing the tripwire guards and it must
+        still fail."""
+        with tempfile.TemporaryDirectory() as d:
+            self._root(d)
+            _write(d, "governance/constitution/access.md", RULE_OK + "\nAppended clause.\n")
+            errs = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                    if f.level == "ERROR" and "access.md" in f.path]
+            self.assertTrue(any("no pending proposal" in f.message for f in errs), errs)
+
+    def test_only_the_unsupported_root_is_skipped(self):
+        """Suppression is per root. A repo with one root the base holds and one
+        it does not must keep gating the first."""
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "a/groundwork.pin", PIN_OK)
+            _write(d, "a/governance/constitution/access.md", RULE_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "base")
+            _write(d, "b/groundwork.pin", PIN_OK)        # a second root, new
+            _write(d, "b/governance/constitution/access.md", RULE_OK)
+            _write(d, "a/governance/constitution/access.md", RULE_OK + "\nClause.\n")
+
+            contract = [f for f in validate.diff_base_findings(d, "HEAD") if f.level == "ERROR"]
+            self.assertEqual([f.path for f in contract], ["b/groundwork.pin"], contract)
+
+            gated = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                     if f.level == "ERROR"]
+            self.assertTrue(any("no pending proposal" in f.message
+                                and f.path.startswith("a/") for f in gated), gated)
+            self.assertEqual([f for f in gated if f.path.startswith("b/")], [], gated)
+
+    def test_the_v1_to_v2_bootstrap_is_untouched(self):
+        """Decision 8's migration-scoped bootstrap requires a pin AT BASE, so
+        the contract check cannot collide with it: the two conditions are
+        mutually exclusive by construction. Pinned here because a future edit
+        that widened either one would silently retire the other."""
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "groundwork.pin", "---\nschema_version: 1\n---\n")
+            _write(d, "governance/constitution/access.md", RULE_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "base")
+            _write(d, "governance/roles.md", ROSTER_OK)
+            _write(d, "groundwork.pin", "---\nschema_version: 2\n---\n")
+            self.assertEqual([f for f in validate.diff_base_findings(d, "HEAD")
+                              if f.level == "ERROR"], [])
+            self.assertEqual([f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                              if "roles.md" in f.path], [])
+
+    # --- the interview manifest: the silent half --------------------------
+
+    def test_a_base_without_the_manifest_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "seed.md", "# Seed\n")
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "pre-interview")
+            _iv_state(d)
+            errs = [f for f in validate.diff_base_findings(d, "HEAD") if f.level == "ERROR"]
+            self.assertTrue(any("covers no layer in this directory" in f.message
+                                and f.path == "interview/00-manifest.md" for f in errs), errs)
+
+    def test_the_silent_hole_is_now_reported(self):
+        """The measured failure, pinned end to end. Against a base that does not
+        hold the manifest, the frozen-layer guard reports NOTHING on an edited
+        confirmed layer — that behaviour is unchanged and asserted here so the
+        silence stays visible — and the base contract is what says so."""
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "seed.md", "# Seed\n")
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "pre-interview")
+            pre = _git_out(d, "rev-parse", "HEAD")
+            _iv_state(d)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "interview")
+
+            _write(d, "interview/01-role-and-scope.md",
+                   IV_LAYER_OK.replace("The confirmed facts of the layer.",
+                                       "The rewritten facts of the layer."))
+
+            self.assertEqual(validate.interview_diff_findings(d, pre), [],
+                             "the frozen-layer guard's silence under a manifestless "
+                             "base is the documented behaviour this check covers")
+            errs = [f for f in validate.diff_base_findings(d, pre) if f.level == "ERROR"]
+            self.assertTrue(any("covers no layer in this directory" in f.message
+                                for f in errs), errs)
+
+    def test_the_frozen_layer_guard_still_bites_with_the_manifest_at_base(self):
+        """The control: the contract check must not have replaced the guard."""
+        with tempfile.TemporaryDirectory() as d:
+            self._root(d)
+            _write(d, "interview/01-role-and-scope.md",
+                   IV_LAYER_OK.replace("The confirmed facts of the layer.",
+                                       "The rewritten facts of the layer."))
+            errs = [f for f in validate.interview_diff_findings(d, "HEAD")
+                    if f.level == "ERROR"]
+            self.assertTrue(any("frozen at its checkpoint" in f.message for f in errs), errs)
+            self.assertEqual([f for f in validate.diff_base_findings(d, "HEAD")
+                              if f.level == "ERROR"], [])
+
+    # --- ancestry ---------------------------------------------------------
+
+    def test_a_divergent_base_warns_and_does_not_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._root(d)
+            branch = _git_out(d, "rev-parse", "--abbrev-ref", "HEAD")
+            _git(d, "checkout", "-q", "--detach")
+            _write(d, "governance/constitution/access.md", RULE_OK + "\nSide clause.\n")
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "side")
+            side = _git_out(d, "rev-parse", "HEAD")
+            _git(d, "checkout", "-q", branch)
+
+            findings = validate.diff_base_findings(d, side)
+            self.assertTrue(any(f.level == "WARN" and "not an ancestor" in f.message
+                                for f in findings), findings)
+            self.assertEqual([f for f in findings if f.level == "ERROR"], [], findings)
+
+    def test_an_ancestor_base_raises_no_ancestry_finding(self):
+        """The control. base == HEAD is the common case and a commit is its own
+        ancestor, so the WARN must not fire on the documented invocation."""
+        with tempfile.TemporaryDirectory() as d:
+            base = self._root(d)
+            for ref in ("HEAD", base):
+                self.assertEqual([f for f in validate.diff_base_findings(d, ref)
+                                  if "ancestor" in f.message], [], ref)
+
+    def test_ancestry_is_a_warn_not_a_refusal(self):
+        """A divergent base still runs every pass — the WARN describes the run,
+        it does not replace it. Asserted because the alternative was on the
+        table and this is the behaviour that was chosen."""
+        with tempfile.TemporaryDirectory() as d:
+            self._root(d)
+            branch = _git_out(d, "rev-parse", "--abbrev-ref", "HEAD")
+            _git(d, "checkout", "-q", "--detach")
+            _write(d, "interview/01-role-and-scope.md",
+                   IV_LAYER_OK.replace("The confirmed facts of the layer.",
+                                       "A side-branch rewrite."))
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "side")
+            side = _git_out(d, "rev-parse", "HEAD")
+            _git(d, "checkout", "-q", branch)
+
+            errs = [f for f in validate.interview_diff_findings(d, side)
+                    if f.level == "ERROR"]
+            self.assertTrue(any("frozen at its checkpoint" in f.message for f in errs),
+                            "the passes still run against a divergent base")
+
+
 if __name__ == "__main__":
     unittest.main()

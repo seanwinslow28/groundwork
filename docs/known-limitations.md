@@ -46,6 +46,20 @@ Honest limits of the current build. This file grows as the product does (brief �
 
 ## Governance — the consent gate and its tripwire
 
+- **The `--diff` base contract is checked, but "can support the promise" is not "is the
+  right base".** `diff_base_findings` ERRORs when the base tree holds no `groundwork.pin`
+  for a governed root or no `00-manifest.md` for an interview state directory, and WARNs
+  when the base is not an ancestor of HEAD. Four things it does not do:
+  - **It cannot tell an old base from the right one.** A base holding every pin and every
+    manifest may still not be the generation commit, and nothing checks that it is.
+  - **It checks a manifest's presence, not a layer's.** A confirmed layer committed *after*
+    the base is outside the frozen-layer guard and draws no finding; only a whole state
+    directory whose manifest the base lacks is reported.
+  - **The memory pass has the same shape and no check.** `memory_diff_findings` also derives
+    its records from the base file list, so a base predating `memory/` protects no record
+    and reports nothing. That half was left out of the slice that added this one.
+  - **A divergent base still runs.** Ancestry is a WARN, so a run against another line of
+    history prints its findings — including findings naming changes this line never made.
 - **A stateless validator cannot prove a human reviewed anything.** `validate --diff <base>`
   is a **tripwire**, not the teeth. It can prove that an escalating change is accompanied by
   a pending proposal whose *declared* blast radius matches what the diff *actually* touches —

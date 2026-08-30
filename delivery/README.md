@@ -247,9 +247,11 @@ python3 scripts/validate.py ../acme-os --diff <generation commit>
 Exit 0 on both. The second adds the stateful modes — org-memory immutability, frozen
 interview layers, and the #18 consent gate. **The base is the generation commit, not
 `main`:** the commit that created the governed root is not subject to the gate, so a base
-from before generation returns every generated rule as an escalating change with nothing
-pending to match it, and this run goes red on a correct repo. A layer is frozen wherever
-the base holds both the layer and its `00-manifest.md`. Deleting a governed file WARNs
+from before generation draws one ERROR saying it predates the governed root, and the #18
+tripwire is skipped for that root rather than run against a base that cannot support it. A
+layer is frozen wherever the base holds both the layer and its `00-manifest.md` — and an
+interview state directory whose manifest the base does not hold draws an ERROR of its own,
+because otherwise it is covered by nothing and reports nothing. Deleting a governed file WARNs
 rather than ERRORs — [`docs/known-limitations.md`](../docs/known-limitations.md) carries
 that as a limitation.
 

@@ -132,10 +132,11 @@ python3 scripts/validate.py ../acme-os --diff <generation commit>
 ```
 
 **The base is the generation commit, not `main`.** The commit that created the governed
-root is not subject to the consent gate — generation cannot be its own proposal — so a
-base from before generation returns every generated rule as an escalating change with
-nothing pending to match it. [`interview/generate.md`](interview/generate.md) names the
-base and carries the measurement.
+root is not subject to the consent gate — generation cannot be its own proposal — so the
+validator refuses a base from before generation rather than answering against it: one ERROR
+saying the base predates the governed root, and the #18 tripwire skipped for that root.
+[`interview/generate.md`](interview/generate.md) names the base and carries the
+measurement.
 
 The first run checks structure and referential integrity, the two ontology tiers, every
 Owner's Card against its ontology's owner and source of truth, every constitution rule
