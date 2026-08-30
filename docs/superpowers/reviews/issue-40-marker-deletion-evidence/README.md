@@ -42,6 +42,7 @@ rule 11 requires.
 | [05](round-05.md) | Codex review round | `095ca91` | Not clean — 1 Major + 2 Minor. Entry 04's rejection independently confirmed. | `06184ce` |
 | [06](round-06.md) | Codex review round | `0d9fc74` | Not clean — 1 Major + 2 Minor. The round-05 repair audit came back clean. | `674a9df` |
 | [07](round-07.md) | Codex review round | `f5861f6` | Not clean — 2 Major + 1 Minor. One Major open by maintainer decision. | `f2dbfe3` |
+| [08](round-08.md) | Codex review round | `381c187` | **No classifier findings.** 2 Minor + 1 Nit, all about the record. Verdict: land after them. **Rule 11 fires.** | (this branch's round-08 fix commit) |
 
 ## Open findings
 
@@ -116,6 +117,13 @@ what belongs here is the pointer.
   showed `isfile` resolves through a symlinked ANCESTOR directory that the working-tree scan
   never descends, and replaced it with `_reachable_regular_file`. All three earlier proofs
   were wrong about the same question, and each was found in the repair for the one before it.
+
+**Entry 07 is corrected twice by entry 08.** Its heading says finding 1 was "the last
+fail-open in this mechanism", while the same entry records the open `GIT_DIR` fail-open — the
+accurate statement is that it closed the last fail-open in how the git reads' RESULTS were
+handled, and issue #43 is an open fail-open in which repository they address. And its mutation
+section says "Four, all caught" while naming three: there were **three distinct mutations and
+four executions**, the base-listing one having been rerun after its test was strengthened.
 
 Entry 02's own account of finding 5 was superseded by entry 03: `lexists` was the wrong side
 of that problem. Three test docstrings credited it. Two —

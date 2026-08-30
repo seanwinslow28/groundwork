@@ -9333,7 +9333,9 @@ class TestDiffBaseContract(unittest.TestCase):
     # --- Codex round 07 regressions.
 
     def test_an_unreadable_history_is_an_error_not_silence(self):
-        """Round 07 finding 1, Major, and the last fail-OPEN in this mechanism.
+        """Round 07 finding 1, Major. A fail-OPEN in how the git reads were
+        handled — not "the last" one, which this docstring claimed until round 08
+        pointed at the `GIT_DIR` fail-open recorded open in the same entry.
         Every nonzero `git log` exit was read as "no candidates", so a failed git
         command was indistinguishable from a repository that never carried a
         marker — and the run went green. Reachable without touching the

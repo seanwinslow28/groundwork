@@ -105,7 +105,7 @@ Honest limits of the current build. This file grows as the product does (brief Â
         base listing and ancestry check still inherit it would put two repositories behind one
         verdict.
 
-    Of those four, Codex round 02 found the submodule case and the replace/graft case; the
+    Of the first four, Codex round 02 found the submodule case and the replace/graft case; the
     shallow-clone and never-committed cases were already disclosed before that round ran. The
     same round found four more that are FIXED rather than listed here â€” a marker added by a
     merge result, a single undecodable pathname erasing every marker in the same output, a
