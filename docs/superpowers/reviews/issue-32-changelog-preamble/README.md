@@ -29,8 +29,8 @@ and [`round-01.md`](round-01.md) records them with their counter-arguments.
 
 | Site | Change |
 |---|---|
-| `scripts/validate.py` | `_changelog_append_only` narrowed; `_changelog_lines`, `_changelog_first_entry`, `_changelog_appended_span` added; caller reworked; the ERROR message corrected |
-| `tests/test_validate.py` | 14 new tests; `_repo` gains a `changelog=` knob; `test_changelog_rewrite_errors` re-based on an entry-bearing fixture |
+| `scripts/validate.py` | `_changelog_append_only` narrowed; `_changelog_lines`, `_changelog_first_entry`, `_changelog_appended_span`, `_changelog_header_leaves_a_comment_open` added; caller reworked; the ERROR messages corrected and split |
+| `tests/test_validate.py` | 21 new tests; `_repo` gains a `changelog=` knob; `test_changelog_rewrite_errors` re-based on an entry-bearing fixture |
 | `governance/changelog.md` | "This file is never edited or reordered" was falsified by this change — corrected |
 | `demo/governance/changelog.md` | the defect itself: the roster added to the enumeration, and the "Append-only." claim narrowed |
 | `docs/known-limitations.md` | the rotation bullet re-worded; three new entries for what the narrowed guard does not do |
@@ -51,25 +51,32 @@ this guard on it.
 | Round | Reviewed | Verdict | Findings | Fix commit |
 |---|---|---|---|---|
 | 01 | — | maintainer decisions, not a review round | — | — |
+| 02 | `c3af4d2` | **does not approve** — Standards 0, Spec 4, worst **Major** | 4 | `PENDING-02` |
 
 ## Open findings
 
-**None yet** — no review round has run.
+**None.** Of round 2's four findings, three are fixed and one is rejected with grounds.
 
 ## Rejected findings
 
-**None.**
+**Round 2, finding 3 — Low, "demo roster claim includes unsupported deletions".** Rejected as
+**factually wrong**: the finding reads a governance-routing sentence in
+`demo/governance/changelog.md` as a claim about validator severity. Deletion of a governed file
+*is* escalating; the source is [`proposals/README.md`](../../../../proposals/README.md)'s
+"A governed file **deleted**" bullet, which states that directly and names the WARN as the
+gate's own documented limitation. [`round-02.md`](round-02.md) carries the full grounds and the
+reading under which the finding is fair.
 
 ## Baselines
 
-The test count **moves**: 846 → 860. The three validator commands are unchanged.
+The test count **moves**: 846 → 867. The three validator commands are unchanged.
 
 | Command | Before | On this branch |
 |---|---|---|
 | `python3 scripts/validate.py .` | 0 errors, 7 warnings, exit 0 | unchanged |
 | `python3 scripts/validate.py demo` | 0 errors, 2 warnings | unchanged |
 | `python3 scripts/validate.py . --diff main` | exit 0 | exit 0 |
-| `python3 -m unittest discover -s tests -q` | OK, 846 tests, skipped=1 | OK, **860** tests, skipped=1 |
+| `python3 -m unittest discover -s tests -q` | OK, 846 tests, skipped=1 | OK, **867** tests, skipped=1 |
 
 There is no pytest; the suite is unittest.
 
@@ -84,11 +91,21 @@ alone, the suite run, and the file restored. Run with `PYTHONDONTWRITEBYTECODE=1
 | Measure the appended span from the base line count instead of the protected block's end | 2 failures |
 | Drop the "new file has no entry line" branch | 2 errors |
 | Relax contiguity to set membership | 3 failures |
-| None (restored) | OK, 860 |
+| Neuter the open-comment check (round 2) | 5 failures |
+| `rfind` to `find` in the open-comment check (round 2) | 1 failure |
+| None (restored) | OK, 867 |
 
 ## Status
 
-**Not ready.** No Codex round has run.
+**Not ready.** Round 2 did not approve; its fixes are committed and a fresh round must run
+against them. Review threads are not resumable, so round 3 is a new review.
+
+**What round 2 changed about the slice, since it is the useful part.** Its Major was a
+laundering route this branch itself created and the pre-#32 guard had closed by accident: an
+HTML comment opened in the newly-editable header, closed after the ledger, hides every
+committed entry from a reader while leaving all of them intact in the bytes. The narrowing now
+carries an explicit check for it. Its other real catch was the same sweep failure the previous
+slice measured — a claim corrected across `*.md` and not across the source's own docstrings.
 
 ## Maintainer items
 

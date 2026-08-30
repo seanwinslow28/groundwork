@@ -103,9 +103,10 @@ Honest limits of the current build. This file grows as the product does (brief �
   agent's auto-apply from the maintainer editing their own skill body. ERRORing would
   false-positive on ordinary work and fill the changelog with non-auto-applies, destroying the
   one-glance property that justifies conceding pre-approval on track-1 (#17).
-- **Changelog rotation is not supported in V1.** The append-only check requires every entry
-  committed at base to survive, so archiving or rotating `governance/changelog.md` reads as a
-  rewrite. #17 left rotation cadence as a build-phase detail; it lands with a documented
+- **Changelog rotation is not supported in V1.** Once a changelog holds an entry, the
+  append-only check requires every entry committed at base to survive, so archiving or rotating
+  `governance/changelog.md` reads as a rewrite. Below that — a changelog with no entry at base —
+  there is nothing to archive. #17 left rotation cadence as a build-phase detail; it lands with a documented
   rotation convention, not before.
 - **The changelog's explanatory header is not protected.** #32 narrowed the append-only guard
   to the region from the base file's first entry line on, which is what lets a stale header be
@@ -117,6 +118,12 @@ Honest limits of the current build. This file grows as the product does (brief �
   nothing — the state of every freshly generated repo, and of both changelogs shipped here.
   There is no entry to launder until a first one exists, and the guard engages as soon as one
   does. Decided 2026-08-30 rather than discovered.
+- **The editable header is prose the guard does not interpret, with one exception.** It
+  refuses a header that leaves an HTML comment open above the entries, because such a header
+  hides the committed ledger from a reader while every entry survives in the bytes. That check
+  is textual and conservative — a `<!--` inside a fenced code block counts — and it does not
+  model arbitrary raw HTML. A header that alters how the ledger renders by some other means is
+  caught by reading the diff, not by the gate.
 - **A hyphen-bulleted line in the header pins the boundary early.** An entry is any line whose
   `str.strip()` begins with `- `. A format example, or an ordinary bulleted list, written into
   the header without backticks counts as one and freezes everything from it down. Write header

@@ -4175,23 +4175,56 @@ class TestChangelogAppendOnly(unittest.TestCase):
         # Measuring the span by the base's LINE COUNT would hand an old entry's
         # auto-apply cover to a new edit whenever the header grew.
         grown = self.HEADED.replace("## Entries\n", "A new paragraph.\n\n## Entries\n")
-        ok, appended = validate._changelog_appended_span(self.HEADED, grown)
-        self.assertTrue(ok)
+        reason, appended = validate._changelog_appended_span(self.HEADED, grown)
+        self.assertIsNone(reason)
         self.assertEqual([l for l in appended if l.strip().startswith("- ")], [])
 
     def test_appended_span_names_only_the_new_entry(self):
         new = self.HEADED + "- 2026-07-27 | skills/a/SKILL.md | two | scribe | b2c3d4e\n"
-        ok, appended = validate._changelog_appended_span(self.HEADED, new)
-        self.assertTrue(ok)
+        reason, appended = validate._changelog_appended_span(self.HEADED, new)
+        self.assertIsNone(reason)
         self.assertEqual([l for l in appended if l.strip().startswith("- ")],
                          ["- 2026-07-27 | skills/a/SKILL.md | two | scribe | b2c3d4e"])
 
     def test_appended_span_of_an_entryless_base_is_the_whole_file(self):
         base = "# Governance changelog\n\n<!-- none yet -->\n"
         new = base + "- 2026-07-27 | skills/a/SKILL.md | two | scribe | b2c3d4e\n"
-        ok, appended = validate._changelog_appended_span(base, new)
-        self.assertTrue(ok)
+        reason, appended = validate._changelog_appended_span(base, new)
+        self.assertIsNone(reason)
         self.assertEqual(appended, validate._changelog_lines(new))
+
+    # --- Codex round 02, Major: an open comment in the header hides the ledger ---
+    def test_header_opening_an_unclosed_comment_is_rejected(self):
+        # Every base entry survives verbatim and contiguous, so the entry rule alone
+        # accepts this. Rendered, the reader sees only the replacement entry.
+        attack = self.HEADED.replace("## Entries\n", "## Entries\n\n<!--\n")
+        attack += "-->\n- 2026-07-28 | skills/a/SKILL.md | the only one seen | scribe | c3d4e5f\n"
+        reason, _appended = validate._changelog_appended_span(self.HEADED, attack)
+        self.assertEqual(reason, "hidden")
+        self.assertFalse(validate._changelog_append_only(self.HEADED, attack))
+
+    def test_header_with_a_balanced_comment_is_allowed(self):
+        # Both shipped changelogs carry a balanced comment in their header.
+        new = self.HEADED.replace("## Entries\n", "<!-- a note to the reader -->\n\n## Entries\n")
+        self.assertTrue(validate._changelog_append_only(self.HEADED, new))
+
+    def test_comment_closed_only_after_the_entries_is_rejected(self):
+        new = self.HEADED.replace("## Entries\n", "<!-- opened here\n\n## Entries\n") + "-->\n"
+        self.assertFalse(validate._changelog_append_only(self.HEADED, new))
+
+    def test_second_comment_left_open_after_a_closed_one_is_rejected(self):
+        new = self.HEADED.replace("## Entries\n",
+                                  "<!-- closed --> and then <!--\n\n## Entries\n") + "-->\n"
+        self.assertFalse(validate._changelog_append_only(self.HEADED, new))
+
+    def test_open_comment_below_the_entries_is_still_an_ordinary_append(self):
+        # A comment opened AFTER the ledger cannot hide it, and appending was always legal.
+        new = self.HEADED + "<!-- a trailing note\n"
+        self.assertTrue(validate._changelog_append_only(self.HEADED, new))
+
+    def test_stray_close_marker_in_the_header_is_not_an_open_comment(self):
+        self.assertFalse(validate._changelog_header_leaves_a_comment_open(["--> alone"]))
+        self.assertTrue(validate._changelog_header_leaves_a_comment_open(["<!-- alone"]))
 
 
 PIN_OK = "---\nschema_version: 2\ngenerated_by_commit: abc1234\n---\n"
@@ -4346,6 +4379,18 @@ class TestBlastRadiusDiff(unittest.TestCase):
                    CHANGELOG_WITH_ENTRY.replace("Header prose that can go stale.",
                                                 "Header prose, corrected.\nAnd a second line."))
             self.assertEqual(validate.blast_radius_diff_findings(d, "HEAD"), [])
+
+    def test_changelog_header_hiding_the_entries_errors(self):
+        # Codex round 02, Major. End to end: the ledger survives byte for byte and is
+        # invisible to a reader, so the tripwire must still refuse it.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d, changelog=CHANGELOG_WITH_ENTRY)
+            _write(d, "governance/changelog.md",
+                   CHANGELOG_WITH_ENTRY.replace("## Entries\n", "## Entries\n\n<!--\n")
+                   + "-->\n- 2026-07-28 | skills/weekly-digest/SKILL.md | swapped | scribe | c3d4e5f\n")
+            findings = validate.blast_radius_diff_findings(d, "HEAD")
+            self.assertTrue(any(f.level == "ERROR" and "hiding the committed ledger" in f.message
+                                and f.path.endswith("changelog.md") for f in findings))
 
     def test_entryless_changelog_rewrite_is_clean(self):
         # Decided 2026-08-30: with no entry at base there is nothing to protect.

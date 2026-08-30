@@ -3612,8 +3612,25 @@ def _changelog_first_entry(lines):
     return None
 
 
+def _changelog_header_leaves_a_comment_open(header_lines):
+    """PURE. True when the editable header leaves an HTML comment OPEN — the last
+    `<!--` in it has no `-->` after it, still inside the header. Such a header swallows
+    the protected ledger below it: every committed entry survives in the bytes, and a
+    reader of the rendered file sees none of them. Closing an entry-hiding comment is
+    the only way #32's editable header can reach content it does not own, and it is why
+    the narrowing needs this check and the whole-file guard did not.
+
+    Deliberately textual and therefore conservative: a `<!--` inside a fenced code block
+    counts, which can only over-report. What it does not model is arbitrary raw HTML —
+    docs/known-limitations.md carries that."""
+    text = "\n".join(header_lines)
+    i = text.rfind("<!--")
+    return i != -1 and text.find("-->", i + 4) == -1
+
+
 def _changelog_appended_span(old_text, new_text):
-    """PURE. Returns (ok, appended_lines). #17's changelog is an append-only ledger,
+    """PURE. Returns (reason, appended_lines) — reason is None when the change is legal,
+    otherwise a phrase naming which rule it broke. #17's changelog is an append-only ledger,
     and #32 narrowed what that protects to the ledger itself: the region from the BASE
     file's first entry line onward must survive verbatim and contiguous in the new file,
     positioned at the new file's first entry line. The explanatory header ABOVE the
@@ -3644,18 +3661,20 @@ def _changelog_appended_span(old_text, new_text):
     new_lines = _changelog_lines(new_text)
     k = _changelog_first_entry(old_lines)
     if k is None:
-        return True, new_lines
+        return None, new_lines
     protected = old_lines[k:]
     j = _changelog_first_entry(new_lines)
     if j is None or new_lines[j:j + len(protected)] != protected:
-        return False, []
-    return True, new_lines[j + len(protected):]
+        return "entries", []
+    if _changelog_header_leaves_a_comment_open(new_lines[:j]):
+        return "hidden", []
+    return None, new_lines[j + len(protected):]
 
 
 def _changelog_append_only(old_text, new_text):
     """PURE. The verdict half of _changelog_appended_span, under the name the finding
     is about."""
-    return _changelog_appended_span(old_text, new_text)[0]
+    return _changelog_appended_span(old_text, new_text)[0] is None
 
 
 def validate(root):
@@ -4226,7 +4245,8 @@ def blast_radius_diff_findings(root, base):
     blast_radius matches what the diff ACTUALLY touches. A track-1 body-only
     change wants its changelog line (WARN — a stateless validator cannot tell an
     agent auto-apply from the maintainer's own edit); the changelog itself is
-    append-only (ERROR).
+    append-only from its first entry line on (ERROR); the header above that line is
+    editable, and must not leave an HTML comment open over the entries (#32).
 
     What this cannot do: prove a human truthfully reviewed anything. That is the
     commit bit's job (#18) — see docs/known-limitations.md."""
@@ -4407,11 +4427,17 @@ def blast_radius_diff_findings(root, base):
         if new is None:
             findings += rd
             continue
-        ok, appended = _changelog_appended_span(old, new)
-        if not ok:
+        reason, appended = _changelog_appended_span(old, new)
+        if reason == "entries":
             findings.append(Finding("ERROR", cl_rel, None,
                                     "the governance changelog is append-only from its first entry "
                                     "on — an existing entry was edited, reordered, or removed (#17)"))
+            continue
+        if reason == "hidden":
+            findings.append(Finding("ERROR", cl_rel, None,
+                                    "the governance changelog's header leaves an HTML comment open "
+                                    "above the entries, hiding the committed ledger from a reader "
+                                    "(#17)"))
             continue
         appended_targets[g] = _changelog_appended_targets(root, gov_abs, appended)
 
