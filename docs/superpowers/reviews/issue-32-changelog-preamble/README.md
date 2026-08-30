@@ -63,7 +63,8 @@ this guard on it.
 | 10 | `17b8d7f` | **crashed — no verdict returned** (task `task-mtg24k42-6skvmf`) | — | `daf26a5` |
 | 11 | `daf26a5` | **does not approve** — Spec 1 **Major** + 1 Moderate, Standards 1 Moderate | 3 | `074f752` |
 | 12 | `074f752` | **does not approve** — Standards 1 Moderate, Spec 1 Low + 1 Minor. **No accepting-direction gap found** | 3 | `8888fae` |
-| 13 | `8888fae` | **does not approve** — Spec 1 Low, Standards 3 Low. **No accepting-direction gap, re-derived independently** | 4 | `PENDING-13` |
+| 13 | `8888fae` | **does not approve** — Spec 1 Low, Standards 3 Low. **No accepting-direction gap, re-derived independently** | 4 | `3c35799` |
+| 14 | `3c35799` | **does not approve** — 4 Low. **No accepting-direction gap** | 4 | `PENDING-14` |
 
 ## Open findings
 
@@ -153,11 +154,15 @@ alone, the suite run, and the file restored. Run with `PYTHONDONTWRITEBYTECODE=1
 | Fence threshold tightened to two characters (round 13) | 2 failures |
 | Rule 2 treats any Unicode letter as an opener (round 13) | 1 failure |
 | Rule 3's blank means space-only, not space-or-tab (round 13) | 2 failures |
+| The comment exception keyed on the raw line, not the stripped one (round 14) | 2 failures |
+| Rule 2 drops `/` from its opener set (round 14) | 1 failure |
 | None (restored) | OK, 871 |
 
-The last seven were all green before round 13 added the cases they now fail. **Four of them are
-the over-refusing direction** — a rule silently narrowing what an adopter may write. That edge is
-the one nobody thinks to test, and three of this branch's coverage gaps were found there.
+The last seven were all green before round 13 added the cases they now fail. **Three of them
+are the over-refusing direction** — the two-character fence threshold, the Unicode-letter opener,
+and the space-only blank — where a rule silently narrows what an adopter may write. That edge is
+the one nobody thinks to test; round 14 then found a fourth there, the comment exception keyed on
+the raw line rather than the stripped one.
 
 Rounds 4 and 5 added mutations against the CommonMark model that round 6 deleted; their rows
 are kept because they record what was measured, not what still exists. Round 5's

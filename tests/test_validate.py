@@ -4255,14 +4255,18 @@ class TestChangelogAppendOnly(unittest.TestCase):
         ("11: a block quote", ["> quoted", ""]),
         ("11: an ordered marker with a paren delimiter", ["1) item", ""]),
         ("11: nine digits, the longest marker CommonMark allows", ["123456789. x", ""]),
-        # Round 13: boundaries the suite passed through. Each of these survived a
-        # regression that removed exactly one character or marker shape from a rule.
+        # Round 13: boundaries the suite passed through. Each of these five was measured
+        # green under a regression removing exactly one character or marker shape.
         ("13: an unclosed processing instruction", ["<?pi", ""]),
         ("13: a bare hyphen bullet with no content", ["-", ""]),
         ("13: a hyphen bullet separated by a tab", ["-\titem", ""]),
         ("13: a bare ordered marker with no content", ["1.", ""]),
         ("13: a bare ordered marker with a paren", ["1)", ""]),
-        ("13: a bare block quote marker", [">", ""]),
+        # Added alongside them without a measurement behind it, which round 14 caught the
+        # comment above claiming. Round 11's block-quote mutation is what covers this one.
+        ("13: a bare block quote marker, added proactively", [">", ""]),
+        # Round 14: the declared "<" plus "/" refusal, which no test reached.
+        ("14: a closing tag, refused by the slash branch alone", ["</script>", ""]),
     )
 
     def test_every_construction_a_review_round_found_is_refused(self):
@@ -4275,6 +4279,12 @@ class TestChangelogAppendOnly(unittest.TestCase):
         for label, lines in (
                 ("ordinary prose", ["# Governance changelog", "", "Append-only.", ""]),
                 ("a whole-line closed comment", ["<!-- entries below, newest last -->", ""]),
+                # Round 14: the exception keys on the STRIPPED line, so a comment indented
+                # up to three columns is allowed. Keying it on the raw line left the suite
+                # green while refusing this — the fifth over-refusing edge, and the one
+                # round 13 went looking for and did not find.
+                ("a closed comment indented one column", [" <!-- indented -->", ""]),
+                ("a closed comment indented three columns", ["   <!-- indented -->", ""]),
                 ("an overlapping short comment", ["<!-->", ""]),
                 ("an empty comment", ["<!---->", ""]),
                 ("a less-than sign that opens nothing", ["a < b, and 3 < 4", ""]),
