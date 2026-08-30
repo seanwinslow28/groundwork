@@ -40,6 +40,7 @@ a note that no longer exists.
 | 03 | `b8976c0` | 4 findings, worst HIGH, no approve/does-not-approve word | 4 | `1c6b4b1` |
 | 04 | `74c86be` | 4 findings, worst HIGH, no approve/does-not-approve word | 4 | `063fb3e` |
 | 05 | `104709b` | 6 findings, worst HIGH, no approve/does-not-approve word | 6 | `28fe3cc` |
+| 06 | `9192236` | **does not approve yet** | 1 (reported on both axes) | `618151e` |
 
 ## Open findings
 
