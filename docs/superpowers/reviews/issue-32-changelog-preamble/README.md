@@ -59,7 +59,8 @@ this guard on it.
 | 06 | `b29d3fe` | **does not approve** — 4 findings, worst **Major** | 4 | `13bb323` |
 | 07 | `13bb323` | **does not approve** — Spec 3 **Major** + 1 Low, Standards 1 Moderate + 3 Low | 8 | `dde4a51` |
 | 08 | `dde4a51` | **does not approve** — Spec 1 **Major**, Standards 1 Moderate + 1 Low | 3 | `e37197e` |
-| 09 | `e37197e` | **does not approve** — Spec 1 **Major** + 1 Moderate, Standards 1 Moderate + 1 Low | 4 | `PENDING-09` |
+| 09 | `e37197e` | **does not approve** — Spec 1 **Major** + 1 Moderate, Standards 1 Moderate + 1 Low | 4 | `17b8d7f` |
+| 10 | `17b8d7f` | **crashed — no verdict returned** (task `task-mtg24k42-6skvmf`) | — | `PENDING-10` |
 
 ## Open findings
 
@@ -140,10 +141,11 @@ are kept because they record what was measured, not what still exists. Round 5's
 
 ## Status
 
-**Not ready.** No round has approved yet, and rounds 2, 4, 5 and 6 each did not approve. Round
-3 crashed without a verdict, on a provider-side refusal caused by the brief's adversarial
-wording rather than by anything in the branch. Review threads are not resumable, so each round
-is a new review.
+**Not ready.** No round has approved yet. Rounds 2 and 4 to 9 each did not approve. Rounds 3
+and 10 crashed without a verdict, both on the same provider-side refusal caused by the brief's
+adversarial wording rather than by anything in the branch — round 10's brief having drifted back
+to the framing round 03 had already been killed by. Review threads are not resumable, so each
+round is a new review.
 
 **The arc so far, since it is the useful part.** Round 2 found a laundering route this branch
 created — the pre-#32 whole-file guard had closed it by accident — and the repair for it
