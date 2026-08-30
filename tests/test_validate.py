@@ -4392,6 +4392,21 @@ class TestBlastRadiusDiff(unittest.TestCase):
             self.assertTrue(any(f.level == "ERROR" and "hiding the committed ledger" in f.message
                                 and f.path.endswith("changelog.md") for f in findings))
 
+    def test_an_unrecognized_reason_still_errors(self):
+        # The caller keys the message off the reason instead of branching on each one,
+        # so a reason added later cannot fall through and be read as a legal append.
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(d, changelog=CHANGELOG_WITH_ENTRY)
+            _write(d, "governance/changelog.md", CHANGELOG_WITH_ENTRY + "appended\n")
+            real = validate._changelog_appended_span
+            validate._changelog_appended_span = lambda o, n: ("some-future-reason", [])
+            try:
+                findings = validate.blast_radius_diff_findings(d, "HEAD")
+            finally:
+                validate._changelog_appended_span = real
+            self.assertTrue(any(f.level == "ERROR" and "append-only" in f.message
+                                and f.path.endswith("changelog.md") for f in findings))
+
     def test_entryless_changelog_rewrite_is_clean(self):
         # Decided 2026-08-30: with no entry at base there is nothing to protect.
         with tempfile.TemporaryDirectory() as d:

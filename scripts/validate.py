@@ -3595,6 +3595,18 @@ def classify_governed_change(kind, cls, old_text, new_text):
     return "track1-body", "SKILL.md body of a track-1 (%s) skill" % ac
 
 
+# The ERROR text for each reason _changelog_appended_span can return. Keyed rather than
+# branched so a reason added later cannot fall through the caller silently and be read as
+# a legal append; None is both the fallback text and the key for an unrecognized reason.
+CHANGELOG_REASONS = {
+    None: "the governance changelog is append-only from its first entry on (#17)",
+    "entries": "the governance changelog is append-only from its first entry on — an existing "
+               "entry was edited, reordered, or removed (#17)",
+    "hidden": "the governance changelog's header leaves an HTML comment open above the entries, "
+              "hiding the committed ledger from a reader (#17)",
+}
+
+
 def _changelog_lines(text):
     """PURE. Split into lines with line endings normalized first, so a CRLF base blob
     is not a phantom rewrite."""
@@ -4428,16 +4440,9 @@ def blast_radius_diff_findings(root, base):
             findings += rd
             continue
         reason, appended = _changelog_appended_span(old, new)
-        if reason == "entries":
+        if reason is not None:
             findings.append(Finding("ERROR", cl_rel, None,
-                                    "the governance changelog is append-only from its first entry "
-                                    "on — an existing entry was edited, reordered, or removed (#17)"))
-            continue
-        if reason == "hidden":
-            findings.append(Finding("ERROR", cl_rel, None,
-                                    "the governance changelog's header leaves an HTML comment open "
-                                    "above the entries, hiding the committed ledger from a reader "
-                                    "(#17)"))
+                                    CHANGELOG_REASONS.get(reason, CHANGELOG_REASONS[None])))
             continue
         appended_targets[g] = _changelog_appended_targets(root, gov_abs, appended)
 

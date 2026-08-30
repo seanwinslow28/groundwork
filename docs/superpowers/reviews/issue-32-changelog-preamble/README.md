@@ -29,8 +29,8 @@ and [`round-01.md`](round-01.md) records them with their counter-arguments.
 
 | Site | Change |
 |---|---|
-| `scripts/validate.py` | `_changelog_append_only` narrowed; `_changelog_lines`, `_changelog_first_entry`, `_changelog_appended_span`, `_changelog_header_leaves_a_comment_open` added; caller reworked; the ERROR messages corrected and split |
-| `tests/test_validate.py` | 21 new tests; `_repo` gains a `changelog=` knob; `test_changelog_rewrite_errors` re-based on an entry-bearing fixture |
+| `scripts/validate.py` | `_changelog_append_only` narrowed; `_changelog_lines`, `_changelog_first_entry`, `_changelog_appended_span`, `_changelog_header_leaves_a_comment_open` added; `CHANGELOG_REASONS` keys the ERROR text so an unknown reason cannot fall through the caller; the ERROR messages corrected and split |
+| `tests/test_validate.py` | 22 new tests; `_repo` gains a `changelog=` knob; `test_changelog_rewrite_errors` re-based on an entry-bearing fixture |
 | `governance/changelog.md` | "This file is never edited or reordered" was falsified by this change — corrected |
 | `demo/governance/changelog.md` | the defect itself: the roster added to the enumeration, and the "Append-only." claim narrowed |
 | `docs/known-limitations.md` | the rotation bullet re-worded; three new entries for what the narrowed guard does not do |
@@ -51,7 +51,8 @@ this guard on it.
 | Round | Reviewed | Verdict | Findings | Fix commit |
 |---|---|---|---|---|
 | 01 | — | maintainer decisions, not a review round | — | — |
-| 02 | `c3af4d2` | **does not approve** — Standards 0, Spec 4, worst **Major** | 4 | `PENDING-02` |
+| 02 | `c3af4d2` | **does not approve** — Standards 0, Spec 4, worst **Major** | 4 | `a5e07da` |
+| 03 | `a5e07da` | **crashed — no verdict returned** (task `task-mtfxtd9w-ypa8lx`) | — | `PENDING-03` |
 
 ## Open findings
 
@@ -69,14 +70,14 @@ reading under which the finding is fair.
 
 ## Baselines
 
-The test count **moves**: 846 → 867. The three validator commands are unchanged.
+The test count **moves**: 846 → 868. The three validator commands are unchanged.
 
 | Command | Before | On this branch |
 |---|---|---|
 | `python3 scripts/validate.py .` | 0 errors, 7 warnings, exit 0 | unchanged |
 | `python3 scripts/validate.py demo` | 0 errors, 2 warnings | unchanged |
 | `python3 scripts/validate.py . --diff main` | exit 0 | exit 0 |
-| `python3 -m unittest discover -s tests -q` | OK, 846 tests, skipped=1 | OK, **867** tests, skipped=1 |
+| `python3 -m unittest discover -s tests -q` | OK, 846 tests, skipped=1 | OK, **868** tests, skipped=1 |
 
 There is no pytest; the suite is unittest.
 
@@ -93,12 +94,15 @@ alone, the suite run, and the file restored. Run with `PYTHONDONTWRITEBYTECODE=1
 | Relax contiguity to set membership | 3 failures |
 | Neuter the open-comment check (round 2) | 5 failures |
 | `rfind` to `find` in the open-comment check (round 2) | 1 failure |
-| None (restored) | OK, 867 |
+| Caller branches on the two known reasons only (round 3) | 1 failure |
+| None (restored) | OK, 868 |
 
 ## Status
 
-**Not ready.** Round 2 did not approve; its fixes are committed and a fresh round must run
-against them. Review threads are not resumable, so round 3 is a new review.
+**Not ready.** Round 2 did not approve; round 3 crashed without a verdict, on a provider-side
+refusal caused by the brief's adversarial wording rather than by anything in the branch. Round
+4 re-asks the same questions from the defensive side. Review threads are not resumable, so
+each round is a new review.
 
 **What round 2 changed about the slice, since it is the useful part.** Its Major was a
 laundering route this branch itself created and the pre-#32 guard had closed by accident: an
