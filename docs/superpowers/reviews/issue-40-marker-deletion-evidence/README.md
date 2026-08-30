@@ -39,7 +39,7 @@ rule 11 requires.
 | [02](round-02.md) | Codex review round | `ae654cf` | Not clean — 2 Major + 7 Minor on classifier correctness, plus 2 Major on prose | `d63196c` |
 | [03](round-03.md) | Codex review round | `cfb0c20` | Not clean — 1 Major + 1 Minor on classifier correctness, plus 3 Minor on prose | `d1ab4fc` |
 | [04](round-04.md) | Codex review round | `512126f` | Not clean — 4 Major + 1 Minor on classifier correctness, plus 2 Minor on prose and the record. One Major rejected. | `de7eaf8` |
-| [05](round-05.md) | Codex review round | `095ca91` | Not clean — 1 Major + 2 Minor. Entry 04's rejection independently confirmed. | (this branch's round-05 fix commit) |
+| [05](round-05.md) | Codex review round | `095ca91` | Not clean — 1 Major + 2 Minor. Entry 04's rejection independently confirmed. | `06184ce` |
 
 ## Open findings
 
