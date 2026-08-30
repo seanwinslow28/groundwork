@@ -41,12 +41,12 @@ rule 11 requires.
 | [04](round-04.md) | Codex review round | `512126f` | Not clean — 4 Major + 1 Minor on classifier correctness, plus 2 Minor on prose and the record. One Major rejected. | `de7eaf8` |
 | [05](round-05.md) | Codex review round | `095ca91` | Not clean — 1 Major + 2 Minor. Entry 04's rejection independently confirmed. | `06184ce` |
 | [06](round-06.md) | Codex review round | `0d9fc74` | Not clean — 1 Major + 2 Minor. The round-05 repair audit came back clean. | `674a9df` |
+| [07](round-07.md) | Codex review round | `f5861f6` | Not clean — 2 Major + 1 Minor. One Major open by maintainer decision. | `f2dbfe3` |
 
 ## Open findings
 
-Both are from entry 02, both **Minor**, and both are recorded in `docs/known-limitations.md`.
-Neither is rejected, because no closed-list category fits and rule 9 keeps such a finding
-open rather than dressing it as something else.
+Three, all recorded in `docs/known-limitations.md`. None is rejected, because no closed-list
+category fits and rule 9 keeps such a finding open rather than dressing it as something else.
 
 - **Finding 4 — a marker inside an initialized submodule.** The superproject's history
   records a gitlink, not the nested path, so an intermediate marker state inside a vendored
@@ -56,12 +56,20 @@ open rather than dressing it as something else.
   appear to parent the base directly and hide the addition between them. The one-flag fix
   (`--no-replace-objects`) would make this read follow a different history from
   `_git_diff_context`'s base-tree read in the same run.
+- **Entry 07 finding 2 — `GIT_DIR` and `GIT_WORK_TREE` are inherited**, so a caller can supply
+  one repository's working tree and another's history. **Major**, and the only one of the three
+  reachable by ACCIDENT: CI harnesses, git hooks and wrapper scripts set `GIT_DIR` routinely.
+  Measured — the walk reports the marker normally and reports nothing with `GIT_DIR` aimed at a
+  decoy sharing the base commit. Closing it coherently means one environment policy across
+  every git invocation in the validator, not two calls of it.
 
-**Decided 2026-08-30: both are documented rather than fixed**, and each has an issue so the
-work is not lost — finding 4 is [issue #41](https://github.com/seanwinslow28/groundwork/issues/41),
-finding 7 is [issue #42](https://github.com/seanwinslow28/groundwork/issues/42). They remain
-**open** here rather than rejected: "the maintainer decided not to build it" is not one of rule
-9's three closed-list grounds, and entry 03 records the grounds in full.
+**Decided 2026-08-30: all three are documented rather than fixed**, and each has an issue so
+the work is not lost — entry 02 finding 4 is
+[issue #41](https://github.com/seanwinslow28/groundwork/issues/41), entry 02 finding 7 is
+[issue #42](https://github.com/seanwinslow28/groundwork/issues/42), and entry 07 finding 2 is
+[issue #43](https://github.com/seanwinslow28/groundwork/issues/43). They remain **open** here
+rather than rejected: "the maintainer decided not to build it" is not one of rule 9's three
+closed-list grounds. Entry 03 records the grounds for the first two, entry 07 for the third.
 
 ## Rejected findings
 
