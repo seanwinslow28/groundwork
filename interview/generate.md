@@ -168,7 +168,7 @@ the confirmed answers you already have, by this rule and no wider:
 - **Enter what the interview typed, and only that.** Section 7 of
   [questions.md](questions.md) asks, of every owner it has just named, whether that owner
   is a person or a role somebody holds; then who holds each of those roles, and whether
-  each holder is a person or an agent. Those three answers are the roster, transcribed:
+  each holder is a person or an agent. Those answers are the roster, transcribed:
   - an owner answered as a **person** becomes a **holder-only row** — the Role cell empty,
     the holder's name in Holder, the type as answered;
   - an owner answered as a **role** becomes a **Role row**, with the holders the interview
@@ -198,7 +198,8 @@ the confirmed answers you already have, by this rule and no wider:
   how often the org map should be re-confirmed and gets back a cadence — "every six
   months" — while the field is an ISO date. You do the conversion, at generation, from
   `valid_at`, and you **record the derivation in the file**: the cadence as answered, the
-  base date, and the date it produced. Nobody named a date, so the file says who did. Where
+  base date, and the date it produced. Nobody named a date; the cadence was the answer and
+  the file says the conversion happened here. Where
   the cadence question went **unanswered**, the field is still required, so it falls back to
   the policy default of 90 days after `valid_at` — recorded in the file as
   default-not-answered, so a reader can tell a default from an answer, and named in the
