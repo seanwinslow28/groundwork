@@ -320,13 +320,15 @@ Do not.
 routes an escalating change through a reviewable proposal, and generation cannot be its
 own proposal — it leaves nothing pending in `proposals/` for the gate to match a generated
 rule, skill, or roster against. Name the pre-generation commit as the base and you ask the
-gate to review the act that created the thing it governs: every generated constitution
-rule comes
-back as an escalating change with no pending proposal, so every generated OS carrying a
-constitution rule goes red against that base, correct or not. Measured on the OS generated
-in the 2026-07-31 persona-company run, which carries two constitution rules: the
-pre-generation base returns **2 errors, exit 1**, one per rule; the generation commit
-returns **0**. Writing the pin last is not a way out — the validator discovers
+gate to review the act that created the thing it governs. The validator refuses that rather
+than answering it: `diff_base_findings` ERRORs that the base tree does not hold the governed
+root's `groundwork.pin`, and the #18 tripwire is skipped for that root.
+
+Before that check existed the run answered anyway, and the answer was a wall — measured on
+the OS generated in the 2026-07-31 persona-company run, which carries two constitution
+rules: the pre-generation base returned **2 errors, exit 1**, one per rule, where the
+generation commit returned **0**. Either way the base is wrong; what changed is whether the
+run says so or buries it. Writing the pin last is not a way out — the validator discovers
 `groundwork.pin` from the working tree as well as the base tree, so a rule committed
 alongside it is classified exactly as one committed after it.
 

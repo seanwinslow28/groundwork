@@ -8017,5 +8017,494 @@ class TestRuleMap(unittest.TestCase):
                          "exactly one" % len(headers))
 
 
+
+def _git_out(d, *args):
+    return _sp.run(["git", "-C", d, *args], check=True,
+                   capture_output=True, text=True).stdout.strip()
+
+
+class TestDiffBaseContract(unittest.TestCase):
+    """The --diff base contract. Two stateful passes promise something the base
+    has to be able to support, and until diff_base_findings existed nothing
+    verified that it could: _git_diff_context proved only that the ref resolves
+    and that its tree lists.
+
+    The two halves failed in OPPOSITE directions, which is why each test below
+    pins the direction and not just the finding. A base predating a governed
+    root over-gated LOUDLY — every governed file it did not hold read as an
+    unproposed escalating change. A base predating an interview state failed
+    SILENTLY — the frozen-layer guard derives its state directories from the
+    base file list, so it covered nothing and said nothing, and the run exited
+    0 on a tree with an edited confirmed layer."""
+
+    def _root(self, d):
+        """A governed root and an interview state, all committed at base: the
+        contract met. Returns the base SHA."""
+        _git(d, "init", "-q")
+        _git(d, "config", "user.email", "t@t.t")
+        _git(d, "config", "user.name", "t")
+        _write(d, "groundwork.pin", PIN_OK)
+        _write(d, "governance/constitution/access.md", RULE_OK)
+        _write(d, "governance/changelog.md", CHANGELOG_OK)
+        _iv_state(d)
+        _git(d, "add", "-A")
+        _git(d, "commit", "-qm", "base")
+        return _git_out(d, "rev-parse", "HEAD")
+
+    # --- the contract met -------------------------------------------------
+
+    def test_a_base_meeting_the_contract_is_clean(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._root(d)
+            self.assertEqual(validate.diff_base_findings(d, "HEAD"), [])
+
+    def test_an_unresolvable_base_is_still_fatal_here(self):
+        """The pre-existing plumbing ERROR must survive the new pass, or a
+        typo'd base would reach the contract checks and be judged by them."""
+        with tempfile.TemporaryDirectory() as d:
+            self._root(d)
+            findings = validate.diff_base_findings(d, "no-such-ref")
+            self.assertTrue(any(f.level == "ERROR" and "base ref not found" in f.message
+                                for f in findings), findings)
+
+    # --- the governed root: the loud half ---------------------------------
+
+    def test_a_base_without_the_pin_errors_and_names_the_pin(self):
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "governance/constitution/access.md", RULE_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "pre-generation")
+            _write(d, "groundwork.pin", PIN_OK)          # generated, uncommitted
+            errs = [f for f in validate.diff_base_findings(d, "HEAD") if f.level == "ERROR"]
+            self.assertTrue(any("predates this governed root" in f.message
+                                and f.path == "groundwork.pin" for f in errs), errs)
+
+    def _pre_generation(self, d):
+        """A base with no governed root, and a generated one in the working
+        tree. The rule is ADDED relative to the base, and every governed class
+        escalates on an addition, so before the contract check the tripwire
+        returned it as an unproposed escalating change."""
+        _git(d, "init", "-q")
+        _git(d, "config", "user.email", "t@t.t")
+        _git(d, "config", "user.name", "t")
+        _write(d, "seed.md", "# Seed\n")
+        _git(d, "add", "-A")
+        _git(d, "commit", "-qm", "pre-generation")
+        _write(d, "groundwork.pin", PIN_OK)
+        _write(d, "governance/constitution/access.md", RULE_OK)
+
+    def test_a_base_without_the_pin_skips_the_tripwire_and_says_so(self):
+        """The over-gating half. The escalating-change ERROR must be gone AND
+        the contract ERROR must be present in the SAME pass: a pass that
+        narrows its own scope without saying so is the failure this slice
+        exists to fix, and Codex round 1 measured that leaving it silent made
+        this pass's safety depend on main()'s scheduling."""
+        with tempfile.TemporaryDirectory() as d:
+            self._pre_generation(d)
+            errs = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                    if f.level == "ERROR"]
+            self.assertEqual([f for f in errs if "no pending proposal" in f.message], [],
+                             "the over-gating wall survived the skip")
+            self.assertTrue(any("predates this governed root" in f.message
+                                and f.path == "groundwork.pin" for f in errs), errs)
+
+    def test_the_two_emitters_raise_the_identical_finding(self):
+        """Identical, not merely similar: main()'s dedupe is by Finding value,
+        so any drift between the two would print the same problem twice."""
+        with tempfile.TemporaryDirectory() as d:
+            self._pre_generation(d)
+            a = [f for f in validate.diff_base_findings(d, "HEAD")
+                 if f.path == "groundwork.pin"]
+            b = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                 if f.path == "groundwork.pin"]
+            self.assertEqual(a, b)
+            self.assertEqual(len(a), 1, a)
+
+    def test_the_composed_cli_refuses_a_pre_generation_base(self):
+        """The composed run, not the passes in isolation. Round 1 found that no
+        test exercised main(), so removing diff_base_findings from its pass
+        tuple turned this case from exit 1 into exit 0 with every other test
+        still green."""
+        with tempfile.TemporaryDirectory() as d:
+            self._pre_generation(d)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = validate.main(["validate.py", d, "--diff", "HEAD"])
+            out = buf.getvalue()
+            self.assertEqual(rc, 1, out)
+            self.assertEqual(out.count("predates this governed root"), 1,
+                             "the two emitters must dedupe to one printed line:\n" + out)
+
+    def test_the_composed_cli_reports_a_manifestless_base(self):
+        """The manifest half through main(). Only diff_base_findings raises it —
+        the tripwire has no equivalent, because the frozen-layer pass has
+        nothing to skip — so this is what guards its entry in main()'s pass
+        tuple. Delete that entry and this test fails."""
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "seed.md", "# Seed\n")
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "pre-interview")
+            _iv_state(d)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = validate.main(["validate.py", d, "--diff", "HEAD"])
+            out = buf.getvalue()
+            self.assertEqual(rc, 1, out)
+            self.assertEqual(out.count("covers no layer in this directory"), 1, out)
+
+    def _base_tree_holding(self, d, mapping):
+        """A commit whose tree holds `mapping` (repo path -> local file to read
+        the content from), built with git plumbing rather than checked out.
+        Needed because the filesystem this runs on may fold `a/` and `A/` into
+        one directory, so the two spellings cannot exist side by side on disk —
+        but git's object store holds both without difficulty."""
+        env = dict(os.environ, GIT_INDEX_FILE=os.path.join(d, ".git", "probe-index"))
+        for repo_path, local in mapping.items():
+            blob = _sp.run(["git", "-C", d, "hash-object", "-w", local],
+                           check=True, capture_output=True, text=True).stdout.strip()
+            _sp.run(["git", "-C", d, "update-index", "--add", "--cacheinfo",
+                     "100644,%s,%s" % (blob, repo_path)],
+                    check=True, capture_output=True, env=env)
+        tree = _sp.run(["git", "-C", d, "write-tree"], check=True,
+                       capture_output=True, text=True, env=env).stdout.strip()
+        return _sp.run(["git", "-C", d, "commit-tree", tree, "-m", "base"],
+                       check=True, capture_output=True, text=True, env=env).stdout.strip()
+
+    def test_an_unsupported_root_does_not_hand_its_files_to_a_fold_sibling(self):
+        """`governed_classes` resolves a path against EVERY governed root and
+        lets an exact-case root win over a fold-equivalent one. Drop the
+        unsupported root from that set and its files fall through to the folded
+        fallback: measured before the fix, a file under `A/` came back
+        demanding a proposal in `a/proposals/`, which cannot target anything
+        outside `a/` — an unsatisfiable gate, raised for the very root the
+        contract ERROR says is not being gated. So the roots stay in the set
+        and only their findings are dropped."""
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "seed.md", "# Seed\n")
+            _git(d, "add", "seed.md")
+            _git(d, "commit", "-qm", "seed")
+            _write(d, "A/groundwork.pin", PIN_OK)
+            _write(d, "A/governance/constitution/access.md", RULE_OK)
+            base = self._base_tree_holding(d, {
+                "a/groundwork.pin": os.path.join(d, "A", "groundwork.pin"),
+                "a/governance/constitution/access.md":
+                    os.path.join(d, "A", "governance", "constitution", "access.md"),
+            })
+            errs = [f for f in validate.blast_radius_diff_findings(d, base)
+                    if f.level == "ERROR"]
+            self.assertTrue(any("predates this governed root" in f.message
+                                and f.path == "A/groundwork.pin" for f in errs), errs)
+            self.assertEqual([f for f in errs if "no pending proposal" in f.message], [],
+                             "the unsupported root's files were gated under its "
+                             "fold-sibling, which cannot hold a proposal for them")
+
+    def test_a_case_sibling_root_is_not_satisfied_by_the_other(self):
+        """Folding this lookup is the FAIL-OPEN direction, which is why it is
+        exact. On a case-sensitive filesystem a/ and A/ are two roots; a base
+        holding one must not report the contract met for the other, or the
+        tripwire runs against a base that does not hold that root at all.
+        A pure-function test, because the filesystem this runs on may not be
+        able to hold both directories at once."""
+        self.assertEqual(
+            validate._roots_missing_from_base({"A"}, {"a/groundwork.pin": "a/groundwork.pin"}),
+            {"A"})
+        self.assertEqual(
+            validate._roots_missing_from_base({"a"}, {"a/groundwork.pin": "a/groundwork.pin"}),
+            set())
+
+    def test_the_tripwire_still_gates_when_the_base_holds_the_pin(self):
+        """The control for the test above: the suppression must be the base
+        contract's, not a hole. Break the thing the tripwire guards and it must
+        still fail."""
+        with tempfile.TemporaryDirectory() as d:
+            self._root(d)
+            _write(d, "governance/constitution/access.md", RULE_OK + "\nAppended clause.\n")
+            errs = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                    if f.level == "ERROR" and "access.md" in f.path]
+            self.assertTrue(any("no pending proposal" in f.message for f in errs), errs)
+
+    def test_only_the_unsupported_root_is_skipped(self):
+        """Suppression is per root. A repo with one root the base holds and one
+        it does not must keep gating the first."""
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "a/groundwork.pin", PIN_OK)
+            _write(d, "a/governance/constitution/access.md", RULE_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "base")
+            _write(d, "b/groundwork.pin", PIN_OK)        # a second root, new
+            _write(d, "b/governance/constitution/access.md", RULE_OK)
+            _write(d, "a/governance/constitution/access.md", RULE_OK + "\nClause.\n")
+
+            contract = [f for f in validate.diff_base_findings(d, "HEAD") if f.level == "ERROR"]
+            self.assertEqual([f.path for f in contract], ["b/groundwork.pin"], contract)
+
+            gated = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                     if f.level == "ERROR"]
+            self.assertTrue(any("no pending proposal" in f.message
+                                and f.path.startswith("a/") for f in gated), gated)
+            self.assertEqual([f.message for f in gated if f.path.startswith("b/")
+                              and "predates this governed root" not in f.message], [],
+                             "b/ was gated against a base that does not hold it")
+
+    def test_the_v1_to_v2_bootstrap_is_untouched(self):
+        """Decision 8's migration-scoped bootstrap requires a pin AT BASE, so
+        the contract check cannot collide with it: the two conditions are
+        mutually exclusive by construction. Pinned here because a future edit
+        that widened either one would silently retire the other."""
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "groundwork.pin", "---\nschema_version: 1\n---\n")
+            _write(d, "governance/constitution/access.md", RULE_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "base")
+            _write(d, "governance/roles.md", ROSTER_OK)
+            _write(d, "groundwork.pin", "---\nschema_version: 2\n---\n")
+            self.assertEqual([f for f in validate.diff_base_findings(d, "HEAD")
+                              if f.level == "ERROR"], [])
+            self.assertEqual([f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                              if "roles.md" in f.path], [])
+
+    # --- the interview manifest: the silent half --------------------------
+
+    def test_a_base_without_the_manifest_errors(self):
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "seed.md", "# Seed\n")
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "pre-interview")
+            _iv_state(d)
+            errs = [f for f in validate.diff_base_findings(d, "HEAD") if f.level == "ERROR"]
+            self.assertTrue(any("covers no layer in this directory" in f.message
+                                and f.path == "interview/00-manifest.md" for f in errs), errs)
+
+    def test_the_silent_hole_is_now_reported(self):
+        """The measured failure, pinned end to end. Against a base that does not
+        hold the manifest, the frozen-layer guard reports NOTHING on an edited
+        confirmed layer — that behaviour is unchanged and asserted here so the
+        silence stays visible — and the base contract is what says so."""
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "seed.md", "# Seed\n")
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "pre-interview")
+            pre = _git_out(d, "rev-parse", "HEAD")
+            _iv_state(d)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "interview")
+
+            _write(d, "interview/01-role-and-scope.md",
+                   IV_LAYER_OK.replace("The confirmed facts of the layer.",
+                                       "The rewritten facts of the layer."))
+
+            self.assertEqual(validate.interview_diff_findings(d, pre), [],
+                             "the frozen-layer guard's silence under a manifestless "
+                             "base is the documented behaviour this check covers")
+            errs = [f for f in validate.diff_base_findings(d, pre) if f.level == "ERROR"]
+            self.assertTrue(any("covers no layer in this directory" in f.message
+                                for f in errs), errs)
+
+    def test_the_frozen_layer_guard_still_bites_with_the_manifest_at_base(self):
+        """The control: the contract check must not have replaced the guard."""
+        with tempfile.TemporaryDirectory() as d:
+            self._root(d)
+            _write(d, "interview/01-role-and-scope.md",
+                   IV_LAYER_OK.replace("The confirmed facts of the layer.",
+                                       "The rewritten facts of the layer."))
+            errs = [f for f in validate.interview_diff_findings(d, "HEAD")
+                    if f.level == "ERROR"]
+            self.assertTrue(any("frozen at its checkpoint" in f.message for f in errs), errs)
+            self.assertEqual([f for f in validate.diff_base_findings(d, "HEAD")
+                              if f.level == "ERROR"], [])
+
+    def test_deleting_the_marker_under_a_pre_marker_base_says_nothing(self):
+        """The contract is evidence-based, and this test pins where that runs
+        out. With the base predating the marker AND the working change deleting
+        it, the marker is in neither tree: nothing is discovered, nothing is
+        checked, nothing is said. Measured the same on the engine before this
+        check existed, so it is a standing gap rather than one the check made,
+        and no check reading only those two trees can close it — with the
+        marker in neither, nothing tells this apart from an ungoverned
+        repository, which the engine's own pin-less root is. That limit is the
+        two trees rather than the repository: walking the commits between base
+        and HEAD could see a marker added and later deleted, and nothing here
+        does. Asserted rather than left implicit so the silence is visible in
+        the suite and cannot deepen unnoticed. Recorded in
+        docs/known-limitations.md and tracked as issue #40; Codex round 4 found
+        it and round 5 narrowed this paragraph."""
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "seed.md", "# Seed\n")
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "pre-generation")
+            pre = _git_out(d, "rev-parse", "HEAD")
+            _write(d, "groundwork.pin", PIN_OK)
+            _write(d, "governance/constitution/access.md", RULE_OK)
+            _iv_state(d)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "generation")
+
+            os.remove(os.path.join(d, "groundwork.pin"))
+            os.remove(os.path.join(d, "interview", validate.INTERVIEW_MANIFEST))
+
+            self.assertEqual(validate.diff_base_findings(d, pre), [])
+            self.assertEqual(validate.blast_radius_diff_findings(d, pre), [])
+            self.assertEqual(validate.interview_diff_findings(d, pre), [])
+
+    def test_marker_deletion_hides_nothing_when_the_base_holds_the_markers(self):
+        """The control, and the reason the gap above is narrow rather than
+        general: `_pin_dirs` reads the base tree so deleting a pin cannot
+        un-govern the change that deleted it, and `interview_diff_findings`
+        derives its state directories from the base for the same reason. Both
+        guarantees hold wherever the base carries the marker.
+
+        Named twice for what it proves. Round 5 measured that deleting the two
+        markers and NOTHING ELSE, under a base that holds both, returns `[]`
+        from all three passes — not a gap (a pin is not a governed class and a
+        manifest is excluded from the frozen set on purpose), but the reason
+        this test edits a rule and a layer as well. Round 6 then measured that
+        the same deletions and edits against a PRE-MARKER base also return `[]`
+        from all three, so the guarantee is not about marker deletion in
+        general: it holds where the base holds the markers, which is the
+        condition now in the name. The pre-marker case is the open Major above.
+        """
+        with tempfile.TemporaryDirectory() as d:
+            base = self._root(d)
+            os.remove(os.path.join(d, "groundwork.pin"))
+            os.remove(os.path.join(d, "interview", validate.INTERVIEW_MANIFEST))
+            _write(d, "governance/constitution/access.md", RULE_OK + "\nClause.\n")
+            _write(d, "interview/01-role-and-scope.md",
+                   IV_LAYER_OK.replace("The confirmed facts of the layer.",
+                                       "The rewritten facts of the layer."))
+            gated = [f for f in validate.blast_radius_diff_findings(d, base)
+                     if f.level == "ERROR"]
+            self.assertTrue(any("no pending proposal" in f.message for f in gated), gated)
+            frozen = [f for f in validate.interview_diff_findings(d, base)
+                      if f.level == "ERROR"]
+            self.assertTrue(any("frozen at its checkpoint" in f.message for f in frozen),
+                            frozen)
+
+    def test_the_changelog_pass_skips_an_unsupported_root(self):
+        """The second place a governed finding is suppressed. The changelog
+        pass keys on a changelog present AT BASE, which a root whose pin is not
+        at base can still have — committed before the pin was. Reverting its
+        `gov_roots - unsupported` filter left the whole suite green until this
+        test, so the append-only ERROR could fire for the very root the contract
+        ERROR says is not being gated.
+
+        TWO roots, and that is not decoration: with a single unsupported root
+        the `unsupported == gov_roots` early return fires before the changelog
+        pass and the reverted filter is unreachable. `a/` supported keeps the
+        pass running so `b/` can be seen being skipped."""
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "a/groundwork.pin", PIN_OK)
+            _write(d, "a/governance/changelog.md", CHANGELOG_OK)
+            _write(d, "b/governance/changelog.md", CHANGELOG_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "pre-generation")
+            _write(d, "b/groundwork.pin", PIN_OK)
+            _write(d, "b/governance/changelog.md",
+                   "# Governance changelog\n\n## Entries\n\nRewritten, not appended.\n")
+            errs = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                    if f.level == "ERROR"]
+            self.assertTrue(any("predates this governed root" in f.message
+                                and f.path == "b/groundwork.pin" for f in errs), errs)
+            self.assertEqual([f for f in errs if "append-only" in f.message], [],
+                             "the changelog pass ran against a base that does not hold "
+                             "this root")
+
+    # --- ancestry ---------------------------------------------------------
+
+    def test_a_divergent_base_warns_and_does_not_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._root(d)
+            branch = _git_out(d, "rev-parse", "--abbrev-ref", "HEAD")
+            _git(d, "checkout", "-q", "--detach")
+            _write(d, "governance/constitution/access.md", RULE_OK + "\nSide clause.\n")
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "side")
+            side = _git_out(d, "rev-parse", "HEAD")
+            _git(d, "checkout", "-q", branch)
+
+            findings = validate.diff_base_findings(d, side)
+            self.assertTrue(any(f.level == "WARN" and "not an ancestor" in f.message
+                                for f in findings), findings)
+            self.assertEqual([f for f in findings if f.level == "ERROR"], [], findings)
+
+    def test_an_ancestor_base_raises_no_ancestry_finding(self):
+        """The control. base == HEAD is the common case and a commit is its own
+        ancestor, so the WARN must not fire on the documented invocation."""
+        with tempfile.TemporaryDirectory() as d:
+            base = self._root(d)
+            for ref in ("HEAD", base):
+                self.assertEqual([f for f in validate.diff_base_findings(d, ref)
+                                  if "ancestor" in f.message], [], ref)
+
+    def test_an_unanswerable_ancestry_question_warns_too(self):
+        """`_base_is_ancestor` has three answers, and None is not a stand-in for
+        either of the others. An unborn HEAD — a real state, `git checkout
+        --orphan` reaches it — leaves the base resolvable and the question
+        unanswerable, and the run says so rather than implying the base is in
+        this history. Removing only this branch left the suite green until this
+        test."""
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "seed.md", "# Seed\n")
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "base")
+            base = _git_out(d, "rev-parse", "HEAD")
+            _git(d, "checkout", "-q", "--orphan", "fresh")
+            self.assertIsNone(validate._base_is_ancestor(d, base))
+            findings = validate.diff_base_findings(d, base)
+            self.assertTrue(any(f.level == "WARN" and "could not check" in f.message
+                                for f in findings), findings)
+            self.assertEqual([f for f in findings if f.level == "ERROR"], [], findings)
+
+    def test_ancestry_is_a_warn_not_a_refusal(self):
+        """A divergent base still runs every pass — the WARN describes the run,
+        it does not replace it. Asserted because the alternative was on the
+        table and this is the behaviour that was chosen."""
+        with tempfile.TemporaryDirectory() as d:
+            self._root(d)
+            branch = _git_out(d, "rev-parse", "--abbrev-ref", "HEAD")
+            _git(d, "checkout", "-q", "--detach")
+            _write(d, "interview/01-role-and-scope.md",
+                   IV_LAYER_OK.replace("The confirmed facts of the layer.",
+                                       "A side-branch rewrite."))
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "side")
+            side = _git_out(d, "rev-parse", "HEAD")
+            _git(d, "checkout", "-q", branch)
+
+            errs = [f for f in validate.interview_diff_findings(d, side)
+                    if f.level == "ERROR"]
+            self.assertTrue(any("frozen at its checkpoint" in f.message for f in errs),
+                            "the passes still run against a divergent base")
+
+
 if __name__ == "__main__":
     unittest.main()

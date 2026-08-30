@@ -46,6 +46,39 @@ Honest limits of the current build. This file grows as the product does (brief �
 
 ## Governance — the consent gate and its tripwire
 
+- **The `--diff` base contract is checked, but "can support the promise" is not "is the
+  right base".** `diff_base_findings` ERRORs when the base tree holds no `groundwork.pin`
+  for a governed root or no `00-manifest.md` for an interview state directory, and WARNs
+  when the base is not an ancestor of HEAD. What it does not do:
+  - **It cannot tell an old base from the right one.** A base holding every pin and every
+    manifest may still not be the generation commit, and nothing checks that it is.
+  - **It checks a manifest's presence, not a layer's.** A confirmed layer committed *after*
+    the base is outside the frozen-layer guard and draws no finding; only a whole state
+    directory whose manifest the base lacks is reported.
+  - **The memory pass has the same shape and no check.** `memory_diff_findings` also derives
+    its records from the base file list, so a base predating `memory/` protects no record
+    and reports nothing. That half was left out of the slice that added this one.
+  - **A divergent base still runs.** Ancestry is a WARN, so a run against another line of
+    history prints its findings — including findings naming changes this line never made.
+  - **Deleting the marker escapes the contract when the base predates it.** The contract is
+    evidence-based: it finds a governed root or an interview state by its `groundwork.pin`
+    or `00-manifest.md`, in the base tree or the working tree. Name a base from before that
+    marker was committed *and* delete it in the same working change, and it is in neither —
+    so nothing is discovered, nothing is checked, and nothing is said. `_pin_dirs` reads the
+    base tree precisely so deleting a pin cannot un-govern the change that deleted it, and
+    that guarantee holds only where the base carries the pin. Measured 2026-08-30 against
+    the fixture in `test_deleting_the_marker_under_a_pre_marker_base_says_nothing`: every
+    stateful pass returns no finding — and every stateful pass returns none on the engine
+    before this check existed either, so the check neither creates nor widens it. **No check
+    reading only those two trees can close it:** with the marker in neither, nothing tells this apart from an
+    ungoverned repository, which the engine's own pin-less root is. That limit is the two
+    trees rather than the repository — walking the commits between base and HEAD could see a
+    marker added and later deleted, and nothing here does. Tracked as issue #40.
+  - **A root spelled differently at base and in the working tree reads as missing.** The pin
+    lookup is exact, because folding it is the fail-open direction: a base holding
+    `a/groundwork.pin` would otherwise satisfy a separate `A/` root and the tripwire would
+    run against a base that does not hold it. A case or normalization difference therefore
+    draws a false ERROR — fail-closed, and cleared by naming a base with that spelling.
 - **A stateless validator cannot prove a human reviewed anything.** `validate --diff <base>`
   is a **tripwire**, not the teeth. It can prove that an escalating change is accompanied by
   a pending proposal whose *declared* blast radius matches what the diff *actually* touches —
