@@ -64,7 +64,8 @@ this guard on it.
 | 11 | `daf26a5` | **does not approve** — Spec 1 **Major** + 1 Moderate, Standards 1 Moderate | 3 | `074f752` |
 | 12 | `074f752` | **does not approve** — Standards 1 Moderate, Spec 1 Low + 1 Minor. **No accepting-direction gap found** | 3 | `8888fae` |
 | 13 | `8888fae` | **does not approve** — Spec 1 Low, Standards 3 Low. **No accepting-direction gap, re-derived independently** | 4 | `3c35799` |
-| 14 | `3c35799` | **does not approve** — 4 Low. **No accepting-direction gap** | 4 | `PENDING-14` |
+| 14 | `3c35799` | **does not approve** — 4 Low. **No accepting-direction gap** | 4 | `c82aa4c` |
+| 15 | `c82aa4c` | **does not approve** — 2 Low. **No accepting-direction defect** | 2 | `PENDING-15` |
 
 ## Open findings
 
@@ -156,6 +157,7 @@ alone, the suite run, and the file restored. Run with `PYTHONDONTWRITEBYTECODE=1
 | Rule 3's blank means space-only, not space-or-tab (round 13) | 2 failures |
 | The comment exception keyed on the raw line, not the stripped one (round 14) | 2 failures |
 | Rule 2 drops `/` from its opener set (round 14) | 1 failure |
+| The ordered-marker branch accepts a space but not a tab (round 15) | 2 failures |
 | None (restored) | OK, 871 |
 
 The last seven were all green before round 13 added the cases they now fail. **Three of them
@@ -233,12 +235,17 @@ previous round's correction had left standing beside its replacement, a docstrin
 written while fixing a false claim that was itself false, and a miscount of how many rounds had
 found a route.
 
-Ten consecutive rounds found the previous round's self-description ahead of its code — one in a
-sentence written specifically to stop overclaiming, one in a review brief that reverted to
-wording an earlier round had been killed by, one in the sentence claiming the sweep for these
-was complete, and one inside a repair for a false justification. Seven counts have been
-corrected, three of them ordinals, and every single one was wrong in the direction of making the
-work sound larger. The record now names things instead of counting them wherever it can. Round 7 also deleted the inline-code exception rather than
+**Every round from 02 onward has found the previous round's self-description ahead of its code**,
+and the shapes are worth more than a tally: an overclaim replaced by a differently-wrong
+overclaim; a sentence written specifically to stop overclaiming that overclaimed; a review brief
+that reverted to wording an earlier round had been killed by; a claim that a sweep was complete,
+made in the entry that had not completed it; a justification for a refusal invented for a hazard
+that does not exist; a mutation row naming an edit other than the one run, twice; a test comment
+claiming a measurement behind a case that had none.
+
+Every count in this record that a reviewer has checked has been wrong, and every one in the
+direction of making the work sound larger. **That is why the record names cases rather than
+counting them** wherever naming is possible — including here. Round 7 also deleted the inline-code exception rather than
 repairing it, after two findings showed it could hide a live tag; the two shipped changelog
 headers were rewritten so they no longer need it.
 

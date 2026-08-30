@@ -4262,6 +4262,10 @@ class TestChangelogAppendOnly(unittest.TestCase):
         ("13: a hyphen bullet separated by a tab", ["-\titem", ""]),
         ("13: a bare ordered marker with no content", ["1.", ""]),
         ("13: a bare ordered marker with a paren", ["1)", ""]),
+        # Round 15: the ordered branch accepts a tab after its delimiter, and only the
+        # HYPHEN branch's tab was covered. A sixth one-sided edge.
+        ("15: an ordered marker separated by a tab", ["12.\theader", ""]),
+        ("15: a paren ordered marker separated by a tab", ["1)\titem", ""]),
         # Added alongside them without a measurement behind it, which round 14 caught the
         # comment above claiming. Round 11's block-quote mutation is what covers this one.
         ("13: a bare block quote marker, added proactively", [">", ""]),
