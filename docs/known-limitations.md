@@ -92,7 +92,18 @@ Honest limits of the current build. This file grows as the product does (brief Â
       - History altered by **`git replace` or `.git/info/grafts`**, which can make HEAD appear
         to parent the base directly and hide the addition between them. Unlike naming an old
         base, that is not something done by accident, and it is local to the clone the gate
-        runs in â€” `refs/replace` is not fetched by default.
+        runs in â€” `refs/replace` is not fetched by default. Tracked as issue #42.
+      - A run whose **`GIT_DIR` or `GIT_WORK_TREE`** point somewhere other than the tree being
+        validated. Those let a caller supply one repository's working tree and another's
+        history; measured, the walk reports the marker normally and reports nothing with
+        `GIT_DIR` aimed at a decoy sharing the base commit. No git call in the validator
+        controls its inherited environment beyond the four pathspec variables, so this is not
+        specific to the marker walk â€” though a pre-#40 pass changing its verdict this way was
+        not demonstrated. Unlike the others here, this one is reachable by ACCIDENT: CI
+        harnesses, git hooks and wrapper scripts set `GIT_DIR` routinely. Tracked as issue
+        #43, and the reason it was not fixed here is that scrubbing it in two calls while the
+        base listing and ancestry check still inherit it would put two repositories behind one
+        verdict.
 
     Of those four, Codex round 02 found the submodule case and the replace/graft case; the
     shallow-clone and never-committed cases were already disclosed before that round ran. The
@@ -107,6 +118,14 @@ Honest limits of the current build. This file grows as the product does (brief Â
     reproduction, rerun verbatim, did not reproduce. The entries under [this slice's review
     record](superpowers/reviews/issue-40-marker-deletion-evidence/) carry each disposition,
     the rejection included.
+
+    **A git command that fails is not evidence.** Both reads fail closed: if the history walk
+    or the base listing cannot run, the check emits an ERROR naming what could not be read
+    rather than reporting silence or a wall of deletions. A failed command was previously read
+    as "no marker ever existed", which an injected `diff.orderFile` could cause without
+    touching the repository. The four pathspec environment variables are scrubbed for the same
+    reason: two of them turn the walk's wildcards literal so it matches nothing, and a third
+    stops `*` crossing `/` so a nested marker goes unseen.
 
     **A marker is a regular file, and all three sides of the comparison now say so.** In
     history, a record counts only when its destination mode is a regular file, so a gitlink or

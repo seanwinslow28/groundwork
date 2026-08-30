@@ -9330,6 +9330,99 @@ class TestDiffBaseContract(unittest.TestCase):
                 validate._base_markers = real
             self.assertEqual(calls, [], "no candidates means no base listing")
 
+    # --- Codex round 07 regressions.
+
+    def test_an_unreadable_history_is_an_error_not_silence(self):
+        """Round 07 finding 1, Major, and the last fail-OPEN in this mechanism.
+        Every nonzero `git log` exit was read as "no candidates", so a failed git
+        command was indistinguishable from a repository that never carried a
+        marker — and the run went green. Reachable without touching the
+        repository: `GIT_CONFIG_COUNT` injects a `diff.orderFile` pointing at a
+        missing path and `git log` exits 128.
+
+        A failed command is not evidence. `_markers_added_since_base` returns
+        None for it, and the caller says so."""
+        with tempfile.TemporaryDirectory() as d:
+            base = self._pre_marker(d, markers=False)
+            _write(d, "groundwork.pin", PIN_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "add the marker")
+            os.remove(os.path.join(d, "groundwork.pin"))
+            broken = {"GIT_CONFIG_COUNT": "1",
+                      "GIT_CONFIG_KEY_0": "diff.orderFile",
+                      "GIT_CONFIG_VALUE_0": "/definitely/missing/order"}
+            had = {k: os.environ.get(k) for k in broken}
+            os.environ.update(broken)
+            try:
+                self.assertIsNone(validate._markers_added_since_base(d, base))
+                findings = validate.diff_base_findings(d, base)
+                self.assertTrue(
+                    [f for f in findings if f.level == "ERROR"
+                     and "could not read the commits" in f.message], findings)
+            finally:
+                for k, v in had.items():
+                    if v is None:
+                        os.environ.pop(k, None)
+                    else:
+                        os.environ[k] = v
+
+    def test_an_unreadable_base_tree_is_an_error_not_fabricated_deletions(self):
+        """The other half of round 07 finding 1's shape, in `_base_markers`. An
+        empty set there means "the base holds no marker", so returning it on
+        failure made every candidate draw a deletion ERROR — fabricated evidence
+        rather than an accurate operational error. Round 05 named this; here it
+        is fixed. None now, and one ERROR that says what could not be read."""
+        with tempfile.TemporaryDirectory() as d:
+            base = self._pre_marker(d, markers=False)
+            _write(d, "groundwork.pin", PIN_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "add the marker")
+            os.remove(os.path.join(d, "groundwork.pin"))
+            # The helper's OWN failure return, not just the caller's handling of
+            # it. Asserting only the caller left a mutation alive that reverted
+            # the helper to an empty set — the very conflation being fixed.
+            self.assertIsNone(validate._base_markers(d, "no-such-ref-at-all"),
+                              "an unreadable base tree is None, not 'no markers'")
+            real = validate._base_markers
+            validate._base_markers = lambda *a, **k: None
+            try:
+                findings = validate.diff_base_findings(d, base)
+            finally:
+                validate._base_markers = real
+            self.assertTrue(
+                [f for f in findings if f.level == "ERROR"
+                 and "could not list the base tree" in f.message], findings)
+            self.assertEqual(self._messages(findings, "no longer holds"), [],
+                             "no fabricated deletions when the base is unreadable")
+
+    def test_glob_pathspecs_does_not_hide_a_nested_marker(self):
+        """Round 07 finding 3, Minor, and a correction to round 06's reasoning
+        rather than to its code. Round 06 scrubbed `GIT_GLOB_PATHSPECS` while
+        recording it as harmless. It is not: with it set, `*` stops crossing `/`,
+        so `*groundwork.pin` no longer matches a marker in a subdirectory and a
+        nested governed root goes unseen. The scrub was right for a reason the
+        record got wrong."""
+        with tempfile.TemporaryDirectory() as d:
+            base = self._pre_marker(d, markers=False)
+            os.makedirs(os.path.join(d, "nested"))
+            _write(d, "nested/groundwork.pin", PIN_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "a nested marker")
+            os.remove(os.path.join(d, "nested", "groundwork.pin"))
+            had = os.environ.get("GIT_GLOB_PATHSPECS")
+            os.environ["GIT_GLOB_PATHSPECS"] = "1"
+            try:
+                self.assertEqual(
+                    [f.path for f in
+                     self._messages(validate.diff_base_findings(d, base),
+                                    "no longer holds")],
+                    ["nested/groundwork.pin"])
+            finally:
+                if had is None:
+                    del os.environ["GIT_GLOB_PATHSPECS"]
+                else:
+                    os.environ["GIT_GLOB_PATHSPECS"] = had
+
     def test_the_changelog_pass_skips_an_unsupported_root(self):
         """The second place a governed finding is suppressed. The changelog
         pass keys on a changelog present AT BASE, which a root whose pin is not

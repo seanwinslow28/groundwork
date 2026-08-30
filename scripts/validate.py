@@ -3881,8 +3881,13 @@ def _unsupported_root_finding(g):
 # and returned the walk to the exact silence issue #40 exists to end (Codex
 # round 06). Any git call that passes a pathspec scrubs them, so the answer
 # depends on the repository rather than on the shell the gate is run from.
-# ICASE and GLOB are scrubbed too: neither is harmful here, but leaving them
-# would make the result depend on the caller's environment for no reason.
+# GLOB is scrubbed for the same reason as the other two, not as tidiness: with
+# it set, `*` stops crossing `/`, so `*groundwork.pin` no longer matches a
+# marker in a subdirectory and a nested governed root goes unseen. Round 06
+# recorded GLOB as harmless; round 07 measured that it is not, and round-07.md
+# carries the correction. ICASE is scrubbed as tidiness — it only widens git's
+# preliminary matching and the exact basename check settles the verdict — but
+# leaving it would make the result depend on the caller's shell for no reason.
 _PATHSPEC_ENV = ("GIT_LITERAL_PATHSPECS", "GIT_NOGLOB_PATHSPECS",
                  "GIT_GLOB_PATHSPECS", "GIT_ICASE_PATHSPECS")
 
@@ -3908,8 +3913,13 @@ def _base_markers(toplevel, base):
     `groundwork.pin` would suppress the finding for a real marker added and
     deleted after it (round 04 finding 4). This asks for the modes.
 
-    An empty set on any failure, which makes the caller fall back to reporting —
-    the fail-closed direction here, since the alternative is silence."""
+    Returns None when the listing CANNOT BE READ, and a set otherwise. The two
+    are different answers and were conflated: an empty set means "the base holds
+    no marker", so returning it on failure made the caller report every
+    candidate as deleted — fabricated deletion evidence rather than an accurate
+    operational error (round 05 finding 2 named this; round 07 is where it is
+    fixed). The caller turns None into one ERROR that says what could not be
+    read."""
     try:
         # NO PATHSPEC. Passing the candidate paths as pathspecs was tried and is
         # wrong twice over (round 05 finding 2): a real path beginning with a
@@ -3921,11 +3931,12 @@ def _base_markers(toplevel, base):
         # misread and no argv to overflow, and `_git_diff_context` already pays
         # this cost once, so the order of the work is unchanged.
         out = subprocess.run(["git", "-C", toplevel, "ls-tree", "-r", "-z", base],
-                             capture_output=True)
+                             capture_output=True,
+                             env=_git_env_without_pathspec_overrides())
     except OSError:
-        return set()
+        return None
     if out.returncode != 0:
-        return set()
+        return None
     found = set()
     for raw in out.stdout.split(b"\0"):
         if not raw:
@@ -3955,11 +3966,17 @@ def _markers_added_since_base(toplevel, base):
     marker, which the groundwork engine's own pin-less root is. The commits
     between the two DO tell them apart, and that is all this reads.
 
-    Returns repo-relative paths (relative to `toplevel`). Returns an EMPTY set
-    when the question cannot be asked — an unborn or unresolvable HEAD, or a git
-    that would not run. Empty is "no evidence", never "no marker": the caller
-    emits nothing on it, which leaves the pre-#40 silence rather than inventing
-    a finding out of a failed subprocess.
+    Returns repo-relative paths (relative to `toplevel`), or **None when the
+    history could not be read at all**. Those are different answers, and an
+    earlier version returned an empty set for both — so any `git log` failure
+    read as "no marker ever existed" and the run went silent. It is reachable
+    without touching the repository: `GIT_CONFIG_COUNT` can inject a
+    `diff.orderFile` pointing at a missing path, and `git log` exits 128 (round
+    07 finding 1). The caller turns None into an ERROR.
+
+    An EMPTY SET is still returned for an unborn or unresolvable HEAD. That is
+    not a failure: there is no `base..HEAD` range to ask about, the ancestry
+    check already WARNs, and reporting a deletion there would invent evidence.
 
     The flag set, and what each is for. Four rounds have now been wrong about one
     flag or another here, so each line says what was MEASURED rather than what
@@ -4031,9 +4048,9 @@ def _markers_added_since_base(toplevel, base):
                              capture_output=True,
                              env=_git_env_without_pathspec_overrides())
     except OSError:
-        return set()
+        return None
     if log.returncode != 0:
-        return set()
+        return None
     out = set()
     fields = log.stdout.split(b"\0")
     i = 0
@@ -4238,10 +4255,30 @@ def diff_base_findings(root, base):
     # folding it is the fail-OPEN direction there, and that reasoning is
     # unchanged here.
     unreadable = tuple(sorted(f.path for f in wt_walk_findings))
-    candidates = sorted(_markers_added_since_base(toplevel, base))
+    # Both reads FAIL CLOSED. A git call that could not run is not evidence that
+    # nothing existed, and treating it as such is how this check went silent
+    # under an injected `diff.orderFile` (round 07 finding 1). One accurate ERROR
+    # replaces both a false silence and a wall of fabricated deletions.
+    seen = _markers_added_since_base(toplevel, base)
+    if seen is None:
+        findings.append(Finding("ERROR", root, None,
+                                "--diff could not read the commits between %s and HEAD, so "
+                                "whether a governed root's groundwork.pin or an interview "
+                                "state's 00-manifest.md was deleted cannot be answered — "
+                                "this is a failed git command, not evidence that none "
+                                "existed (#40)" % base))
+        return findings
+    candidates = sorted(seen)
     # Only pay for the base listing when there is something to look up. Nearly
     # every run has no candidates at all (round 06 finding 2).
     base_markers = _base_markers(toplevel, base) if candidates else set()
+    if base_markers is None:
+        findings.append(Finding("ERROR", root, None,
+                                "--diff could not list the base tree %s with its file modes, "
+                                "so a marker the base holds cannot be told from one it never "
+                                "held — the deletion check is skipped rather than reporting "
+                                "markers the base may still carry (#40)" % base))
+        return findings
     for repo_path in candidates:
         if scope != "." and not repo_path.startswith(scope + "/"):
             continue
