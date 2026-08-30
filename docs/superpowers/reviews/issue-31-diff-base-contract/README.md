@@ -97,10 +97,14 @@ invocation. The reasoning is in `diff_base_findings`' docstring so it travels wi
 
 | Round | Reviewed | Verdict | Findings | Fix commit |
 |---|---|---|---|---|
+| 01 | `bf33166` | **does not approve** — Spec 3 (two Major, one Minor), Standards 0 | 3 | |
+
+A round's fix commit is filled in with the next entry: an entry cannot name the commit that
+carries its own fixes.
 
 ## Open findings
 
-None recorded yet.
+**None.** All three of round 1's findings are fixed.
 
 ## Rejected findings
 
@@ -116,13 +120,15 @@ because the next session inherits it:
 | `python3 scripts/validate.py .` | 0 errors, 7 warnings, exit 0 | unchanged |
 | `python3 scripts/validate.py demo` | 0 errors, 2 warnings | unchanged |
 | `python3 scripts/validate.py . --diff main` | exit 0 | unchanged |
-| `python3 -m unittest discover -s tests -q` | OK, 824 tests, skipped=1 | OK, **837 tests**, skipped=1 |
+| `python3 -m unittest discover -s tests -q` | OK, 824 tests, skipped=1 | OK, **841 tests**, skipped=1 |
 
 The engine's own numbers do not move because `main` satisfies the contract it now states:
 it is an ancestor of any branch cut from it, and it holds both `demo/groundwork.pin` and
-`demo/interview/00-manifest.md`. What does move is old bases — `d20c04c` was green at
-0 errors and is now one contract ERROR, because the check fires on the contract being
-broken, not on whether over-gating happened to surface. There is no pytest; the suite is
+`demo/interview/00-manifest.md`. What does move is old bases: `python3 scripts/validate.py . --diff d20c04c` was green at
+0 errors and now returns two contract ERRORs — that base holds neither `demo/groundwork.pin`
+nor `demo/interview/00-manifest.md` — because the check fires on the contract being broken,
+not on whether over-gating happened to surface. The count is stated from running that
+command, after round 1 found this line claiming one. There is no pytest; the suite is
 unittest.
 
 ## Status

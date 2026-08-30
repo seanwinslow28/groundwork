@@ -3774,17 +3774,43 @@ def _roots_missing_from_base(gov_roots, base_rels):
     """The governed roots whose `groundwork.pin` the BASE tree does not hold —
     the bases that predate the root they are being asked to gate.
 
-    Matched NFC+casefold, the same fold `blast_radius_diff_findings` uses: on a
-    case-folding filesystem a base holding `Demo/groundwork.pin` and a working
-    tree holding `demo/groundwork.pin` are one root, and an exact-case lookup
-    would report the contract broken when it is not."""
-    have = {unicodedata.normalize("NFC", r).casefold() for r in base_rels}
+    Matched EXACTLY, which is `_bootstrap_roots`' rule for the same lookup
+    (`base_rels.get(pin_rel)`) and is the fail-closed direction here. This file
+    folds NFC+casefold in several places, but always where folding makes the
+    check STRICTER: `governed_classes` folds so a case-rename cannot walk a
+    path out of its governed root, and its own comment records that an
+    exact-case root stays authoritative so two genuinely distinct case-sibling
+    roots on a case-sensitive filesystem do not cross-demand each other's
+    proposals. Here folding would run the other way. A base holding
+    `a/groundwork.pin` would satisfy a working tree's separate `A/` root, the
+    contract ERROR would not fire, and the tripwire would run against a base
+    that does not hold that root at all — measured by Codex round 1.
+
+    The cost of exact matching is a false ERROR where base and working tree
+    spell one root differently, by case or by Unicode normalization. That fails
+    closed: the run is red, the message names the pin, and a base that holds
+    that spelling clears it. Recorded in docs/known-limitations.md."""
     out = set()
     for g in gov_roots:
         pin_rel = ((g + "/") if g else "") + "groundwork.pin"
-        if unicodedata.normalize("NFC", pin_rel).casefold() not in have:
+        if pin_rel not in base_rels:
             out.add(g)
     return out
+
+
+def _unsupported_root_finding(g):
+    """The ERROR for one governed root the base does not hold. ONE constructor,
+    because two emitters raise it — `diff_base_findings`, which is where the
+    contract lives, and `blast_radius_diff_findings`, which must not narrow its
+    own scope silently. `Finding` is a namedtuple whose `since` defaults to
+    None, so the two are equal and main()'s existing dedupe prints one line."""
+    return Finding("ERROR", ((g + "/") if g else "") + "groundwork.pin", None,
+                   "--diff base predates this governed root: its groundwork.pin "
+                   "is not in the base tree. A governed file the base does not "
+                   "hold is an addition, and an addition escalates, so the #18 "
+                   "consent gate is skipped for this root rather than run "
+                   "against a base that cannot support it — name the commit "
+                   "carrying this pin as the base")
 
 
 def diff_base_findings(root, base):
@@ -3852,13 +3878,7 @@ def diff_base_findings(root, base):
 
     for g in sorted(_roots_missing_from_base(_pin_dirs(root, base_files, scope, wt_files),
                                              base_rels)):
-        findings.append(Finding("ERROR", ((g + "/") if g else "") + "groundwork.pin", None,
-                                "--diff base predates this governed root: its groundwork.pin "
-                                "is not in the base tree. A governed file the base does not "
-                                "hold is an addition, and an addition escalates, so the #18 "
-                                "consent gate is skipped for this root rather than run "
-                                "against a base that cannot support it — name the commit "
-                                "carrying this pin as the base"))
+        findings.append(_unsupported_root_finding(g))
 
     for abspath in sorted(wt_files):
         if os.path.basename(abspath) != INTERVIEW_MANIFEST:
@@ -4178,12 +4198,21 @@ def blast_radius_diff_findings(root, base):
     gov_roots = _pin_dirs(root, base_files, scope, wt_files)
     # A root whose pin the base does not hold predates the thing it is being
     # asked to gate: every file it was created with is an addition, and every
-    # governed class escalates on an addition. diff_base_findings ERRORs on
-    # exactly this set, so the run is already red; running the pass anyway
-    # would only bury that one accurate finding under the wall it explains.
-    gov_roots = gov_roots - _roots_missing_from_base(gov_roots, base_rels)
+    # governed class escalates on an addition. Running the pass anyway would
+    # bury one accurate finding under the wall it explains, so the root is
+    # skipped — and the ERROR that says so is raised HERE as well as in
+    # diff_base_findings. Codex round 1 measured why: with the skip silent, the
+    # safety of this pass depended on main() scheduling the other one first,
+    # and dropping that schedule turned the pre-generation case from exit 1
+    # into exit 0 with every one of the new tests still passing. The two
+    # findings are equal, so main()'s dedupe prints one line.
+    unsupported = _roots_missing_from_base(gov_roots, base_rels)
+    findings += [_unsupported_root_finding(g) for g in sorted(unsupported)]
+    gov_roots = gov_roots - unsupported
     if not gov_roots:
-        return findings  # no company instance in scope: the tripwire is dormant
+        # No company instance in scope, or none the base can support: either
+        # way there is nothing left for the tripwire to classify.
+        return findings
 
     def _fold(s):
         # NFC first (git reports NFC while a mac filesystem lists NFD — the

@@ -60,6 +60,11 @@ Honest limits of the current build. This file grows as the product does (brief �
     and reports nothing. That half was left out of the slice that added this one.
   - **A divergent base still runs.** Ancestry is a WARN, so a run against another line of
     history prints its findings — including findings naming changes this line never made.
+  - **A root spelled differently at base and in the working tree reads as missing.** The pin
+    lookup is exact, because folding it is the fail-open direction: a base holding
+    `a/groundwork.pin` would otherwise satisfy a separate `A/` root and the tripwire would
+    run against a base that does not hold it. A case or normalization difference therefore
+    draws a false ERROR — fail-closed, and cleared by naming a base with that spelling.
 - **A stateless validator cannot prove a human reviewed anything.** `validate --diff <base>`
   is a **tripwire**, not the teeth. It can prove that an escalating change is accompanied by
   a pending proposal whose *declared* blast radius matches what the diff *actually* touches —

@@ -8082,21 +8082,95 @@ class TestDiffBaseContract(unittest.TestCase):
             self.assertTrue(any("predates this governed root" in f.message
                                 and f.path == "groundwork.pin" for f in errs), errs)
 
-    def test_a_base_without_the_pin_skips_the_tripwire_for_that_root(self):
-        """The over-gating half. The rule below is ADDED relative to the base,
-        and every governed class escalates on an addition, so before the
-        contract check this returned it as an unproposed escalating change."""
+    def _pre_generation(self, d):
+        """A base with no governed root, and a generated one in the working
+        tree. The rule is ADDED relative to the base, and every governed class
+        escalates on an addition, so before the contract check the tripwire
+        returned it as an unproposed escalating change."""
+        _git(d, "init", "-q")
+        _git(d, "config", "user.email", "t@t.t")
+        _git(d, "config", "user.name", "t")
+        _write(d, "seed.md", "# Seed\n")
+        _git(d, "add", "-A")
+        _git(d, "commit", "-qm", "pre-generation")
+        _write(d, "groundwork.pin", PIN_OK)
+        _write(d, "governance/constitution/access.md", RULE_OK)
+
+    def test_a_base_without_the_pin_skips_the_tripwire_and_says_so(self):
+        """The over-gating half. The escalating-change ERROR must be gone AND
+        the contract ERROR must be present in the SAME pass: a pass that
+        narrows its own scope without saying so is the failure this slice
+        exists to fix, and Codex round 1 measured that leaving it silent made
+        this pass's safety depend on main()'s scheduling."""
+        with tempfile.TemporaryDirectory() as d:
+            self._pre_generation(d)
+            errs = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                    if f.level == "ERROR"]
+            self.assertEqual([f for f in errs if "no pending proposal" in f.message], [],
+                             "the over-gating wall survived the skip")
+            self.assertTrue(any("predates this governed root" in f.message
+                                and f.path == "groundwork.pin" for f in errs), errs)
+
+    def test_the_two_emitters_raise_the_identical_finding(self):
+        """Identical, not merely similar: main()'s dedupe is by Finding value,
+        so any drift between the two would print the same problem twice."""
+        with tempfile.TemporaryDirectory() as d:
+            self._pre_generation(d)
+            a = [f for f in validate.diff_base_findings(d, "HEAD")
+                 if f.path == "groundwork.pin"]
+            b = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                 if f.path == "groundwork.pin"]
+            self.assertEqual(a, b)
+            self.assertEqual(len(a), 1, a)
+
+    def test_the_composed_cli_refuses_a_pre_generation_base(self):
+        """The composed run, not the passes in isolation. Round 1 found that no
+        test exercised main(), so removing diff_base_findings from its pass
+        tuple turned this case from exit 1 into exit 0 with every other test
+        still green."""
+        with tempfile.TemporaryDirectory() as d:
+            self._pre_generation(d)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = validate.main(["validate.py", d, "--diff", "HEAD"])
+            out = buf.getvalue()
+            self.assertEqual(rc, 1, out)
+            self.assertEqual(out.count("predates this governed root"), 1,
+                             "the two emitters must dedupe to one printed line:\n" + out)
+
+    def test_the_composed_cli_reports_a_manifestless_base(self):
+        """The manifest half through main(). Only diff_base_findings raises it —
+        the tripwire has no equivalent, because the frozen-layer pass has
+        nothing to skip — so this is what guards its entry in main()'s pass
+        tuple. Delete that entry and this test fails."""
         with tempfile.TemporaryDirectory() as d:
             _git(d, "init", "-q")
             _git(d, "config", "user.email", "t@t.t")
             _git(d, "config", "user.name", "t")
             _write(d, "seed.md", "# Seed\n")
             _git(d, "add", "-A")
-            _git(d, "commit", "-qm", "pre-generation")
-            _write(d, "groundwork.pin", PIN_OK)
-            _write(d, "governance/constitution/access.md", RULE_OK)
-            self.assertEqual([f for f in validate.blast_radius_diff_findings(d, "HEAD")
-                              if f.level == "ERROR"], [])
+            _git(d, "commit", "-qm", "pre-interview")
+            _iv_state(d)
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = validate.main(["validate.py", d, "--diff", "HEAD"])
+            out = buf.getvalue()
+            self.assertEqual(rc, 1, out)
+            self.assertEqual(out.count("covers no layer in this directory"), 1, out)
+
+    def test_a_case_sibling_root_is_not_satisfied_by_the_other(self):
+        """Folding this lookup is the FAIL-OPEN direction, which is why it is
+        exact. On a case-sensitive filesystem a/ and A/ are two roots; a base
+        holding one must not report the contract met for the other, or the
+        tripwire runs against a base that does not hold that root at all.
+        A pure-function test, because the filesystem this runs on may not be
+        able to hold both directories at once."""
+        self.assertEqual(
+            validate._roots_missing_from_base({"A"}, {"a/groundwork.pin": "a/groundwork.pin"}),
+            {"A"})
+        self.assertEqual(
+            validate._roots_missing_from_base({"a"}, {"a/groundwork.pin": "a/groundwork.pin"}),
+            set())
 
     def test_the_tripwire_still_gates_when_the_base_holds_the_pin(self):
         """The control for the test above: the suppression must be the base
@@ -8131,7 +8205,9 @@ class TestDiffBaseContract(unittest.TestCase):
                      if f.level == "ERROR"]
             self.assertTrue(any("no pending proposal" in f.message
                                 and f.path.startswith("a/") for f in gated), gated)
-            self.assertEqual([f for f in gated if f.path.startswith("b/")], [], gated)
+            self.assertEqual([f.message for f in gated if f.path.startswith("b/")
+                              and "predates this governed root" not in f.message], [],
+                             "b/ was gated against a base that does not hold it")
 
     def test_the_v1_to_v2_bootstrap_is_untouched(self):
         """Decision 8's migration-scoped bootstrap requires a pin AT BASE, so
