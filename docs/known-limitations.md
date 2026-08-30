@@ -80,6 +80,14 @@ Honest limits of the current build. This file grows as the product does (brief Â
   someone edits it. A **stale roster** produces exactly the confident-error class the
   evidence floor documents, one level up: the gate goes green on an accountability structure
   nobody has confirmed. `valid_at` and `review_by` date the claim; nothing verifies it.
+- **The cadence-to-date conversion is unchecked.** The interview asks how often the org
+  map should be re-confirmed and gets back a cadence in words; `review_by` is an ISO date;
+  the generator converts one into the other and records the derivation in the file
+  ([interview/generate.md](../interview/generate.md)). Nothing validates that conversion.
+  The roster check reads `review_by` as a date and warns when it has passed â€” it does not
+  read the sentence beside it, cannot tell a quarterly answer from a 90-day fallback, and
+  would not notice a derivation that names one cadence and a date computed from another.
+  The recorded derivation is there so a **reader** can check it. It is not a check.
 - **Resolution is intent-blind.** Nothing marks an owner value as meant-as-a-role or
   meant-as-a-person: a value is whatever it matches. So a role title whose roster row was
   *forgotten*, and which happens to equal an existing Holder string, silently resolves as

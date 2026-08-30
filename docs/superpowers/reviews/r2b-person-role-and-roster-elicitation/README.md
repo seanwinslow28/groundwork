@@ -76,8 +76,10 @@ counter-argument (rule 5), all three recommendations chosen:
 approved preview placed the two typing rows immediately after the accountable-owner row,
 where "that owner" would have scoped them to one of the six owner fields §7 names. They sit
 after the appeal row instead, phrased "for each owner named above". The reason is a defect
-this project has already measured once: round 11 of the roles-design review killed R1's
-first typing rule for covering "one owner row of five". Ratifying the placement is the
+this project has already measured once: round 11 of the roles-design review found R1's
+first typing rule infeasible, and one of its two grounds was that the marker that rule read
+"covers one owner row of five"
+([spec-roles-accountable-unit.md](../spec-roles-accountable-unit.md), round 11, row 1). Ratifying the placement is the
 maintainer's at merge.
 
 **3. Follow-up owed, deliberately not done here.** `proposals/` is pending-only and an
@@ -88,8 +90,18 @@ carries the roster change without the proposal fails the very gate that demanded
 defer. Until it is removed, the demo roster's gate is pre-licensed for further edits.
 
 **4. C10 is implemented in shape, for the roster only, and stays open.** Run 1's
-clarification C10 (`persona-company/runs/2026-07-31/findings.md:263-267`, read this session)
-approved a direction for cadence answers against ISO-date fields: convert at generation and
-record the derivation on the record. The roster's `review_by` now follows it. C10 itself is
-scoped to `memory:review_by` and is **not** implemented — that half is untouched, and this
-slice deliberately does not do half of a finding filed against another field.
+clarification C10 approved a direction for cadence answers against ISO-date fields: convert
+at generation and record the derivation on the record. Read this session at
+`persona-company/runs/2026-07-31/findings.md:263-267` — another repository, so no revision
+of this one pins it. The link is not new here: round 17 of the roles-design review already
+corrected the spec for citing the 90-day default as "the C10 pattern" when it had no
+elicited cadence to derive from, and the spec has called it "C10's weaker cousin" ever since
+([the design](../../specs/2026-08-28-roles-accountable-unit-design.md), the R1 landing-order
+bullet). This slice is what gives it a cadence, so the roster's `review_by` now follows C10
+properly. **C10 itself is scoped to `memory:review_by` and is not implemented** — that half
+is untouched, deliberately: doing half of a finding filed against another field would leave
+two cadence mechanisms in one document.
+
+**5. One limitation added, not a check.** `docs/known-limitations.md` now records that
+nothing validates the cadence-to-date conversion: the roster check reads the date and cannot
+read the sentence beside it. The recorded derivation is there so a reader can check it.
