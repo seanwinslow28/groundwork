@@ -43,7 +43,7 @@ transcript audited; nobody has run them on a real company — see `docs/known-li
 - `demo/` — the pre-installed example company (**Umbercress**, ~20 people), complete:
   canon, eight executive views, seven deep records, org memory, four work packages,
   three constitution rules and the roster that holds their owners, one runnable rung-3
-  reminder, two pending proposals — one against a rule, one against the roster — and the
+  reminder, one pending proposal against a rule, and the
   15-minute three-query walkthrough. It carries a `groundwork.pin`, so it is a
   **governed root** — changes to its skills, rules, and roster run the #18 consent gate exactly
   as a company repo's would.
