@@ -8,7 +8,7 @@ A 4Q comprehension artifact (Nate B. Jones) for groundwork. The explanation that
 
 An open-source, harness-agnostic Company OS for a company's agents. You point a coding agent at this repository; it interviews your company about the work each function actually does (what deserves more human time, what should be automated away, under what rules) and generates your operating system into a separate private repo: folder-per-function ontologies, skills with named owners, a compiled constitution, and organizational memory that changes under governance instead of rewriting itself.
 
-Its lane is governance. The generator transcribes answers rather than supplying them, in every field it writes; five of them (owner, backup owner, forbidden actions, two death conditions) carry that refusal as an explicit mark and come only from a human's answers. Every rule sits on a five-rung ladder from value down to human-decision, and there is no sixth rung. A high-risk action never terminates in automation.
+Its lane is governance. The generator never supplies an interview answer the company did not give; five fields (owner, backup owner, forbidden actions, two death conditions) carry that refusal as an explicit mark and come only from a human's answers. Every rule sits on a five-rung ladder from value down to human-decision, and there is no sixth rung. A high-risk action never terminates in automation.
 
 ## Why this approach?
 

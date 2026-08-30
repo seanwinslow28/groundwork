@@ -7426,10 +7426,15 @@ class TestQuestionSkeletonCoverage(unittest.TestCase):
         for f in self.MEMORY_SPINE:
             required.add("memory:" + f)
         required |= {"exec:activity", "exec:direction"}
-        # ROSTER_FIELDS only: the three frontmatter fields the roster check
-        # ERRORs on when missing. The table columns are per-row, not a global
-        # requirement, so they are known without being required.
+        # The three frontmatter fields the roster check ERRORs on when missing,
+        # plus Holder and Type: a roster row with either cell empty is an ERROR
+        # (check_roles), so a skeleton that stops asking for them would ship a
+        # roster the gate rejects. Codex r2 caught these two missing — without
+        # them the holder-typing rows could be deleted without failing coverage.
+        # Role is deliberately NOT required: a holder-only row's Role cell is
+        # legitimately empty, and the demo's three rows are exactly that.
         required |= {"roster:" + f for f in validate.ROSTER_FIELDS}
+        required |= {"roster:holder", "roster:type"}
         missing = required - fills - set(self.NOT_ASKED)
         self.assertEqual(missing, set(),
                          "the schema requires fields no question asks for: %s — either "

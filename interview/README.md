@@ -153,7 +153,7 @@ names no owner for the brief when the account manager is away.
 
 ## Open question
 
-Who owns the renewal brief when the account manager is out — which person, or which role, and who holds it?
+Who owns the renewal brief when the account manager is out — a role, or a named holder?
 ```
 
 `provenance` here can never be `confirmed`. A working file that calls itself confirmed is

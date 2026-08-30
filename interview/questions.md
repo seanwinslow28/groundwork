@@ -90,14 +90,14 @@ the work type (section 1), the accountable owner (section 7), plus the grounding
 | Ask | Fills | Notes |
 |---|---|---|
 | Is this read-only, reversible, external-side-effect, or high-risk? | card:action_class | Classify by mechanism, never by how it feels. |
-| Who is accountable for proving this improved? One answer, not a committee. | ontology:accountable_owner, ontology:gate_owner, card:owner | (human-only) A person or the role they hold — the roster resolves either. |
+| Who is accountable for proving this improved? One answer, not a committee. | ontology:accountable_owner, ontology:gate_owner, card:owner | (human-only) A role or a named holder — the roster resolves either. |
 | Who covers when that owner is away? | card:backup_owner | (human-only) Shared responsibility is often none. |
 | Which rung does the rule sit on? | rule:rung | value, instruction, reminder, hard-block, human-decision. |
 | Who owns the rule itself? | rule:owner | Whoever answers for it existing. |
 | Who owns the principle, and who owns the check? | rule:value_owner, rule:runtime_check_owner | They are often different owners. |
 | When this rule blocks somebody, who can they appeal to? | rule:human_appeal, rule:human_appeal_owner | A high-risk rule must have one. There is no rung six. |
-| For each owner named above: is it a person, or a role somebody holds? | roster:role, roster:holder | Both resolve. The roster is where it is said which. |
-| Who holds each of those roles today, and is each holder a human or an agent? | roster:holder, roster:type | The roster's only two type values, asked in its own words. An appeal path that ends at an agent is not an appeal path. |
+| For each owner named above: is it a role somebody holds, or a named holder? | roster:role, roster:holder | Both resolve; the roster is where it is said which. A named holder need not be a person — the next question settles that. |
+| For every holder just named — of a role, or standing alone — is each one a human or an agent? | roster:holder, roster:type | The roster's only two type values, asked in its own words. An appeal path that ends at an agent is not an appeal path. |
 | How often should this map of who holds what be re-confirmed? | roster:review_by | Asked once for the company, not per activity. An org map nobody re-checks is the stalest thing in the repo. |
 
 ## 8. Edge cases — what happens when it goes wrong?

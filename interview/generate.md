@@ -167,10 +167,13 @@ the confirmed answers you already have, by this rule and no wider:
 
 - **Enter what the interview typed, and only that.** Section 7 of
   [questions.md](questions.md) asks, of every owner it has just named, whether that owner
-  is a person or a role somebody holds; then who holds each of those roles, and whether
-  each holder is a person or an agent. Those answers are the roster, transcribed:
-  - an owner answered as a **person** becomes a **holder-only row** — the Role cell empty,
-    the holder's name in Holder, the type as answered;
+  is a role somebody holds or a named holder; then, of **every** holder that produced — a
+  role's, and one standing alone — whether it is a human or an agent. Those answers are the
+  roster, transcribed:
+  - an owner answered as a **named holder** becomes a **holder-only row** — the Role cell
+    empty, the holder's name in Holder, the type as answered. A named holder is not
+    necessarily a person: an owner the interview names directly and types `agent` is a
+    holder-only row like any other;
   - an owner answered as a **role** becomes a **Role row**, with the holders the interview
     named and each one's answered type;
   - **the Type cell takes `human` or `agent` and nothing else** — the roster has exactly two

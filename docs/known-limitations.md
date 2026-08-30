@@ -82,6 +82,13 @@ Honest limits of the current build. This file grows as the product does (brief Â
   someone edits it. A **stale roster** produces exactly the confident-error class the
   evidence floor documents, one level up: the gate goes green on an accountability structure
   nobody has confirmed. `valid_at` and `review_by` date the claim; nothing verifies it.
+- **Nothing verifies that a holder accepted the role.** The interview asks that every
+  acted-on activity's owner knows they own it, and `interview/protocol.md` lists it under
+  what good looks like â€” but the answer is the interviewee's, and no field, check or file
+  records the holder's own confirmation. A roster row states that someone holds something;
+  it does not state that they were asked. This is narrower than the stale-roster limitation
+  above and not the same one: a roster can be freshly confirmed by the person writing it and
+  still name a holder who has never heard of the role.
 - **The cadence-to-date conversion is unchecked.** The interview asks how often the org
   map should be re-confirmed and gets back a cadence in words; `review_by` is an ISO date;
   the generator converts one into the other and records the derivation in the file
