@@ -27,9 +27,11 @@ still declaring `status: pending`. Two things followed from that:
   company repo, so a demo that keeps an applied proposal models the convention wrongly.
 - The gate was **pre-licensed**. `_pending_proposal_radii`
   ([`scripts/validate.py:3956`](../../../../scripts/validate.py) at `ea05b28`) keys
-  `target -> declared radii`, and `blast_radius_diff_findings` accepts any escalating change
-  to a target a pending proposal names. While that file stood, a further escalating edit to
-  the demo roster would have cleared the consent gate with no new proposal.
+  `target -> declared radii`, and `blast_radius_diff_findings` clears an escalating change
+  when a pending proposal names that target **and** its declared radii include `escalating`;
+  a proposal declaring only `track1-body` draws a mismatch ERROR instead. The removed
+  proposal declared `escalating`, so while that file stood, a further escalating edit to the
+  demo roster would have cleared the consent gate with no new proposal.
 
 **What it does not do.** It does not replace the removed example. The demo now carries one
 pending proposal, against a rule; the roster stays a governed family with no live worked
@@ -38,8 +40,9 @@ against keeping the applied file and against authoring a fresh un-applied roster
 
 ## Sites changed
 
-Four, plus the deletion. The three that stated a count or linked the file would otherwise
-have gone stale, and the link would have been a validator ERROR (`check_links`):
+Four, plus the deletion. Three of them stated a count — two of them the words "two pending
+proposals", the third the ordinal "the second pending proposal" — and the fourth linked the
+file, which after the deletion would have been a `check_links` ERROR:
 
 | Site | Was |
 |---|---|
@@ -53,14 +56,18 @@ have gone stale, and the link would have been a validator ERROR (`check_links`):
 
 | Round | Reviewed | Verdict | Findings | Fix commit |
 |---|---|---|---|---|
+| 01 | `173978d` | **does not approve** — Standards 1 (worst Low), Spec 3 (worst Moderate) | 3 distinct | |
+
+The round-01 fix commit is filled in with the next entry: an entry cannot name the commit
+that carries its own fixes.
 
 ## Open findings
 
-None recorded yet.
+**None.** All three of round 1's findings are fixed.
 
 ## Rejected findings
 
-None.
+**None.**
 
 ## Baselines
 

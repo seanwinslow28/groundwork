@@ -157,9 +157,9 @@ quiet. Try the same edit on `governance/constitution/assessment-is-human-owned.m
 the rule [the refusal proposal](proposals/refusal-names-next-step.md) targets — and the
 gate stays quiet: a matching pending proposal licenses escalating changes to its own
 target and to nothing else. That silence is the consent gate's happy path, not a gap.
-The roster is the third governed artifact and runs the same mechanism: its re-confirmation
-had to be proposed before it could land. That proposal is not in `proposals/` to read,
-because it was applied and an applied proposal's file is removed.
+The roster is governed the same way: its re-confirmation had to be proposed before it
+could land. That proposal is not in `proposals/` to read, because it was applied and an
+applied proposal's file is removed.
 
 ## What to read next
 

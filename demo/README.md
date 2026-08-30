@@ -32,10 +32,11 @@ it is also the allowlist every identifier here is checked against.
   their boundaries say what they say — the org memory the company accreted on its own
   (standups, renewal risks) traces to its records, not to these layers.
 - [`proposals/`](proposals/refusal-names-next-step.md) — one pending proposal, waiting on
-  a human: what an agent produces when a rule tells it no. A second one, against
-  [the roster](governance/roles.md), stood here until the maintainer landed it — an applied
-  proposal's file is removed, because `proposals/` is pending-only. Changing who holds an
-  owner still goes through the gate; there is no live example of it here now.
+  a human: what an agent produces when a rule tells it no. Changing
+  [the roster](governance/roles.md) is escalating too and needs a proposal in the same way.
+  The one that licensed this roster's last change has been applied, and an applied proposal's
+  file is removed, so `proposals/` no longer holds it and there is no roster example to read
+  here.
 - `groundwork.pin` — what makes this directory a **governed** instance rather than
   example content: the validator's `--diff` mode holds changes to its skills, rules, and
   roster to the same consent gate a real company repo gets.
