@@ -12,17 +12,18 @@ and when the answer should be looked at again. It was run because the roster gen
 from layers 01–03 had never been re-confirmed since May, and because the question skeleton
 now asks these three things directly rather than leaving them to be inferred.
 
-## Person or role
+## Role or named holder
 
-Every owner the three constitution rules name is a **person**, not an office. Asked
-directly of each, and each said the same thing: the accountability is theirs, not the
-chair's. So the roster carries names with no role asserted.
+Every owner the three constitution rules name is a **named holder** — a person here, in
+every case — rather than an office. Asked directly of each, and each said the same thing: the
+accountability is theirs, not the chair's. So the roster carries names with no role asserted,
+and no role needed a holder named for it.
 
-| Owner as written | Person or role | Holder | Human or agent |
+| Owner as written | Role or named holder | Holder | Human or agent |
 |---|---|---|---|
-| Priya Raman | person | Priya Raman | human |
-| Marcus Bell | person | Marcus Bell | human |
-| Ruth Okafor | person | Ruth Okafor | human |
+| Priya Raman | named holder | Priya Raman | human |
+| Marcus Bell | named holder | Marcus Bell | human |
+| Ruth Okafor | named holder | Ruth Okafor | human |
 
 The offices these three hold — CEO, VP Customer Success, Head of People — are real and
 recorded in the canon, and deliberately **not** asserted as roles here. No rule references

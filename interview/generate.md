@@ -166,10 +166,10 @@ owner resolve, so a rule cannot carry a rung until its four owner values do. Wri
 the confirmed answers you already have, by this rule and no wider:
 
 - **Enter what the interview typed, and only that.** Section 7 of
-  [questions.md](questions.md) asks, of every owner it has just named, whether that owner
-  is a role somebody holds or a named holder; then, of **every** holder that produced — a
-  role's, and one standing alone — whether it is a human or an agent. Those answers are the
-  roster, transcribed:
+  [questions.md](questions.md) asks three things in order: of every owner it has just
+  named, whether that owner is a role somebody holds or a named holder; then, of every role
+  that produced, who holds it today; then, of **every** holder either question produced,
+  whether it is a human or an agent. Those answers are the roster, transcribed:
   - an owner answered as a **named holder** becomes a **holder-only row** — the Role cell
     empty, the holder's name in Holder, the type as answered. A named holder is not
     necessarily a person: an owner the interview names directly and types `agent` is a

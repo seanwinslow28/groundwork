@@ -26,8 +26,8 @@ deserves *more* human time, not less, and the question in
 [_working.md](_working.md) is what is actually slowing it down.
 
 **Layer 6 is not a function layer.** It is about the record itself — who holds each owner
-the rules name, whether each of those is a person or a role, and how often the map should
-be re-checked. [The roster](../governance/roles.md) is what it was generated into. A layer
+the rules name, whether each of those is a role or a named holder, and how often the map
+should be re-checked. [The roster](../governance/roles.md) is what it was generated into. A layer
 like it can arrive at any point; the numbering is turn order, not a table of contents.
 
 **Where this does not stand.** Sales, engineering, and legal have executive views and
