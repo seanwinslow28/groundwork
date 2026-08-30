@@ -3881,8 +3881,8 @@ def _unsupported_root_finding(g):
 _REGULAR_MODES = (b"100644", b"100755")
 
 
-def _base_markers(toplevel, base, paths):
-    """Which of `paths` the BASE tree holds AS REGULAR FILES, repo-relative.
+def _base_markers(toplevel, base):
+    """The marker paths the BASE tree holds AS REGULAR FILES, repo-relative.
 
     `_git_diff_context` lists the base with `ls-tree --name-only`, which carries
     no type, so `base_rels` answers "the base had this NAME". That is the wrong
@@ -3892,15 +3892,18 @@ def _base_markers(toplevel, base, paths):
 
     An empty set on any failure, which makes the caller fall back to reporting —
     the fail-closed direction here, since the alternative is silence."""
-    if not paths:
-        return set()
     try:
-        # EXACT pathspecs, not globs: ls-tree matches by path prefix and would
-        # silently return nothing for "*groundwork.pin". The candidates are few,
-        # so asking for them by name is both correct and cheaper than listing
-        # the whole tree a second time.
-        out = subprocess.run(["git", "-C", toplevel, "ls-tree", "-z", base, "--"]
-                             + sorted(paths), capture_output=True)
+        # NO PATHSPEC. Passing the candidate paths as pathspecs was tried and is
+        # wrong twice over (round 05 finding 2): a real path beginning with a
+        # colon is read as pathspec MAGIC and makes git exit 128, and a large
+        # enough candidate list exceeds the argv limit. Either one made this
+        # return empty for EVERY candidate, and an empty answer here means "the
+        # base holds no marker", so the caller then ERRORed that the base lacks
+        # files it actually holds. One unfiltered listing has no pathspec to
+        # misread and no argv to overflow, and `_git_diff_context` already pays
+        # this cost once, so the order of the work is unchanged.
+        out = subprocess.run(["git", "-C", toplevel, "ls-tree", "-r", "-z", base],
+                             capture_output=True)
     except OSError:
         return set()
     if out.returncode != 0:
@@ -4042,6 +4045,31 @@ def _markers_added_since_base(toplevel, base):
         if os.path.basename(name) in ("groundwork.pin", INTERVIEW_MANIFEST):
             out.add(name)
     return out
+
+
+def _reachable_regular_file(root, rel):
+    """Presence, judged the way the working-tree scan judges it.
+
+    `os.path.isfile` alone is not that judgement (round 05 finding 1).
+    `_walk_working_tree` runs `os.walk` with the default `followlinks=False`, so
+    it never descends a symlinked DIRECTORY — which means `_pin_dirs` never
+    discovers a marker underneath one, and the governed root that marker would
+    mark does not exist as far as every other pass is concerned. `isfile`
+    resolves the whole path, so it answered "present" for exactly the markers
+    the rest of the validator cannot see, and the deletion went unreported. That
+    is issue #40's own under-refusing direction, reopened by a repair.
+
+    So: no ancestor component may be a symlink. The FINAL component may be —
+    a symlink to a regular pin file is listed by `os.walk` in `filenames` and
+    read like any other file, so treating it as present matches what the tree
+    readers do with it."""
+    parts = rel.split("/")
+    cur = root
+    for part in parts[:-1]:
+        cur = os.path.join(cur, part)
+        if os.path.islink(cur) or not os.path.isdir(cur):
+            return False
+    return os.path.isfile(os.path.join(cur, parts[-1]))
 
 
 def _deleted_marker_finding(rel):
@@ -4191,7 +4219,7 @@ def diff_base_findings(root, base):
     # unchanged here.
     unreadable = tuple(sorted(f.path for f in wt_walk_findings))
     candidates = sorted(_markers_added_since_base(toplevel, base))
-    base_markers = _base_markers(toplevel, base, candidates)
+    base_markers = _base_markers(toplevel, base)
     for repo_path in candidates:
         if scope != "." and not repo_path.startswith(scope + "/"):
             continue
@@ -4200,7 +4228,7 @@ def diff_base_findings(root, base):
             continue
         if any(rel == u or rel.startswith(u + "/") for u in unreadable):
             continue
-        if os.path.isfile(os.path.join(root, *rel.split("/"))):
+        if _reachable_regular_file(root, rel):
             continue
         findings.append(_deleted_marker_finding(rel))
     return findings

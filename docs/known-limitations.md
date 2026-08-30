@@ -112,10 +112,12 @@ Honest limits of the current build. This file grows as the product does (brief �
     history, a record counts only when its destination mode is a regular file, so a gitlink or
     symlink named like a marker is not evidence one existed. In the base tree, the same
     question is asked of the modes rather than of the pathname. In the working tree, presence
-    is `isfile` and nothing else — not `lexists`, which a directory of the same name satisfies,
-    and not membership in the scan by name, which a broken symlink satisfies. A symlink
-    pointing at a real pin file does count as present, consistently with how every other check
-    reads the tree.
+    presence must be a regular file the working-tree scan could actually have reached — not
+    `lexists`, which a directory of the same name satisfies; not membership in the scan by
+    name, which a broken symlink satisfies; and not `isfile` alone, which resolves through a
+    symlinked parent directory the scan never descends. A symlink pointing at a real pin file
+    counts as present, because `os.walk` lists it and the other passes read it like any file;
+    a marker underneath a symlinked DIRECTORY does not, because no pass can see it.
 
     A working-tree scan that could not read part of the tree cannot show anything under that
     subtree is missing, so a candidate under an unreadable directory draws nothing — the

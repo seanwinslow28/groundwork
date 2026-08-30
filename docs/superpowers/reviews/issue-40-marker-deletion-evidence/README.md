@@ -39,6 +39,7 @@ rule 11 requires.
 | [02](round-02.md) | Codex review round | `ae654cf` | Not clean — 2 Major + 7 Minor on classifier correctness, plus 2 Major on prose | `d63196c` |
 | [03](round-03.md) | Codex review round | `cfb0c20` | Not clean — 1 Major + 1 Minor on classifier correctness, plus 3 Minor on prose | `d1ab4fc` |
 | [04](round-04.md) | Codex review round | `512126f` | Not clean — 4 Major + 1 Minor on classifier correctness, plus 2 Minor on prose and the record. One Major rejected. | `de7eaf8` |
+| [05](round-05.md) | Codex review round | `095ca91` | Not clean — 1 Major + 2 Minor. Entry 04's rejection independently confirmed. | (this branch's round-05 fix commit) |
 
 ## Open findings
 
@@ -82,8 +83,12 @@ times by a later entry because entry 01 is immutable:
 
 - **Mutation M8.** Entry 01 argued the mutation survived "by construction". Entry 02's merge
   fixture disproves the argument. The sentence that replaced it in the code was then found
-  false by entry 03 — the flag is a narrowing, and nothing measured shows it is needed. Three
-  statements about one flag, of which the first two were wrong; entry 03 records the sequence.
+  false by entry 03 — the flag is a narrowing, and nothing measured shows it is needed. Entry
+  04 then disproved *that*: the flag discarded the `T` record for a path that arrived as a
+  symlink and later became a real marker, so it was not harmless, and it was removed. Four
+  statements about one flag, of which the first three were wrong. Entry 04 records the
+  sequence and why deleting the flag is what ended it; this paragraph said "three statements"
+  and "the first two" until entry 05 caught it standing after entry 04 had superseded it.
 - **"The walk reads committed history."** Entry 01's residual-limit paragraph says this
   without qualification. It reads what this repository's configured `git log` will show it,
   which is narrower in four separate ways. Corrected in entry 03;
