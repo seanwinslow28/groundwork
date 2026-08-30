@@ -41,19 +41,45 @@ a note that no longer exists.
 | 04 | `74c86be` | 4 findings, worst HIGH, no approve/does-not-approve word | 4 | `063fb3e` |
 | 05 | `104709b` | 6 findings, worst HIGH, no approve/does-not-approve word | 6 | `28fe3cc` |
 | 06 | `9192236` | **does not approve yet** | 1 (reported on both axes) | `618151e` |
+| 07 | `8a64e5b` | **approve** | 0 | terminal |
 
 ## Open findings
 
-**None.** Every finding raised on this branch is fixed.
+**None.** Every finding raised on this branch is fixed. Seven rounds, twenty-eight findings,
+every one closed by a fix; none open, none rejected.
+
+Rule 9's three-category rejection list was never used on this branch. One finding came close —
+round 4's holder-acceptance claim, where *out of scope → S5* was available and would have been
+defensible — and it was not taken, because checking first showed the claim was not merely out
+of scope but unbacked anywhere in the repository. That check is the reason it is recorded as
+fixed rather than rejected.
+
+## What the rounds found, since it is the useful part
+
+Round 1 found the only defect in the original product edits. **Every round after it found its
+worst defect inside the previous round's fix** — rounds 2, 3, 4, 5 and 6 in turn. Two shapes
+account for nearly all of it:
+
+- **A repair reaches for a stronger claim than the one it replaced.** "every field",
+  "nothing in the repository", "either cell empty is an ERROR", "the one way", "stops a
+  high-risk rule shipping at all". The claim that survives review is the narrow checkable one.
+- **The record describes the fix that was intended rather than the one that landed.** Five of
+  the seven rounds carried one. The countermeasure is to re-read the changed lines before
+  writing the entry.
+
+A third, narrower: **a locked form restated in your own words gets narrower every time.**
+Decision 1's "a role or a named holder" was narrowed three times — by paraphrase, by a site
+this slice authored itself, and by two extra words inside a correction — before it was quoted
+rather than restated.
 
 ## Rejected findings
 
-None.
+**None.** Nothing on this branch was closed by disagreeing with it.
 
 ## Baselines
 
-**CHANGED by this slice.** Stated here now; the merge commit and each round entry will
-carry them too, because the next session inherits them:
+**CHANGED by this slice**, and stated here, in the merge commit and in the round entries,
+because the next session inherits them:
 
 | Command | Before (`555f8d2`) | After |
 |---|---|---|
@@ -67,6 +93,13 @@ roster's passed `review_by`. It retired because the demo took a real confirming 
 because a cadence was chosen to clear it: the interview layer re-confirms all three holders
 on a recent date, which moves the roster's snapshot forward, and a plain quarterly answer
 applied to that snapshot lands in the future. There is no pytest; the suite is unittest.
+
+## Status
+
+**Ready for the maintainer to merge.** Round 7 approved with zero findings on both axes;
+all twenty-eight findings are fixed; none is open and none rejected; the gate is green on
+all four commands. Two maintainer items below need ratification rather than work, and one
+is follow-up that is only legal after the merge.
 
 ## Maintainer items
 
