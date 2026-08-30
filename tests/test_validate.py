@@ -8366,12 +8366,19 @@ class TestDiffBaseContract(unittest.TestCase):
             self.assertEqual(validate.blast_radius_diff_findings(d, pre), [])
             self.assertEqual(validate.interview_diff_findings(d, pre), [])
 
-    def test_deleting_the_marker_is_still_caught_when_the_base_holds_it(self):
+    def test_marker_deletion_cannot_hide_simultaneous_governed_edits(self):
         """The control, and the reason the gap above is narrow rather than
         general: `_pin_dirs` reads the base tree so deleting a pin cannot
         un-govern the change that deleted it, and `interview_diff_findings`
         derives its state directories from the base for the same reason. Both
-        guarantees hold wherever the base carries the marker."""
+        guarantees hold wherever the base carries the marker.
+
+        Named for what it proves, after Codex round 5 measured what it does
+        not: deleting the two markers and NOTHING ELSE, under a base that holds
+        both, returns `[]` from all three passes. That is not a gap — a pin is
+        not a governed class and a manifest is excluded from the frozen set on
+        purpose — but it is why this test edits a rule and a layer as well. What
+        is caught is the edits the deletion would otherwise hide."""
         with tempfile.TemporaryDirectory() as d:
             base = self._root(d)
             os.remove(os.path.join(d, "groundwork.pin"))
@@ -8387,6 +8394,38 @@ class TestDiffBaseContract(unittest.TestCase):
                       if f.level == "ERROR"]
             self.assertTrue(any("frozen at its checkpoint" in f.message for f in frozen),
                             frozen)
+
+    def test_the_changelog_pass_skips_an_unsupported_root(self):
+        """The second place a governed finding is suppressed. The changelog
+        pass keys on a changelog present AT BASE, which a root whose pin is not
+        at base can still have — committed before the pin was. Reverting its
+        `gov_roots - unsupported` filter left the whole suite green until this
+        test, so the append-only ERROR could fire for the very root the contract
+        ERROR says is not being gated.
+
+        TWO roots, and that is not decoration: with a single unsupported root
+        the `unsupported == gov_roots` early return fires before the changelog
+        pass and the reverted filter is unreachable. `a/` supported keeps the
+        pass running so `b/` can be seen being skipped."""
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "a/groundwork.pin", PIN_OK)
+            _write(d, "a/governance/changelog.md", CHANGELOG_OK)
+            _write(d, "b/governance/changelog.md", CHANGELOG_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "pre-generation")
+            _write(d, "b/groundwork.pin", PIN_OK)
+            _write(d, "b/governance/changelog.md",
+                   "# Governance changelog\n\n## Entries\n\nRewritten, not appended.\n")
+            errs = [f for f in validate.blast_radius_diff_findings(d, "HEAD")
+                    if f.level == "ERROR"]
+            self.assertTrue(any("predates this governed root" in f.message
+                                and f.path == "b/groundwork.pin" for f in errs), errs)
+            self.assertEqual([f for f in errs if "append-only" in f.message], [],
+                             "the changelog pass ran against a base that does not hold "
+                             "this root")
 
     # --- ancestry ---------------------------------------------------------
 
@@ -8414,6 +8453,28 @@ class TestDiffBaseContract(unittest.TestCase):
             for ref in ("HEAD", base):
                 self.assertEqual([f for f in validate.diff_base_findings(d, ref)
                                   if "ancestor" in f.message], [], ref)
+
+    def test_an_unanswerable_ancestry_question_warns_too(self):
+        """`_base_is_ancestor` has three answers, and None is not a stand-in for
+        either of the others. An unborn HEAD — a real state, `git checkout
+        --orphan` reaches it — leaves the base resolvable and the question
+        unanswerable, and the run says so rather than implying the base is in
+        this history. Removing only this branch left the suite green until this
+        test."""
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "seed.md", "# Seed\n")
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "base")
+            base = _git_out(d, "rev-parse", "HEAD")
+            _git(d, "checkout", "-q", "--orphan", "fresh")
+            self.assertIsNone(validate._base_is_ancestor(d, base))
+            findings = validate.diff_base_findings(d, base)
+            self.assertTrue(any(f.level == "WARN" and "could not check" in f.message
+                                for f in findings), findings)
+            self.assertEqual([f for f in findings if f.level == "ERROR"], [], findings)
 
     def test_ancestry_is_a_warn_not_a_refusal(self):
         """A divergent base still runs every pass — the WARN describes the run,

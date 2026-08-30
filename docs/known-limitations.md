@@ -68,9 +68,11 @@ Honest limits of the current build. This file grows as the product does (brief �
     base tree precisely so deleting a pin cannot un-govern the change that deleted it, and
     that guarantee holds only where the base carries the pin. Measured 2026-08-30 on that
     exact setup: `0 error(s), 8 warning(s)` — and the same on the engine before this check
-    existed, so the check neither creates nor widens it. No check here can close it: with
-    the marker in neither tree there is nothing to tell this apart from an ungoverned
-    repository, which the engine's own pin-less root is.
+    existed, so the check neither creates nor widens it. **No check reading only those two
+    trees can close it:** with the marker in neither, nothing tells this apart from an
+    ungoverned repository, which the engine's own pin-less root is. That limit is the two
+    trees rather than the repository — walking the commits between base and HEAD could see a
+    marker added and later deleted, and nothing here does. Tracked as issue #40.
   - **A root spelled differently at base and in the working tree reads as missing.** The pin
     lookup is exact, because folding it is the fail-open direction: a base holding
     `a/groundwork.pin` would otherwise satisfy a separate `A/` root and the tripwire would
