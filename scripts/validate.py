@@ -3629,11 +3629,18 @@ def _changelog_header_reaches_the_ledger(header_lines):
     """PURE. True when the editable header could reach the entries below it — when what a
     reader sees where the ledger should be is not the ledger.
 
-    Organised by the three ways CommonMark ENDS a block, which is what makes the set
-    closed rather than a list of constructs somebody thought of:
+    Organised by the three ways CommonMark ENDS a block. Classifying by termination mode
+    is what stops this being a list of constructs somebody thought of — but the taxonomy
+    being closed says nothing about whether each mode is IMPLEMENTED completely, and six
+    review rounds found that it was not. Read the three rules below as what the guard
+    does, not as a proof of what it catches:
 
-    1. **Runs to the end of the document.** Only fenced code does. Refused: a fence marker
-       at an indent a fence can open at, on any line.
+    1. **Runs to the end of the document.** Only fenced code does. Refused: a run of three
+       backticks or tildes ANYWHERE on a line. Not "at the start", because a fence opens
+       inside a list item or a block quote too and the container marker sits in front of
+       it — that gap was a review finding. Testing for containment rather than for position
+       refuses more than CommonMark would call a fence, and there is nothing a header needs
+       to say that requires the sequence.
     2. **Runs to an explicit closer.** HTML blocks of types 1 to 5, every one of which
        begins with "<". Refused: a "<" followed by "!", "?", "/" or an ASCII letter. A "<"
        that opens nothing, as in "a < b", is prose and is allowed.
@@ -3663,8 +3670,7 @@ def _changelog_header_reaches_the_ledger(header_lines):
                 and len(stripped) >= 5 and "<" not in stripped[4:-3]
                 and ">" not in stripped[4:-3]):
             continue
-        body = line.lstrip(" ")
-        if len(line) - len(body) <= 3 and (body.startswith("```") or body.startswith("~~~")):
+        if "```" in line or "~~~" in line:
             return True
         for i, ch in enumerate(line):
             if ch != "<":

@@ -122,17 +122,22 @@ Honest limits of the current build. This file grows as the product does (brief �
   that opens something the entries fall inside reaches the ledger without owning it: every entry
   survives in the file's bytes while a reader sees something else where the ledger should be.
   Rather than model when such a thing is closed, the guard is organised by the three ways
-  CommonMark **ends** a block, which is what makes the set closed rather than a list of
-  constructs somebody thought of. A block that runs to the end of the document is fenced code,
-  so a fence marker at an indent a fence can open at is refused. A block that runs to an explicit
+  CommonMark **ends** a block. Classifying by termination mode is what stops this being a list
+  of constructs somebody thought of; it is not a claim that each mode is implemented
+  completely, and six review rounds found gaps in the implementations rather than in the
+  taxonomy. A block that runs to the end of the document is fenced code, so a run of three
+  backticks or tildes **anywhere on a line** is refused — not merely at the start, because a
+  fence opens inside a list item or a block quote too, with the container marker in front of
+  it. A block that runs to an explicit
   closer is an HTML block of type 1 to 5, every one of which begins with `<`, so a `<` followed
   by `!`, `?`, `/` or a letter is refused — a `<` that opens nothing, as in `a < b`, is prose.
   Everything else ends at a blank line, so the line immediately above the first entry must be
   blank. The one exception is a line whose whole content is a single closed HTML comment
   carrying no angle bracket of its own; both shipped changelogs use one.
 
-  **What it costs.** A fenced example is refused, a raw-HTML line is refused, and a header must
-  be separated from its entries by a blank line. There is **no inline-code exception**: a header
+  **What it costs.** Any line carrying three backticks or tildes is refused, so a fenced
+  example cannot appear in a header and neither can prose that spells the sequence; a raw-HTML
+  line is refused; and a header must be separated from its entries by a blank line. There is **no inline-code exception**: a header
   that needs to show a `<` writes it as an HTML entity, and both shipped changelogs were
   rewritten to need none. That exception existed and was removed, because it could not be
   trusted — a backslash-escaped backtick made a live tag look quoted, and a backtick inside the

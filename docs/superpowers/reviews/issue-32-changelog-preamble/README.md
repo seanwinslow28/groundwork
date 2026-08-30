@@ -57,7 +57,8 @@ this guard on it.
 | 04 | `206a78a` | **does not approve** — Standards 4 worst **Moderate**, Spec 5 worst **Major** | 9 (8 distinct) | `4452679` |
 | 05 | `4452679` | **does not approve** — Standards 4 worst **Major**, Spec 3 worst **Major** | 7 (5 distinct) | `b29d3fe` |
 | 06 | `b29d3fe` | **does not approve** — 4 findings, worst **Major** | 4 | `13bb323` |
-| 07 | `13bb323` | **does not approve** — Spec 3 **Major** + 1 Low, Standards 1 Moderate + 3 Low | 8 | `PENDING-07` |
+| 07 | `13bb323` | **does not approve** — Spec 3 **Major** + 1 Low, Standards 1 Moderate + 3 Low | 8 | `dde4a51` |
+| 08 | `dde4a51` | **does not approve** — Spec 1 **Major**, Standards 1 Moderate + 1 Low | 3 | `PENDING-08` |
 
 ## Open findings
 
@@ -75,7 +76,7 @@ reading under which the finding is fair.
 
 ## Baselines
 
-The test count **moves**: 846 → 867. It rose to 883 by round 05 and then **fell twice**, as
+The test count **moves**: 846 → 868. It rose to 883 by round 05 and then **fell twice**, as
 round 06 deleted the CommonMark model and round 07 deleted the inline-code stripper, each taking
 the tests that covered it. What replaced them is denser — every construction a round found is
 one parametrised test — but fewer test methods. Stated as a fall rather than only as a net. The three validator commands are unchanged.
@@ -85,7 +86,7 @@ one parametrised test — but fewer test methods. Stated as a fall rather than o
 | `python3 scripts/validate.py .` | 0 errors, 7 warnings, exit 0 | unchanged |
 | `python3 scripts/validate.py demo` | 0 errors, 2 warnings | unchanged |
 | `python3 scripts/validate.py . --diff main` | exit 0 | exit 0 |
-| `python3 -m unittest discover -s tests -q` | OK, 846 tests, skipped=1 | OK, **867** tests, skipped=1 |
+| `python3 -m unittest discover -s tests -q` | OK, 846 tests, skipped=1 | OK, **868** tests, skipped=1 |
 
 There is no pytest; the suite is unittest.
 
@@ -125,7 +126,8 @@ alone, the suite run, and the file restored. Run with `PYTHONDONTWRITEBYTECODE=1
 | Rule 2, the angle-bracket check, replaced by `if False` (round 7) | 3 failures |
 | Rule 3, the trailing-blank-line requirement, replaced by `return False` (round 7) | 3 failures |
 | Comment exception drops its interior guard (round 7) | 1 failure, and **0** before round 7 corrected the test that was supposed to cover it |
-| None (restored) | OK, 867 |
+| Rule 1 returned to a position test instead of containment (round 8) | 6 failures |
+| None (restored) | OK, 868 |
 
 Rounds 4 and 5 added mutations against the CommonMark model that round 6 deleted; their rows
 are kept because they record what was measured, not what still exists. Round 5's
@@ -163,9 +165,11 @@ a header may not contain was never going to close.
 
 The rule is now organised by the three ways CommonMark **ends** a block — runs to end of
 document (fenced code), runs to an explicit closer (HTML types 1 to 5, all beginning with `<`),
-runs to a blank line (everything else) — which is a closed set where a list of constructs is
-not. The third mode costs three lines, is what every round had missed, and closes both of round
-7's markup-free Majors on its own. Round 7 also deleted the inline-code exception rather than
+runs to a blank line (everything else). Classifying by termination mode is what stops the rule
+being a list of constructs; **it is not a claim that each mode is implemented completely**, and
+round 8 proved the distinction by finding rule 1 blind to a fence opened inside a list item,
+where the container marker sits in front of the fence. Rule 1 now tests for a fence sequence
+anywhere on a line rather than at its start, which is what rule 2 had always done for `<`. Round 7 also deleted the inline-code exception rather than
 repairing it, after two findings showed it could hide a live tag; the two shipped changelog
 headers were rewritten so they no longer need it.
 

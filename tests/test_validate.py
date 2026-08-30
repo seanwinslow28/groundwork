@@ -4233,6 +4233,13 @@ class TestChangelogAppendOnly(unittest.TestCase):
         ("07: a live tag between two closed comments",
          ["<!-- a --><script><!-- c -->", ""]),
         ("07: no blank line between the header and the entries", ["## Entries"]),
+        # Blank-terminated so rule 3 cannot refuse them first — without that these pass
+        # for the wrong reason, which is how round 08's gap survived round 07's tests.
+        ("08: a fence behind an ordered-list marker", ["1. ```", ""]),
+        ("08: a fence behind a bullet marker", ["- ```", ""]),
+        ("08: a fence behind a block-quote marker", ["> ```", ""]),
+        ("08: a fence behind nested container markers", ["> - 1. ```", ""]),
+        ("08: a tilde fence behind a container marker", ["1. ~~~", ""]),
     )
 
     def test_every_construction_a_review_round_found_is_refused(self):
@@ -4271,6 +4278,19 @@ class TestChangelogAppendOnly(unittest.TestCase):
                 j = validate._changelog_first_entry(appended)
                 self.assertIsNotNone(j)
                 self.assertFalse(validate._changelog_header_reaches_the_ledger(appended[:j]))
+
+    def test_the_end_to_end_container_fence_errors(self):
+        # Round 08's Major, whole: a three-space-indented entry is an entry, and a fence
+        # opened inside a list item turns it into code while the blank above it satisfies
+        # rule 3. The pure predicate alone would not have caught this shape.
+        base = ("# Governance changelog\n\n## Entries\n\n"
+                "   - 2026-07-26 | skills/a/SKILL.md | committed | scribe | a1b2c3d\n")
+        new = ("# Governance changelog\n\n1. ```\n   ## Entries\n\n"
+               "   - 2026-07-26 | skills/a/SKILL.md | committed | scribe | a1b2c3d\n   ```\n"
+               "- 2026-07-28 | skills/a/SKILL.md | replacement | scribe | c3d4e5f\n")
+        reason, appended = validate._changelog_appended_span(base, new)
+        self.assertEqual(reason, "hidden")
+        self.assertEqual(appended, [])
 
     def test_a_fenced_example_is_refused_and_that_is_the_trade(self):
         # Narrower than a renderer accepts, on purpose. Asserted so the cost is a fact in
