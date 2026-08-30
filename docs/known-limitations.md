@@ -103,10 +103,45 @@ Honest limits of the current build. This file grows as the product does (brief �
   agent's auto-apply from the maintainer editing their own skill body. ERRORing would
   false-positive on ordinary work and fill the changelog with non-auto-applies, destroying the
   one-glance property that justifies conceding pre-approval on track-1 (#17).
-- **Changelog rotation is not supported in V1.** The append-only check compares against the
-  base version, so archiving or rotating `governance/changelog.md` reads as a rewrite. #17
-  left rotation cadence as a build-phase detail; it lands with a documented rotation
-  convention, not before.
+- **Changelog rotation is not supported in V1.** Once a changelog holds an entry, the
+  append-only check requires every entry committed at base to survive, so archiving or rotating
+  `governance/changelog.md` reads as a rewrite. Below that — a changelog with no entry at base —
+  there is nothing to archive. #17 left rotation cadence as a build-phase detail; it lands with a documented
+  rotation convention, not before.
+- **The changelog's explanatory header is not protected.** #32 narrowed the append-only guard
+  to the region from the base file's first entry line on, which is what lets a stale header be
+  corrected. Nothing automated protects that prose: `governance/changelog.md` is not one of the
+  governed artifact families, so it has no #18 consent gate either. The commit bit is what
+  guards it.
+- **A changelog holding no entries is editable in its entirety.** The guard keys on the base
+  file's first entry line, so a changelog that has never recorded an auto-apply protects
+  nothing — the state of every freshly generated repo, and of both changelogs shipped here.
+  There is no entry to launder until a first one exists, and the guard engages as soon as one
+  does. Decided 2026-08-30 rather than discovered.
+- **The guard protects the ledger's bytes, not how it renders.** #32 made the header editable,
+  and an editable header can change what a reader sees where the ledger should be — a fenced
+  block or an unclosed HTML comment opened above the entries swallows them; a GFM table header
+  turns them into table rows, the entries being pipe-delimited; a list item's content column
+  decides whether an indented entry is a list item or code. In every one of those the committed
+  entries survive **byte for byte**, which is what the append-only rule is about and what the
+  gate enforces; what changes is the rendering.
+
+  **The gate does not model any of that, deliberately.** A check that did would be a Markdown
+  parser, and this validator is conventions plus checks, with no runtime and no dependencies. A
+  header edit that changes how the ledger renders is caught the way any other misleading
+  documentation edit is caught: by a human reading the diff before merging, which is the consent
+  gate #18 rests on. One such check was built and then removed; the issue #32 review record under
+  `docs/superpowers/reviews/` carries the removal and its grounds, including the eight review
+  rounds that each found a construction the previous version of it accepted.
+
+  **What this means for an adopter:** treat a diff that edits a changelog header as a
+  documentation change to review on its merits, not as a change the gate has vouched for. The
+  gate vouches that no entry was edited, reordered or removed.
+
+- **A hyphen-bulleted line in the header pins the boundary early.** An entry is any line whose
+  `str.strip()` begins with `- `. A format example, or an ordinary bulleted list, written into
+  the header without backticks counts as one and freezes everything from it down. Write header
+  examples inside backticks, as both shipped changelogs do.
 
 ## Governance — the roles roster (schema v2)
 

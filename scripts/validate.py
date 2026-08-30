@@ -3595,17 +3595,78 @@ def classify_governed_change(kind, cls, old_text, new_text):
     return "track1-body", "SKILL.md body of a track-1 (%s) skill" % ac
 
 
-def _changelog_append_only(old_text, new_text):
-    """PURE. #17's changelog is an append-only index: every line committed at base
-    must survive, in order, as the head of the new file. Trailing blank lines on
-    the base side are ignored (an append lands after them). Line endings are
-    normalized first so a CRLF base blob is not a phantom rewrite."""
-    def _lines(t):
-        return t.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-    old_lines = _lines(old_text)
+# The ERROR text for each reason _changelog_appended_span can return. Keyed rather than
+# branched so a reason added later cannot fall through the caller silently and be read as
+# a legal append; None is both the fallback text and the key for an unrecognized reason.
+CHANGELOG_REASONS = {
+    None: "the governance changelog is append-only from its first entry on (#17)",
+    "entries": "the governance changelog is append-only from its first entry on — an existing "
+               "entry was edited, reordered, or removed (#17)",
+}
+
+
+def _changelog_lines(text):
+    """PURE. Split into lines with line endings normalized first, so a CRLF base blob
+    is not a phantom rewrite."""
+    return text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+
+
+def _changelog_first_entry(lines):
+    """PURE. Index of the first ENTRY line, or None when there is none. An entry is a
+    line whose str.strip() begins with "- " — U+002D HYPHEN-MINUS then U+0020 SPACE.
+    That is the same test the stateless check (_check_changelog_instance) and
+    _changelog_appended_targets apply, and they are kept identical on purpose."""
+    for i, line in enumerate(lines):
+        if line.strip().startswith("- "):
+            return i
+    return None
+
+
+def _changelog_appended_span(old_text, new_text):
+    """PURE. Returns (reason, appended_lines) — reason is None when the change is legal,
+    otherwise a phrase naming which rule it broke. #17's changelog is an append-only ledger,
+    and #32 narrowed what that protects to the ledger itself: the region from the BASE
+    file's first entry line onward must survive verbatim and contiguous in the new file,
+    positioned at the new file's first entry line. The explanatory header ABOVE the
+    base's first entry is editable, so a header that documents governance the repo has
+    since changed can be brought into line.
+
+    The boundary is anchored in the BASE, not in the new file. That is what closes the
+    laundering route: an existing entry cannot be edited into non-entry text and thereby
+    join the editable header, because the base's first entry is exactly what the new
+    file's first entry must equal. Editing a later entry, reordering, removing one, and
+    interleaving prose between entries all break the contiguous run. Prepending an entry
+    moves the new file's first entry off the base's, so it is refused too.
+
+    A base holding NO entry line protects nothing: the whole file is editable and the
+    whole new file is the appended span. That is the state of every freshly generated
+    changelog, and it is recorded in docs/known-limitations.md rather than defended.
+
+    Trailing blank lines on the base side are ignored (an append lands after them).
+
+    appended_lines is the part of the new file no base entry accounts for, and it is
+    what grants a track-1 body edit its auto-apply cover. It is measured from the END of
+    the protected block, never from the base's line count, because an edited header
+    changes that count and the difference would hand an old entry's cover to a new
+    edit."""
+    old_lines = _changelog_lines(old_text)
     while old_lines and not old_lines[-1].strip():
         old_lines.pop()
-    return _lines(new_text)[:len(old_lines)] == old_lines
+    new_lines = _changelog_lines(new_text)
+    k = _changelog_first_entry(old_lines)
+    if k is None:
+        return None, new_lines
+    protected = old_lines[k:]
+    j = _changelog_first_entry(new_lines)
+    if j is None or new_lines[j:j + len(protected)] != protected:
+        return "entries", []
+    return None, new_lines[j + len(protected):]
+
+
+def _changelog_append_only(old_text, new_text):
+    """PURE. The verdict half of _changelog_appended_span, under the name the finding
+    is about."""
+    return _changelog_appended_span(old_text, new_text)[0] is None
 
 
 def validate(root):
@@ -4176,7 +4237,8 @@ def blast_radius_diff_findings(root, base):
     blast_radius matches what the diff ACTUALLY touches. A track-1 body-only
     change wants its changelog line (WARN — a stateless validator cannot tell an
     agent auto-apply from the maintainer's own edit); the changelog itself is
-    append-only (ERROR).
+    append-only from its first entry line on (ERROR); the header above that line is
+    editable (#32).
 
     What this cannot do: prove a human truthfully reviewed anything. That is the
     commit bit's job (#18) — see docs/known-limitations.md."""
@@ -4357,16 +4419,12 @@ def blast_radius_diff_findings(root, base):
         if new is None:
             findings += rd
             continue
-        if not _changelog_append_only(old, new):
+        reason, appended = _changelog_appended_span(old, new)
+        if reason is not None:
             findings.append(Finding("ERROR", cl_rel, None,
-                                    "the governance changelog is append-only — an existing entry was "
-                                    "edited, reordered, or removed (#17)"))
+                                    CHANGELOG_REASONS.get(reason, CHANGELOG_REASONS[None])))
             continue
-        old_lines = old.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-        while old_lines and not old_lines[-1].strip():
-            old_lines.pop()
-        new_lines = new.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-        appended_targets[g] = _changelog_appended_targets(root, gov_abs, new_lines[len(old_lines):])
+        appended_targets[g] = _changelog_appended_targets(root, gov_abs, appended)
 
     # --- Pass 2: every changed governed file.
     candidates = set(base_rels)
