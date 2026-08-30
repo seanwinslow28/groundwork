@@ -56,10 +56,11 @@ file, which after the deletion would have been a `check_links` ERROR:
 
 | Round | Reviewed | Verdict | Findings | Fix commit |
 |---|---|---|---|---|
-| 01 | `173978d` | **does not approve** — Standards 1 (worst Low), Spec 3 (worst Moderate) | 3 distinct | |
+| 01 | `173978d` | **does not approve** — Standards 1 (worst Low), Spec 3 (worst Moderate) | 3 distinct | `17950e4` |
+| 02 | `17950e4` | **does not approve** — one finding, worst Moderate, reported on both axes | 1 | |
 
-The round-01 fix commit is filled in with the next entry: an entry cannot name the commit
-that carries its own fixes.
+A round's fix commit is filled in with the next entry: an entry cannot name the commit that
+carries its own fixes.
 
 ## Open findings
 
