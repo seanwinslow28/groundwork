@@ -3602,8 +3602,9 @@ CHANGELOG_REASONS = {
     None: "the governance changelog is append-only from its first entry on (#17)",
     "entries": "the governance changelog is append-only from its first entry on — an existing "
                "entry was edited, reordered, or removed (#17)",
-    "hidden": "the governance changelog's header leaves a markdown or HTML block open above "
-              "the entries, so the committed ledger does not reach a reader as written (#17)",
+    "hidden": "the governance changelog's header carries markup that can reach the entries "
+              "below it — a header is prose, and may carry only inline code and a whole-line "
+              "closed HTML comment (#17)",
 }
 
 
@@ -3668,134 +3669,44 @@ def _strip_inline_code(line):
     return "".join(out)
 
 
-def _fence_marker(line):
-    """PURE. (character, run length, info string) for a line that opens or closes a fenced
-    code block, else None. Up to three leading spaces are allowed; a fourth makes the line
-    indented content rather than a fence. A backtick fence's info string may not itself
-    contain a backtick."""
-    i = 0
-    while i < len(line) and line[i] == " ":
-        i += 1
-    if i > 3 or i >= len(line):
-        return None
-    ch = line[i]
-    if ch not in "`~":
-        return None
-    j = i
-    while j < len(line) and line[j] == ch:
-        j += 1
-    if j - i < 3:
-        return None
-    info = line[j:]
-    if ch == "`" and "`" in info:
-        return None
-    return ch, j - i, info
+def _changelog_header_reaches_the_ledger(header_lines):
+    """PURE. True when the editable header carries markup that could reach the entries
+    below it. A header is PROSE: it may carry inline code spans and a whole-line closed
+    HTML comment, and nothing else a renderer treats as markup.
 
+    Refused, on any line once its matched inline code spans are removed: a fenced-code
+    marker at an indent a fence can open at, because an unclosed fence runs to the end of
+    the document; and a "<" at all, because every construct that can swallow the ledger
+    begins with one — a comment, a declaration, a processing instruction, a CDATA section,
+    a raw HTML block of any type, an inline raw tag. The single exception is a line whose
+    whole content is one closed comment carrying no angle bracket of its own, because both
+    shipped changelogs use one and it cannot reach past its own line.
 
-# Constructs that run until an explicit closer once opened: CommonMark's HTML blocks of
-# types 1, 2, 3 and 5. Type 4 — a declaration, "<!" then a letter, closed by ">" — has no
-# fixed opener spelling and is matched in _next_header_opener. Types 6 and 7 end at a BLANK
-# LINE rather than at a closer, so they are handled by the trailing-block rule instead.
-_HEADER_BLOCK_PAIRS = (
-    ("<!--", "-->"),
-    ("<![cdata[", "]]>"),
-    ("<?", "?>"),
-    ("<script", "</script>"),
-    ("<style", "</style>"),
-    ("<pre", "</pre>"),
-    ("<textarea", "</textarea>"),
-)
-
-# The four above whose opener is a tag name, and so needs a tag boundary after it —
-# without one, "<presentation>" reads as a "<pre" that never closes.
-_HEADER_TAG_OPENERS = ("<script", "<style", "<pre", "<textarea")
-
-
-def _next_header_opener(text, pos):
-    """PURE. (index, opener length, closer) of the earliest block opener at or after pos in
-    `text`, which is already lowercased and newline-joined, or None."""
-    best = None
-    for opener, closer in _HEADER_BLOCK_PAIRS:
-        k = text.find(opener, pos)
-        while k != -1 and opener in _HEADER_TAG_OPENERS:
-            after = text[k + len(opener):k + len(opener) + 1]
-            if after in ("", " ", "\t", "\n", ">", "/"):
-                break
-            k = text.find(opener, k + 1)
-        if k == -1:
-            continue
-        if best is None or k < best[0] or (k == best[0] and len(opener) > best[1]):
-            best = (k, len(opener), closer)
-    k = pos
-    while True:
-        k = text.find("<!", k)
-        if k == -1:
-            break
-        after = text[k + 2:k + 3]
-        if after.isascii() and after.isalpha():
-            if best is None or k < best[0]:
-                best = (k, 2, ">")
-            break
-        k += 2
-    return best
-
-
-def _changelog_header_leaves_a_block_open(header_lines):
-    """PURE. True when the editable header opens a block construct it does not close over
-    the entries below. Such a header reaches the ledger without owning it: every entry
-    survives in the file's bytes while the rendered file shows the reader something else —
-    an unclosed comment hides them, an unclosed fence or raw-HTML block re-renders them as
-    something other than the live list. #17's one-glance property is a property of reading
-    the file, so the guard has to hold there and not only in the bytes.
-
-    Three rules, one per way CommonMark ends a block. A fenced block is closed by a run of
-    the SAME character at least as long as the opener, carrying no info string. Types 1 to
-    5 are closed by their own closer. Types 6 and 7 are closed by a BLANK LINE, so the
-    header's last non-blank block may not begin with a raw-HTML line — there is no blank
-    line between it and the entries.
-
-    What it does not model: a construct outside the list, and any renderer-specific
-    behaviour beyond these rules. Its known mistakes and their direction are in
-    docs/known-limitations.md; do not assume they all fall on the refusing side."""
-    fence = None
-    plain = []
+    This is narrower than what a renderer accepts, deliberately. It refuses a fenced
+    example and a raw-HTML line that are perfectly legible; the remedy is inline code or an
+    HTML entity. That trade was the maintainer's on 2026-08-30, after four review rounds
+    each breached a version of this check that tried to model CommonMark instead — the
+    earlier one is at b29d3fe. A rule small enough to read whole is worth more on this
+    surface than a rule wide enough to be convenient.
+    docs/known-limitations.md carries what it costs."""
     for line in header_lines:
-        marker = _fence_marker(line)
-        if fence is None:
-            if marker is not None:
-                fence = (marker[0], marker[1])
-                continue
-            plain.append(_strip_inline_code(line))
+        bare = _strip_inline_code(line)
+        stripped = bare.strip()
+        if (stripped.startswith("<!--") and stripped.endswith("-->")
+                and len(stripped) >= 5 and "<" not in stripped[4:-3]
+                and ">" not in stripped[4:-3]):
             continue
-        ch, length = fence
-        if (marker is not None and marker[0] == ch and marker[1] >= length
-                and not marker[2].strip()):
-            fence = None
-    if fence is not None:
-        return True
-    text = "\n".join(plain).lower()
-    pos = 0
-    while True:
-        found = _next_header_opener(text, pos)
-        if found is None:
-            break
-        k, olen, closer = found
-        # An HTML comment's closer may OVERLAP its opener: <!--> and <!---> are complete
-        # comments, so that search starts two characters in rather than four.
-        c = text.find(closer, k + (2 if closer == "-->" else olen))
-        if c == -1:
+        body = bare.lstrip(" ")
+        if len(bare) - len(body) <= 3 and (body.startswith("```") or body.startswith("~~~")):
             return True
-        pos = c + len(closer)
-    tail = []
-    for line in plain:
-        tail = [] if not line.strip() else tail + [line]
-    if not tail:
-        return False
-    # Types 6 and 7 both begin "<" or "</" then an ASCII letter. A "<!" or "<?" start is
-    # one of the paired types above, already settled by the scan, so it does not fire here.
-    head = tail[0].lstrip()
-    head = head[2:3] if head.startswith("</") else head[1:2]
-    return tail[0].lstrip().startswith("<") and head.isascii() and head.isalpha()
+        for k, ch in enumerate(bare):
+            if ch != "<":
+                continue
+            after = bare[k + 1:k + 2]
+            # A "<" that opens nothing — "a < b", "3 < 4" — is arithmetic, not markup.
+            if after in ("!", "?", "/") or (after.isascii() and after.isalpha()):
+                return True
+    return False
 
 
 def _changelog_appended_span(old_text, new_text):
@@ -3836,7 +3747,7 @@ def _changelog_appended_span(old_text, new_text):
     j = _changelog_first_entry(new_lines)
     if j is None or new_lines[j:j + len(protected)] != protected:
         return "entries", []
-    if _changelog_header_leaves_a_block_open(new_lines[:j]):
+    if _changelog_header_reaches_the_ledger(new_lines[:j]):
         return "hidden", []
     return None, new_lines[j + len(protected):]
 
@@ -4416,7 +4327,7 @@ def blast_radius_diff_findings(root, base):
     change wants its changelog line (WARN — a stateless validator cannot tell an
     agent auto-apply from the maintainer's own edit); the changelog itself is
     append-only from its first entry line on (ERROR); the header above that line is
-    editable, and must not leave a block construct open over the entries (ERROR, #32).
+    editable, and must be prose that cannot reach the entries below it (ERROR, #32).
 
     What this cannot do: prove a human truthfully reviewed anything. That is the
     commit bit's job (#18) — see docs/known-limitations.md."""

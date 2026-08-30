@@ -118,27 +118,25 @@ Honest limits of the current build. This file grows as the product does (brief �
   nothing — the state of every freshly generated repo, and of both changelogs shipped here.
   There is no entry to launder until a first one exists, and the guard engages as soon as one
   does. Decided 2026-08-30 rather than discovered.
-- **The editable header may not leave a block construct open above the entries, and the model
-  of "open" is a fixed one.** A header that opens a construct and does not close it reaches the
-  ledger below without owning it: the entries survive in the bytes while the rendered file
-  shows a reader something else. The guard applies one rule per way CommonMark ends a block. A
-  fenced block must be closed by a run of the same character, at least as long as the opener,
-  carrying no info string. HTML block types 1 to 5 — `script`, `style`, `pre` and `textarea`,
-  the comment, the processing instruction, the declaration, and the CDATA section — must be
-  closed by their own closer. Types 6 and 7 end at a blank line, so the header's last non-blank
-  block may not begin with a raw-HTML line, there being no blank line between it and the
-  entries. Markers quoted as inline code are prose and do not count, so a header can still
-  document the syntax it is written in.
+- **The editable header must be prose, and that is narrower than valid Markdown.** A header
+  that opens markup the entries fall inside reaches the ledger without owning it: every entry
+  survives in the file's bytes while the rendered file shows a reader something else. Rather
+  than model when such markup is closed, the guard refuses markup in a header at all. On any
+  line, once its matched inline code spans are removed, it refuses a fenced-code marker at an
+  indent a fence can open at, and a `<` followed by `!`, `?`, `/` or a letter — every construct
+  that can swallow the ledger begins with one of those. A `<` that opens nothing, as in `a < b`,
+  is prose and is allowed. The one markup exception is a line whose whole content is a single
+  closed HTML comment carrying no angle bracket of its own; both shipped changelogs use one,
+  and it cannot reach past its own line.
 
-  **What it does not model, and in which direction it errs.** A construct outside those rules
-  is not modelled at all. Within them the known mistakes refuse headers a renderer would
-  accept — a closed `<pre>note</pre>` written as the header's last line with no blank line
-  after it is refused, as is any trailing line opening with a tag; the remedy is a blank line
-  before the entries. Do not read that as a guarantee that every mistake falls on the refusing
-  side. An earlier version of this bullet claimed exactly that while the fence rule was line
-  parity, and three constructions were accepted that left a fence open over the ledger; the
-  claim was the defect, not just the code. What can be said is what the rules are.
-- **A hyphen-bulleted line in the header pins the boundary early.** An entry is any line whose
+  **What it costs.** A fenced example in a header is refused, as is a raw-HTML line, though a
+  renderer would accept both. The remedy is inline code or an HTML entity — the engine's own
+  changelog already writes its entry format in inline backticks. **Why it is shaped this way,
+  since the cost is real:** four consecutive review rounds each breached a version of this check
+  that tried to model CommonMark's block rules, and each round's repair also carried a claim
+  about its own completeness that the next round disproved. The narrow rule is small enough to
+  read whole, which is the property that surface needs. The earlier model is at `b29d3fe` if the
+  trade is ever revisited.- **A hyphen-bulleted line in the header pins the boundary early.** An entry is any line whose
   `str.strip()` begins with `- `. A format example, or an ordinary bulleted list, written into
   the header without backticks counts as one and freezes everything from it down. Write header
   examples inside backticks, as both shipped changelogs do.

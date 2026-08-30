@@ -4193,40 +4193,8 @@ class TestChangelogAppendOnly(unittest.TestCase):
         self.assertIsNone(reason)
         self.assertEqual(appended, validate._changelog_lines(new))
 
-    # --- Codex round 02, Major: an open comment in the header hides the ledger ---
-    def test_header_opening_an_unclosed_comment_is_rejected(self):  # noqa: E301
-        # Every base entry survives verbatim and contiguous, so the entry rule alone
-        # accepts this. Rendered, the reader sees only the replacement entry.
-        attack = self.HEADED.replace("## Entries\n", "## Entries\n\n<!--\n")
-        attack += "-->\n- 2026-07-28 | skills/a/SKILL.md | the only one seen | scribe | c3d4e5f\n"
-        reason, _appended = validate._changelog_appended_span(self.HEADED, attack)
-        self.assertEqual(reason, "hidden")
-        self.assertFalse(validate._changelog_append_only(self.HEADED, attack))
-
-    def test_header_with_a_balanced_comment_is_allowed(self):
-        # Both shipped changelogs carry a balanced comment in their header.
-        new = self.HEADED.replace("## Entries\n", "<!-- a note to the reader -->\n\n## Entries\n")
-        self.assertTrue(validate._changelog_append_only(self.HEADED, new))
-
-    def test_comment_closed_only_after_the_entries_is_rejected(self):
-        new = self.HEADED.replace("## Entries\n", "<!-- opened here\n\n## Entries\n") + "-->\n"
-        self.assertFalse(validate._changelog_append_only(self.HEADED, new))
-
-    def test_second_comment_left_open_after_a_closed_one_is_rejected(self):
-        new = self.HEADED.replace("## Entries\n",
-                                  "<!-- closed --> and then <!--\n\n## Entries\n") + "-->\n"
-        self.assertFalse(validate._changelog_append_only(self.HEADED, new))
-
-    def test_open_comment_below_the_entries_is_still_an_ordinary_append(self):
-        # A comment opened AFTER the ledger cannot hide it, and appending was always legal.
-        new = self.HEADED + "<!-- a trailing note\n"
-        self.assertTrue(validate._changelog_append_only(self.HEADED, new))
-
-    def test_stray_close_marker_in_the_header_is_not_an_open_block(self):
-        self.assertFalse(validate._changelog_header_leaves_a_block_open(["--> alone"]))
-        self.assertTrue(validate._changelog_header_leaves_a_block_open(["<!-- alone"]))
-
-    # --- Codex round 04: any block construct left open, not only a comment ----
+    # --- The header rule (#32). Every construction rounds 02 to 06 found is here, and
+    # --- each is refused by the one rule the maintainer chose on 2026-08-30.
     def _hidden(self, opener, closer):
         """Open a construct in the header, close it after the ledger, append a
         replacement entry: every base entry survives verbatim and contiguous."""
@@ -4234,95 +4202,71 @@ class TestChangelogAppendOnly(unittest.TestCase):
         new += closer + "\n- 2026-07-28 | skills/a/SKILL.md | replacement | scribe | c3d4e5f\n"
         return validate._changelog_appended_span(self.HEADED, new)[0]
 
-    def test_unclosed_fence_in_the_header_is_rejected(self):
-        self.assertEqual(self._hidden("```", "```"), "hidden")
-        self.assertEqual(self._hidden("~~~", "~~~"), "hidden")
+    def test_every_construction_the_review_rounds_found_is_refused(self):
+        R = validate._changelog_header_reaches_the_ledger
+        for label, lines in (
+                ("round 02: an unclosed HTML comment", ["<!--"]),
+                ("round 04: an unclosed fence", ["```"]),
+                ("round 04: an unclosed raw HTML block", ["<script>"]),
+                ("round 05: a backtick fence closed by tildes", ["```", "~~~"]),
+                ("round 05: a four-backtick fence closed by three", ["````", "```"]),
+                ("round 05: a closer carrying an info string", ["```", "``` junk"]),
+                ("round 05: an unclosed type-4 declaration", ["<!DOCTYPE html"]),
+                ("round 05: a raw HTML line above the entries", ["header", "", "<div hidden>"]),
+                ("round 05: a closer fabricated out of inline code",
+                 ["<script>", "</scr`x`ipt>"]),
+                ("round 06: raw HTML that is not first in its block",
+                 ["# Header", "<div hidden>"]),
+                ("round 06: a multiline code span hiding a declaration",
+                 ["`<!DOCTYPE", "code`", "<script>"]),
+                ("round 06: a non-breaking space after a closing fence", ["```", "``` "]),
+                ("a live tag smuggled between two closed comments",
+                 ["<!-- a --><script><!-- c -->"]),
+        ):
+            with self.subTest(label=label):
+                self.assertTrue(R(lines))
 
-    def test_unclosed_raw_html_block_in_the_header_is_rejected(self):
-        for opener, closer in (("<script>", "</script>"), ("<style>", "</style>"),
-                               ("<pre>", "</pre>"), ("<textarea>", "</textarea>"),
-                               ("<?php", "?>"), ("<![CDATA[", "]]>")):
-            with self.subTest(opener=opener):
-                self.assertEqual(self._hidden(opener, closer), "hidden")
+    def test_the_header_a_changelog_actually_wants_is_allowed(self):
+        R = validate._changelog_header_reaches_the_ledger
+        for label, lines in (
+                ("ordinary prose", ["# Governance changelog", "", "Append-only.", ""]),
+                ("a whole-line closed comment", ["<!-- entries below, newest last -->"]),
+                ("an entry format written as inline code",
+                 ["Format: `- date | skills/<name>/SKILL.md | gist | agent | sha`"]),
+                ("a four-space-indented code block", ["    not a fence"]),
+                ("a less-than sign that opens nothing", ["a < b, and 3 < 4"]),
+                ("an entity where a tag would be refused", ["write &lt;script&gt; like this"]),
+        ):
+            with self.subTest(label=label):
+                self.assertFalse(R(lines))
 
-    def test_raw_html_opener_is_matched_case_insensitively(self):
-        self.assertEqual(self._hidden("<SCRIPT>", "</SCRIPT>"), "hidden")
+    def test_both_shipped_changelog_headers_pass_the_rule(self):
+        # The rule is only worth having if the files that ship with groundwork clear it.
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for rel in ("governance/changelog.md", "demo/governance/changelog.md"):
+            with self.subTest(rel=rel):
+                with open(os.path.join(root, rel), encoding="utf-8") as fh:
+                    lines = fh.read().split("\n")
+                self.assertFalse(validate._changelog_header_reaches_the_ledger(lines))
 
-    def test_a_closed_fence_in_the_header_is_allowed(self):
-        new = self.HEADED.replace("## Entries\n",
-                                  "```\nformat: date, skill, gist, agent, sha\n```\n\n## Entries\n")
-        self.assertTrue(validate._changelog_append_only(self.HEADED, new))
+    def test_a_fenced_example_is_refused_and_that_is_the_trade(self):
+        # Narrower than a renderer accepts, on purpose. Recorded as a test so the cost is
+        # asserted rather than described.
+        self.assertTrue(validate._changelog_header_reaches_the_ledger(
+            ["```", "- date | skills/x/SKILL.md | gist | agent | sha", "```"]))
 
-    def test_a_closed_raw_html_block_in_the_header_is_allowed(self):
-        new = self.HEADED.replace("## Entries\n", "<pre>a note</pre>\n\n## Entries\n")
-        self.assertTrue(validate._changelog_append_only(self.HEADED, new))
-
-    def test_a_marker_quoted_as_inline_code_is_prose(self):
-        # Otherwise a header could not document the syntax it is written in.
-        for quoted in ("The token `<!--` opens a comment.",
-                       "Fence with ``` to quote a line.",
-                       "A `<script>` tag is raw HTML."):
-            with self.subTest(quoted=quoted):
-                self.assertFalse(validate._changelog_header_leaves_a_block_open([quoted]))
-
-    def test_an_unmatched_backtick_run_is_left_alone(self):
-        # Stripping it would turn a real fence line into prose.
-        self.assertEqual(validate._strip_inline_code("```"), "```")
+    def test_inline_code_spans_are_prose(self):
         # A matched span becomes a SPACE, so the text on either side cannot join into a
-        # marker nobody wrote.
+        # marker nobody wrote, and an N-backtick run closes only with a run of exactly N.
         self.assertEqual(validate._strip_inline_code("a `b` c"), "a   c")
         self.assertEqual(validate._strip_inline_code("</scr`x`ipt>"), "</scr ipt>")
-        # CommonMark closes an N-backtick run with a run of exactly N.
         self.assertEqual(validate._strip_inline_code("a `b `` c"), "a `b `` c")
+        self.assertEqual(validate._strip_inline_code("```"), "```")
 
-    # --- Codex round 05: the fence rule, and the blank-line-terminated types ---
-    def test_a_fence_is_closed_only_by_its_own_marker(self):
-        H = validate._changelog_header_leaves_a_block_open
-        self.assertTrue(H(["```", "~~~"]))              # a tilde run closes no backtick fence
-        self.assertTrue(H(["````", "```"]))             # a closer must be at least as long
-        self.assertTrue(H(["```", "``` trailing"]))     # a closer carries no info string
-        self.assertTrue(H(["```", "    ```"]))          # inside a fence this line is content
-        self.assertFalse(H(["````", "````"]))
-        self.assertFalse(H(["```python", "```"]))
-        self.assertFalse(H(["~~~", "~~~~"]))            # a longer closer is allowed
-
-    def test_a_four_space_indented_marker_is_not_a_fence(self):
-        self.assertFalse(validate._changelog_header_leaves_a_block_open(["    ```"]))
-        self.assertTrue(validate._changelog_header_leaves_a_block_open(["   ```"]))
-
-    def test_a_fence_line_inside_a_comment_does_not_pair_with_a_real_one(self):
-        # Line parity would cancel these two against each other.
-        self.assertTrue(validate._changelog_header_leaves_a_block_open(
-            ["<!--", "```", "-->", "```"]))
-
-    def test_an_unclosed_declaration_is_an_open_block(self):
-        H = validate._changelog_header_leaves_a_block_open
-        self.assertTrue(H(["<!DOCTYPE html"]))          # CommonMark HTML block type 4
-        self.assertFalse(H(["<!DOCTYPE html>", ""]))
-
-    def test_a_raw_html_line_with_no_blank_before_the_entries_is_refused(self):
-        # Types 6 and 7 end at a blank line, and there is none before the entries.
-        H = validate._changelog_header_leaves_a_block_open
-        self.assertTrue(H(["header", "", "<div hidden>"]))
-        self.assertTrue(H(["header", "", "</div>"]))
-        self.assertFalse(H(["header", "", "<div hidden>", ""]))
-        self.assertFalse(H(["header", "", "<!-- a closed comment -->"]))
-
-    def test_a_tag_opener_needs_a_tag_boundary(self):
-        # Without one, "<presentation>" reads as a "<pre" that never closes.
-        self.assertFalse(validate._next_header_opener("<presentation> is a word", 0))
-        self.assertTrue(validate._next_header_opener("<pre>", 0))
-
-    def test_fabricating_a_closer_out_of_inline_code_is_refused(self):
-        self.assertTrue(validate._changelog_header_leaves_a_block_open(
-            ["<script>", "</scr`x`ipt>"]))
-
-    def test_overlapping_comment_closers_are_complete_comments(self):
-        # CommonMark: <!--> and <!---> are complete comments.
-        self.assertFalse(validate._changelog_header_leaves_a_block_open(["<!-->"]))
-        self.assertFalse(validate._changelog_header_leaves_a_block_open(["<!--->"]))
-        self.assertFalse(validate._changelog_header_leaves_a_block_open(["<!---->"]))
-        self.assertTrue(validate._changelog_header_leaves_a_block_open(["<!----"]))
+    def test_the_end_to_end_error_names_the_header_rule(self):
+        self.assertEqual(self._hidden("<!--", "-->"), "hidden")
+        self.assertEqual(self._hidden("```", "```"), "hidden")
+        self.assertEqual(self._hidden("<script>", "</script>"), "hidden")
 
 
 PIN_OK = "---\nschema_version: 2\ngenerated_by_commit: abc1234\n---\n"
@@ -4487,7 +4431,7 @@ class TestBlastRadiusDiff(unittest.TestCase):
                    CHANGELOG_WITH_ENTRY.replace("## Entries\n", "## Entries\n\n<!--\n")
                    + "-->\n- 2026-07-28 | skills/weekly-digest/SKILL.md | swapped | scribe | c3d4e5f\n")
             findings = validate.blast_radius_diff_findings(d, "HEAD")
-            self.assertTrue(any(f.level == "ERROR" and "leaves a markdown or HTML block open"
+            self.assertTrue(any(f.level == "ERROR" and "carries markup that can reach"
                                 in f.message and f.path.endswith("changelog.md")
                                 for f in findings))
 

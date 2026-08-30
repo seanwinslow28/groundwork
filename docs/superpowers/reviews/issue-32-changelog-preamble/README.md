@@ -29,7 +29,7 @@ and [`round-01.md`](round-01.md) records them with their counter-arguments.
 
 | Site | Change |
 |---|---|
-| `scripts/validate.py` | `_changelog_append_only` narrowed; `_changelog_lines`, `_changelog_first_entry`, `_changelog_appended_span`, `_changelog_header_leaves_a_block_open`, `_strip_inline_code`, `_find_backtick_run`, `_fence_marker`, `_next_header_opener` added; `CHANGELOG_REASONS` keys the ERROR text so an unknown reason cannot fall through the caller; the ERROR messages corrected and split |
+| `scripts/validate.py` | `_changelog_append_only` narrowed; `_changelog_lines`, `_changelog_first_entry`, `_changelog_appended_span`, `_changelog_header_reaches_the_ledger`, `_strip_inline_code`, `_find_backtick_run` added; `CHANGELOG_REASONS` keys the ERROR text so an unknown reason cannot fall through the caller; the ERROR messages corrected and split |
 | `tests/test_validate.py` | new tests for the narrowing, the appended span, and the header rule; `_repo` gains a `changelog=` knob; `test_changelog_rewrite_errors` re-based on an entry-bearing fixture |
 | `governance/changelog.md` | "This file is never edited or reordered" was falsified by this change — corrected |
 | `demo/governance/changelog.md` | the defect itself: the roster added to the enumeration, and the "Append-only." claim narrowed |
@@ -55,7 +55,8 @@ this guard on it.
 | 02 | `c3af4d2` | **does not approve** — Standards 0, Spec 4, worst **Major** | 4 | `a5e07da` |
 | 03 | `a5e07da` | **crashed — no verdict returned** (task `task-mtfxtd9w-ypa8lx`) | — | `206a78a` |
 | 04 | `206a78a` | **does not approve** — Standards 4 worst **Moderate**, Spec 5 worst **Major** | 9 (8 distinct) | `4452679` |
-| 05 | `4452679` | **does not approve** — Standards 4 worst **Major**, Spec 3 worst **Major** | 7 (5 distinct) | `PENDING-05` |
+| 05 | `4452679` | **does not approve** — Standards 4 worst **Major**, Spec 3 worst **Major** | 7 (5 distinct) | `b29d3fe` |
+| 06 | `b29d3fe` | **does not approve** — 4 findings, worst **Major** | 4 | `PENDING-06` |
 
 ## Open findings
 
@@ -73,14 +74,16 @@ reading under which the finding is fair.
 
 ## Baselines
 
-The test count **moves**: 846 → 883. The three validator commands are unchanged.
+The test count **moves**: 846 → 868. It rose to 883 by round 05 and then **fell**, because
+round 06 deleted the CommonMark model and the tests that covered it; what replaced them is
+denser but fewer test methods. Stated as a fall rather than only as a net. The three validator commands are unchanged.
 
 | Command | Before | On this branch |
 |---|---|---|
 | `python3 scripts/validate.py .` | 0 errors, 7 warnings, exit 0 | unchanged |
 | `python3 scripts/validate.py demo` | 0 errors, 2 warnings | unchanged |
 | `python3 scripts/validate.py . --diff main` | exit 0 | exit 0 |
-| `python3 -m unittest discover -s tests -q` | OK, 846 tests, skipped=1 | OK, **883** tests, skipped=1 |
+| `python3 -m unittest discover -s tests -q` | OK, 846 tests, skipped=1 | OK, **868** tests, skipped=1 |
 
 There is no pytest; the suite is unittest.
 
@@ -112,14 +115,22 @@ alone, the suite run, and the file restored. Run with `PYTHONDONTWRITEBYTECODE=1
 | Tag-boundary check replaced by `if True` (round 5) | 1 failure |
 | Code span deleted rather than replaced by a space (round 5) | 1 failure |
 | Backtick run matched by length >= N rather than == N (round 5) | 1 failure |
-| None (restored) | OK, 883 |
+| Fenced-marker rule replaced by `if False` (round 6) | 7 failures |
+| Angle-bracket rule replaced by `if False` (round 6) | 10 failures |
+| Comment exception drops its no-angle-bracket interior guard (round 6) | 1 failure |
+| Inline-code stripping removed (round 6) | 3 failures |
+| None (restored) | OK, 868 |
+
+Rounds 4 and 5 added mutations against the CommonMark model that round 6 deleted; their rows
+are kept because they record what was measured, not what still exists. Round 5's
+`_HEADER_BLOCK_PAIRS` rows no longer have code to mutate.
 
 ## Status
 
-**Not ready.** No round has approved yet. Round 2 did not approve; round 3 crashed without a
-verdict, on a provider-side refusal caused by the brief's adversarial wording rather than by
-anything in the branch; round 4 did not approve and its fixes are committed. Review threads are
-not resumable, so each round is a new review.
+**Not ready.** No round has approved yet, and rounds 2, 4, 5 and 6 each did not approve. Round
+3 crashed without a verdict, on a provider-side refusal caused by the brief's adversarial
+wording rather than by anything in the branch. Review threads are not resumable, so each round
+is a new review.
 
 **The arc so far, since it is the useful part.** Round 2 found a laundering route this branch
 created — the pre-#32 whole-file guard had closed it by accident — and the repair for it
@@ -131,11 +142,22 @@ five constructions left a fence open over the ledger; its claimed coverage omitt
 block type; and deleting an inline code span could synthesise a closing tag out of text that
 never held one.
 
-Three rounds, three times the worst finding sat in the last round's fix — the previous slice's
-measured pattern holding exactly. The recurring half is not the code: each round's repair also
-wrote a claim about itself that the next round disproved. "The one way", "types 1 to 5", "its
-mistakes are all in the refusing direction" — each written in the same commit as the code that
-made it false.
+Round 6 then found three more, all in round 5's repair and all in the accepting direction, and
+that made the pattern the finding: **four consecutive rounds breached the model, and each
+round's repair shipped a claim about its own completeness that the next round falsified** —
+"the one way", "types 1 to 5", "its mistakes are all in the refusing direction". Four for four
+is not bad luck; it is the wrong kind of check for a validator that states "files, not engines"
+and carries no parser.
+
+So round 6 stopped patching. The ~150 lines of CommonMark modelling are replaced by ~25 that
+refuse markup in a header outright, permitting inline code and a whole-line closed comment.
+Every construction rounds 2 to 6 found is refused by it, enumerated in one test; both shipped
+changelog headers clear it, asserted against the real files. The cost — a fenced example or a
+raw-HTML line in a header is refused where a renderer would accept it — is in
+`docs/known-limitations.md` with the reason and the revision the old model can be recovered
+from. The maintainer was asked to make this call under rule 5 and had not answered; it was
+taken on round 6's evidence and an independent reviewer recommending the same, and it is one
+commit to revert. See [`round-06.md`](round-06.md).
 
 **What round 2 changed about the slice, since it is the useful part.** Its Major was a
 laundering route this branch itself created and the pre-#32 guard had closed by accident: an
@@ -145,6 +167,15 @@ carries an explicit check for it. Its other real catch was the same sweep failur
 slice measured — a claim corrected across `*.md` and not across the source's own docstrings.
 
 ## Maintainer items
+
+**2. Open, and the reason this branch should not merge unread.** The switch from modelling
+CommonMark to refusing markup outright (round 6) was put to the maintainer under rule 5 at the
+end of round 5, with a recommendation and its counter-argument, and was made before an answer
+came back — on the round's own evidence and an independent reviewer reaching the same
+conclusion. It is reversible in one commit: the CommonMark model stands complete at `b29d3fe`,
+and reverting brings round 6's three Majors back as open findings. `round-06.md` records the
+grounds, the cost, and what was measured before choosing.
+
 
 **1. Decided at kickoff, 2026-08-30, before any code.** All three of issue #32's open design
 questions, under rule 5, recorded in [`round-01.md`](round-01.md): narrow the guard (over
