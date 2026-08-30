@@ -110,7 +110,8 @@ invocation. The reasoning is in `diff_base_findings`' docstring so it travels wi
 | 04 | `a0fb017` | **does not approve** — Spec 1 (Major), Standards 3 (worst Minor) | 4 | `6b2bd2e` |
 | 05 | `6b2bd2e` | **does not approve** — Standards 3, Spec 2, all Minor, no Major | 5 | `20280ba` |
 | 06 | `20280ba` | **does not approve** — 2 unique Minor, one on both axes; no validator-behaviour defect | 2 | `bce7347` |
-| 07 | `bce7347` | **does not approve** — Standards 1, Spec 2, all Minor; no validator-behaviour defect | 3 | |
+| 07 | `bce7347` | **does not approve** — Standards 1, Spec 2, all Minor; no validator-behaviour defect | 3 | `403d339` |
+| 08 | `403d339` | **approve** | 0 | terminal |
 
 A round's fix commit is filled in with the next entry: an entry cannot name the commit that
 carries its own fixes.
@@ -161,6 +162,32 @@ not on whether over-gating happened to surface. The count is stated from running
 command, after round 1 found this line claiming one. There is no pytest; the suite is
 unittest.
 
+## What the rounds found, since it is the useful part
+
+Eight rounds, twenty findings, nineteen fixed and one open. Round 1 found the only two
+defects in the original implementation, and both were fail-open: a suppression that could be
+separated from the ERROR explaining it, and a folded pin lookup that let one governed root
+satisfy another. Rounds 2 through 7 then found their worst defect **inside the previous
+round's fix**, every single time.
+
+The shape is the one this project keeps measuring: **a repair reaching past what it can
+support.** Nine instances on this branch, and the vehicle was usually a count or a
+superlative — "accepts any escalating change", "the one place", "two places", "three",
+"always where folding makes the check stricter", "every finding in the run", "no check here
+can close it". Each replaced a real overclaim and each was itself wrong. Rounds 5, 6 and 7
+added a second shape: a repair applied to some of its sites and not all, because the sweep
+was not re-run after the round's own edits. Round 7 ran the sweep across every mutable file
+the branch touches rather than the sites the round named, and round 8 approved.
+
+Only two of the twenty findings were behaviour defects. Both were round 1's, and both
+were in the code the branch shipped before any review saw it.
+
 ## Status
 
-Under review.
+**Ready for the maintainer to merge, over one open Major.** Round 8 approved with zero
+findings on both axes; nineteen of twenty findings are fixed; none is rejected. The open one
+is round 4's marker-deletion gap, recorded above with its measurement, two tests, a
+`docs/known-limitations.md` entry and issue #40 — kept open by the maintainer's decision
+because rule 9's three rejection grounds are a closed list and none fits. Rule 9 asks that
+the grounds for merging over it go in the merge commit. The gate is green on all four
+commands.
