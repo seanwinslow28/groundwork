@@ -97,7 +97,7 @@ the work type (section 1), the accountable owner (section 7), plus the grounding
 | Who owns the principle, and who owns the check? | rule:value_owner, rule:runtime_check_owner | They are often different owners. |
 | When this rule blocks somebody, who can they appeal to? | rule:human_appeal, rule:human_appeal_owner | A high-risk rule must have one. There is no rung six. |
 | For each owner named above: is it a role, or a named holder? | roster:role, roster:holder | The locked pair, and the roster is where it is said which. A named holder need not be a person — the type question two rows down settles that. |
-| For each role just named: who holds it today? | roster:role, roster:holder | Nobody yet is an answer; it stops a rule activating, and stops a high-risk rule shipping at all. Otherwise name every holder, not the first one. |
+| For each role just named: who holds it today? | roster:role, roster:holder | Nobody yet is an answer; a rule it owns cannot activate, and a high-risk rule whose appeal owner it is does not ship at all. Otherwise name every holder, not the first one. |
 | For every holder now named — a role's, or one standing alone — is each a human or an agent? | roster:holder, roster:type | The roster's only two type values, asked in its own words. An appeal path that ends at an agent is not an appeal path. |
 | How often should this map of who holds what be re-confirmed? | roster:review_by | Asked once for the company, not per activity. An org map nobody re-checks is the stalest thing in the repo. |
 
