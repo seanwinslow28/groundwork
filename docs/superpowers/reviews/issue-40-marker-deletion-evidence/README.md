@@ -36,7 +36,7 @@ rule 11 requires.
 | Entry | What it is | Reviewed SHA | Verdict | Fixes landed in |
 |---|---|---|---|---|
 | [01](round-01.md) | Maintainer decision, not a review round | n/a — decided against `9e8d7f8` | n/a | n/a |
-| [02](round-02.md) | Codex review round | `ae654cf` | Not clean — 2 Major + 7 Minor on classifier correctness, plus 2 Major on prose | (this branch's round-02 fix commit) |
+| [02](round-02.md) | Codex review round | `ae654cf` | Not clean — 2 Major + 7 Minor on classifier correctness, plus 2 Major on prose | `d63196c` |
 
 ## Open findings
 
