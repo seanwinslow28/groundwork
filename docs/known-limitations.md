@@ -77,10 +77,37 @@ Honest limits of the current build. This file grows as the product does (brief �
     2026-08-30; feeding the discovered root back into `_pin_dirs` was considered and not
     taken.
 
-    **Where the evidence runs out.** The walk reads committed history. A shallow clone whose
-    graft point is newer than the commit that added the marker will not see it, and the run
-    is silent — the same silence as before #40, so not a regression, but not closed either.
-    A marker that was never committed at all leaves no evidence anywhere, by construction.
+    **Where the evidence runs out.** The walk reads what `git log` will show it, and that is
+    narrower than "committed history" — an earlier version of this entry said the latter and
+    was wrong. Each of these is silent, which is the same silence as before #40, so none is a
+    regression, but none is closed:
+
+      - A **shallow clone** whose graft point is newer than the commit that added the marker.
+      - A marker that was **never committed at all**, which leaves no evidence anywhere.
+      - A marker whose history lives inside an **initialized submodule**. The working-tree
+        scan descends submodules, so a marker still present in one is seen; the superproject's
+        history records only the gitlink, so the evidence of an intermediate state is not.
+        Reading each submodule's own history would be a second mechanism, and this slice did
+        not build one.
+      - History altered by **`git replace` or `.git/info/grafts`**, which can make HEAD appear
+        to parent the base directly and hide the addition between them. Unlike naming an old
+        base, that is not something done by accident, and it is local to the clone the gate
+        runs in — `refs/replace` is not fetched by default.
+
+    Codex round 02 found all four, and found four more that are FIXED rather than listed here:
+    a marker added by a merge result (`git log` emits no diff for a merge by default), a
+    single undecodable pathname erasing every marker in the same output, a `strip()` that both
+    invented markers and hid them, and `log.showRoot=false` suppressing a root commit's
+    addition. Entry 02 of [this slice's review
+    record](superpowers/reviews/issue-40-marker-deletion-evidence/) records each with its
+    disposition.
+
+    **Absence is proven before it is reported.** A working-tree scan that could not read part
+    of the tree cannot show anything is missing, so a run with an unreadable directory reports
+    no marker deletion at all — the blast-radius pass still raises the accurate unreadable
+    ERROR. A path git reported is also confirmed absent with `lexists` rather than by the scan
+    alone, because `os.walk` lists a gitlink or a symlink-to-directory as a directory and not
+    as a file.
   - **A root spelled differently at base and in the working tree reads as missing.** The pin
     lookup is exact, because folding it is the fail-open direction: a base holding
     `a/groundwork.pin` would otherwise satisfy a separate `A/` root and the tripwire would

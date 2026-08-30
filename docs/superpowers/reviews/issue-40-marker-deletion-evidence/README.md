@@ -36,14 +36,35 @@ rule 11 requires.
 | Entry | What it is | Reviewed SHA | Verdict | Fixes landed in |
 |---|---|---|---|---|
 | [01](round-01.md) | Maintainer decision, not a review round | n/a — decided against `9e8d7f8` | n/a | n/a |
+| [02](round-02.md) | Codex review round | `ae654cf` | Not clean — 2 Major + 7 Minor on classifier correctness, plus 2 Major on prose | (this branch's round-02 fix commit) |
 
 ## Open findings
 
-None yet.
+Both are from entry 02, both **Minor**, and both are recorded in `docs/known-limitations.md`.
+Neither is rejected, because no closed-list category fits and rule 9 keeps such a finding
+open rather than dressing it as something else.
+
+- **Finding 4 — a marker inside an initialized submodule.** The superproject's history
+  records a gitlink, not the nested path, so an intermediate marker state inside a vendored
+  submodule leaves no evidence in the outer walk. Closing it needs a second mechanism: a
+  `git log` per initialized submodule.
+- **Finding 7 — `git replace` and `.git/info/grafts`.** A local replacement can make HEAD
+  appear to parent the base directly and hide the addition between them. The one-flag fix
+  (`--no-replace-objects`) would make this read follow a different history from
+  `_git_diff_context`'s base-tree read in the same run.
+
+Both are with the maintainer under rule 5, recommended for documenting rather than fixing.
 
 ## Rejected findings
 
-None yet.
+None.
+
+## Corrections carried forward
+
+Entry 02 corrects entry 01's account of mutation M8. Entry 01 argued the mutation survived
+"by construction"; entry 02's merge fixture disproves that argument. Entry 01 is immutable,
+so the correction lives in entry 02, and the docstring sentence that carried the claim was
+removed from the code.
 
 ## Maintainer items
 

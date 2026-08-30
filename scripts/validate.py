@@ -3894,18 +3894,34 @@ def _markers_added_since_base(toplevel, base):
     emits nothing on it, which leaves the pre-#40 silence rather than inventing
     a finding out of a failed subprocess.
 
-    `--no-renames` is deliberate and load-bearing. git's rename detection would
-    report a moved marker as R rather than A and this walk would miss it;
-    forcing every introduction to read as an addition is the fail-closed
-    direction.
+    Every flag on the `git log` call is here because dropping it was measured to
+    lose a real marker or to invent one:
 
-    `--diff-filter=A` narrows git's output; it is NOT what makes the caller
-    correct, and this docstring does not claim it is. Any path this returns that
-    the caller does not filter out is absent from the base tree and absent from
-    the working tree, so it can only have been created inside the range —
-    dropping the filter changes no verdict, and a mutation dropping it survives
-    the suite for that reason. It is kept because asking git for additions is
-    cheaper than asking for every touch on a long history.
+    - `--no-renames`: rename detection reports a moved marker as R, not A.
+    - `-m`: `git log --name-only` emits NO diff for a merge commit by default,
+      so a marker introduced by a merge RESULT — in the merge's tree and in
+      neither parent — was invisible (Codex round 02, finding 1). `-m` diffs a
+      merge against each parent separately; a path reported that way is in that
+      merge's tree, so it did exist somewhere in the range. Duplicates collapse
+      into the set.
+    - `--root`: without it `log.showRoot=false` suppresses a root commit's diff,
+      and an orphan line's marker addition goes unseen (round 02, finding 6).
+    - `--diff-filter=A`: kept, and NOT claimed to be verdict-neutral. An earlier
+      version of this docstring said dropping it "changes no verdict". Round 02
+      disproved that on the merge fixture, where the filter is exactly what hid
+      the path. It is kept because `-m` and `--root` now make the additions
+      visible, and asking git for additions is narrower than asking for every
+      touch.
+
+    Paths are decoded per-path with `os.fsdecode`, as `_git_diff_context` does
+    for the base tree. Decoding the whole stream as strict UTF-8 meant one
+    undecodable pathname anywhere in the output erased EVERY marker in it —
+    round 02 finding 2, an amplifying failure rather than a local one.
+
+    Names are NOT stripped. `-z` frames them exactly, and stripping newlines
+    turned a file named "\ngroundwork.pin" into a marker while moving a real
+    marker out of a skipped directory — round 02 finding 3, wrong in both
+    directions at once.
 
     The pathspecs match by suffix, so `*groundwork.pin` also matches a file
     named `xgroundwork.pin`. The basename is re-checked here rather than trusted
@@ -3916,7 +3932,8 @@ def _markers_added_since_base(toplevel, base):
         if head.returncode != 0:
             return set()
         log = subprocess.run(["git", "-C", toplevel, "log", "--diff-filter=A",
-                              "--no-renames", "--name-only", "--format=", "-z",
+                              "--no-renames", "-m", "--root", "--name-only",
+                              "--format=", "-z",
                               "%s..HEAD" % base, "--",
                               "*groundwork.pin", "*" + INTERVIEW_MANIFEST],
                              capture_output=True)
@@ -3924,15 +3941,11 @@ def _markers_added_since_base(toplevel, base):
         return set()
     if log.returncode != 0:
         return set()
-    try:
-        names = log.stdout.decode("utf-8")
-    except UnicodeError:
-        return set()
     out = set()
-    for name in names.split("\0"):
-        name = name.strip("\n")
-        if not name:
+    for raw in log.stdout.split(b"\0"):
+        if not raw:
             continue
+        name = os.fsdecode(raw)
         if os.path.basename(name) in ("groundwork.pin", INTERVIEW_MANIFEST):
             out.add(name)
     return out
@@ -4025,7 +4038,7 @@ def diff_base_findings(root, base):
     # The walk's OWN findings (an unreadable directory) belong to the tripwire,
     # which reports them whether or not it is dormant; taking them here too
     # would only duplicate them into main()'s dedupe.
-    wt_files, _wt_findings = _walk_working_tree(root)
+    wt_files, wt_walk_findings = _walk_working_tree(root)
 
     for g in sorted(_roots_missing_from_base(_pin_dirs(root, base_files, scope, wt_files),
                                              base_rels)):
@@ -4048,14 +4061,41 @@ def diff_base_findings(root, base):
     # are a third source, and they are consulted ONLY for that case: a marker
     # the base holds is already covered by `_pin_dirs` reading the base tree,
     # and a marker the working tree holds is the loops above.
-    wt_rels = set()
-    for abspath in wt_files:
-        wt_rels.add(os.path.relpath(abspath, root).replace(os.sep, "/"))
+    #
+    # Absence has to be PROVEN before it is reported, and the working-tree scan
+    # alone does not prove it. Three ways it can be wrong, all measured by Codex
+    # round 02:
+    #   - The scan could not read part of the tree (an unreadable directory).
+    #     It cannot then show anything is missing, so nothing here is reported
+    #     at all; `blast_radius_diff_findings` still raises the accurate
+    #     unreadable-directory ERROR, so the run is red for the true reason.
+    #   - `os.walk` lists a gitlink or a symlink-to-directory under `dirnames`,
+    #     not `filenames`, so a path git reported can be present on disk and
+    #     absent from `wt_files`. `os.path.lexists` settles that directly.
+    #   - git spells a path NFC while a macOS filesystem lists it NFD, and a
+    #     case-folding filesystem spells it differently again, so the scan can
+    #     miss a marker that is still there. `lexists` asks the filesystem in
+    #     its own terms and is the whole answer: on a normalization- or
+    #     case-INSENSITIVE filesystem it finds the file under git's spelling,
+    #     and on a sensitive one the two spellings are genuinely different files
+    #     and the deletion is real. An NFC fold was tried here and REMOVED — no
+    #     test could be made to bite it behind `lexists`, and on a sensitive
+    #     filesystem it would have suppressed a true deletion.
+    # `base_rels` stays an EXACT match: `_roots_missing_from_base` documents why
+    # folding it is the fail-OPEN direction there, and that reasoning is
+    # unchanged here.
+    if wt_walk_findings:
+        return findings
+    wt_rels = {os.path.relpath(a, root).replace(os.sep, "/") for a in wt_files}
     for repo_path in sorted(_markers_added_since_base(toplevel, base)):
         if scope != "." and not repo_path.startswith(scope + "/"):
             continue
         rel = repo_path if scope == "." else repo_path[len(scope) + 1:]
-        if _diff_in_workbench_skips(rel) or rel in base_rels or rel in wt_rels:
+        if _diff_in_workbench_skips(rel) or rel in base_rels:
+            continue
+        if rel in wt_rels:
+            continue
+        if os.path.lexists(os.path.join(root, *rel.split("/"))):
             continue
         findings.append(_deleted_marker_finding(rel))
     return findings

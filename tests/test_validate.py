@@ -8781,6 +8781,200 @@ class TestDiffBaseContract(unittest.TestCase):
             self.assertEqual(
                 self._messages(validate.diff_base_findings(d, base), "no longer holds"), [])
 
+    # --- Codex round 02 regressions. Each reproduces the reviewer's own state.
+
+    def test_a_marker_added_by_a_merge_result_is_seen(self):
+        """Round 02 finding 1, Major. `git log --name-only` emits NO diff for a
+        merge commit by default, so a marker added by the merge RESULT — in the
+        merge's tree and in neither parent — was invisible and the escape stood.
+        `-m` diffs a merge against each parent separately."""
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q", "-b", "main")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _git(d, "commit", "-q", "--allow-empty", "-m", "base")
+            base = _git_out(d, "rev-parse", "HEAD")
+            _git(d, "switch", "-q", "-c", "side")
+            _write(d, "side.txt", "side\n")
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "side")
+            _git(d, "switch", "-q", "main")
+            _git(d, "merge", "-q", "--no-ff", "--no-commit", "side")
+            _write(d, "groundwork.pin", PIN_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "merge adds the marker")
+            os.remove(os.path.join(d, "groundwork.pin"))
+            self.assertIn("groundwork.pin", validate._markers_added_since_base(d, base))
+            self.assertEqual(
+                [f.path for f in
+                 self._messages(validate.diff_base_findings(d, base), "no longer holds")],
+                ["groundwork.pin"])
+
+    def test_one_undecodable_path_does_not_erase_the_evidence(self):
+        """Round 02 finding 2, Major. The whole NUL stream was decoded as strict
+        UTF-8 and any failure returned an empty set, so ONE undecodable pathname
+        anywhere in git's output suppressed every marker in it — an amplifying
+        failure. Decoding is per-path now, as `_git_diff_context` already did."""
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q", "-b", "main")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "seed.md", "# Seed\n")
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "base")
+            base = _git_out(d, "rev-parse", "HEAD")
+            # The undecodable path goes through git's INDEX, not the
+            # filesystem: APFS and HFS+ reject a filename that is not valid
+            # UTF-8, so the reviewer's on-disk repro cannot be built on macOS.
+            # What the helper actually reads is git's output, and this puts the
+            # same bytes there.
+            _write(d, "groundwork.pin", PIN_OK)
+            _git(d, "add", "-A")
+            blob = _sp.run(["git", "-C", d, "hash-object", "-w", "--stdin"],
+                           input=PIN_OK, text=True, capture_output=True,
+                           check=True).stdout.strip()
+            _sp.run([b"git", b"-C", os.fsencode(d), b"update-index", b"--add",
+                     b"--cacheinfo",
+                     b"100644," + blob.encode("ascii") + b",\xff/groundwork.pin"],
+                    check=True, capture_output=True)
+            _git(d, "commit", "-qm", "two markers, one undecodable path")
+            os.remove(os.path.join(d, "groundwork.pin"))
+            seen = validate._markers_added_since_base(d, base)
+            self.assertIn("groundwork.pin", seen,
+                          "the ASCII marker must survive an undecodable sibling")
+
+    def test_a_newline_lookalike_is_not_promoted_to_a_marker(self):
+        """Round 02 finding 3, over-refusing half. Names were `strip("\\n")`ed
+        although `-z` already frames them exactly, which turned a file literally
+        named "\\ngroundwork.pin" into a marker."""
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q", "-b", "main")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "seed.md", "# Seed\n")
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "base")
+            base = _git_out(d, "rev-parse", "HEAD")
+            odd = "\ngroundwork.pin"
+            with open(os.path.join(d, odd), "w", encoding="utf-8") as fh:
+                fh.write("ordinary\n")
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "lookalike")
+            os.remove(os.path.join(d, odd))
+            self.assertEqual(validate._markers_added_since_base(d, base), set())
+            self.assertEqual(
+                self._messages(validate.diff_base_findings(d, base), "no longer holds"), [])
+
+    def test_a_newline_path_is_not_moved_into_a_skipped_directory(self):
+        """Round 02 finding 3, under-refusing half — the same mutation, the other
+        direction. The real first component is "\\ndocs", which is NOT skipped;
+        stripping turned it into `docs/superpowers/...`, which is."""
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q", "-b", "main")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "seed.md", "# Seed\n")
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "base")
+            base = _git_out(d, "rev-parse", "HEAD")
+            odd = os.path.join("\ndocs", "superpowers", "fixture")
+            os.makedirs(os.path.join(d, odd))
+            with open(os.path.join(d, odd, "groundwork.pin"), "w", encoding="utf-8") as fh:
+                fh.write(PIN_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "marker under a newline-led path")
+            os.remove(os.path.join(d, odd, "groundwork.pin"))
+            paths = [f.path for f in
+                     self._messages(validate.diff_base_findings(d, base), "no longer holds")]
+            self.assertEqual(paths, ["\ndocs/superpowers/fixture/groundwork.pin"], paths)
+
+    def test_a_marker_added_on_an_orphan_root_survives_log_showroot_false(self):
+        """Round 02 finding 6, Minor. Without `--root`, `log.showRoot=false`
+        suppresses a root commit's diff and the marker addition goes unseen. The
+        repository's own configuration must not decide what the gate can see."""
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q", "-b", "main")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _git(d, "commit", "-q", "--allow-empty", "-m", "unrelated base")
+            base = _git_out(d, "rev-parse", "HEAD")
+            _git(d, "switch", "-q", "--orphan", "topic")
+            _write(d, "groundwork.pin", PIN_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "root commit adds the marker")
+            _git(d, "config", "log.showRoot", "false")
+            os.remove(os.path.join(d, "groundwork.pin"))
+            self.assertIn("groundwork.pin", validate._markers_added_since_base(d, base))
+
+    def test_a_still_present_marker_is_not_called_deleted_by_spelling(self):
+        """Round 02 finding 9, Minor, over-refusing. git spells a path NFC while
+        a macOS filesystem may list it NFD, so a comparison against the
+        working-tree scan alone could call a marker that is still there deleted.
+        What closes it is `lexists`, which asks the filesystem in its own terms.
+
+        An NFC fold was added here first and then removed: no mutation of it
+        could be made to fail, because `lexists` answers first on this platform,
+        and on a normalization-sensitive filesystem the fold would have
+        suppressed a true deletion. This test pins `lexists`, and the finding
+        number is kept so the round-02 disposition stays traceable."""
+        with tempfile.TemporaryDirectory() as d:
+            base = self._pre_marker(d, markers=False)
+            nfc = "café"
+            os.makedirs(os.path.join(d, nfc))
+            with open(os.path.join(d, nfc, "groundwork.pin"), "w", encoding="utf-8") as fh:
+                fh.write(PIN_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "add the marker")
+            self.assertEqual(
+                self._messages(validate.diff_base_findings(d, base), "no longer holds"), [],
+                "the marker was never deleted")
+
+    def test_a_directory_named_like_a_marker_is_not_a_deletion(self):
+        """Round 02 finding 5, Minor, over-refusing. `os.walk` lists a symlink to
+        a directory under `dirnames`, not `filenames`, so a path git reported can
+        be present on disk and absent from the working-tree scan. `lexists`
+        settles presence directly. A gitlink named like a marker has the same
+        shape."""
+        with tempfile.TemporaryDirectory() as d:
+            base = self._pre_marker(d, markers=False)
+            os.makedirs(os.path.join(d, "target"))
+            _write(d, "target/seed.md", "# Seed\n")
+            os.symlink("target", os.path.join(d, "groundwork.pin"))
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "a directory symlink named like the marker")
+            self.assertEqual(
+                self._messages(validate.diff_base_findings(d, base), "no longer holds"), [],
+                "the path still exists; it is simply not a regular file")
+
+    def test_an_unreadable_tree_reports_no_deletion_at_all(self):
+        """Round 02 finding 8, Minor, over-refusing. A scan that could not read
+        part of the tree cannot show anything is missing. It used to report the
+        marker under the unreadable directory as deleted while the file was
+        still there. `blast_radius_diff_findings` keeps the accurate
+        unreadable-directory ERROR, so the run is still red for the true
+        reason."""
+        if os.geteuid() == 0:
+            self.skipTest("root ignores directory permissions")
+        with tempfile.TemporaryDirectory() as d:
+            base = self._pre_marker(d, markers=False)
+            os.makedirs(os.path.join(d, "locked"))
+            with open(os.path.join(d, "locked", "groundwork.pin"), "w",
+                      encoding="utf-8") as fh:
+                fh.write(PIN_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "add the marker")
+            os.chmod(os.path.join(d, "locked"), 0o000)
+            try:
+                self.assertEqual(
+                    self._messages(validate.diff_base_findings(d, base),
+                                   "no longer holds"), [])
+                self.assertTrue(
+                    [f for f in validate.blast_radius_diff_findings(d, base)
+                     if f.level == "ERROR"],
+                    "the unreadable directory must still make the run red")
+            finally:
+                os.chmod(os.path.join(d, "locked"), 0o700)
+
     def test_the_changelog_pass_skips_an_unsupported_root(self):
         """The second place a governed finding is suppressed. The changelog
         pass keys on a changelog present AT BASE, which a root whose pin is not
