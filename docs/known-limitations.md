@@ -131,13 +131,19 @@ Honest limits of the current build. This file grows as the product does (brief �
   it. A block that runs to an explicit
   closer is an HTML block of type 1 to 5, every one of which begins with `<`, so a `<` followed
   by `!`, `?`, `/` or a letter is refused — a `<` that opens nothing, as in `a < b`, is prose.
-  Everything else ends at a blank line, so the line immediately above the first entry must be
-  blank. The one exception is a line whose whole content is a single closed HTML comment
+  Most of the rest ends at a blank line — a GFM table, a link reference definition, an HTML
+  block of type 6 or 7, a paragraph, a block quote — so the line immediately above the first
+  entry must be blank, in CommonMark's sense of blank: empty, or ASCII spaces and tabs only.
+  Python's `str.strip()` also removes U+00A0, which is not a Markdown blank; that difference
+  was a review finding. **Indented code is the one block a blank line does not end**, so it has
+  its own rule: no header line may be indented four spaces or a tab with content after it. The
+  one exception to all of this is a line whose whole content is a single closed HTML comment
   carrying no angle bracket of its own; both shipped changelogs use one.
 
   **What it costs.** Any line carrying three backticks or tildes is refused, so a fenced
   example cannot appear in a header and neither can prose that spells the sequence; a raw-HTML
-  line is refused; and a header must be separated from its entries by a blank line. There is **no inline-code exception**: a header
+  line is refused; an indented code block is refused; and a header must be separated from its
+  entries by a blank line. There is **no inline-code exception**: a header
   that needs to show a `<` writes it as an HTML entity, and both shipped changelogs were
   rewritten to need none. That exception existed and was removed, because it could not be
   trusted — a backslash-escaped backtick made a live tag look quoted, and a backtick inside the

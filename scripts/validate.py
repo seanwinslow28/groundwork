@@ -3646,8 +3646,14 @@ def _changelog_header_reaches_the_ledger(header_lines):
        that opens nothing, as in "a < b", is prose and is allowed.
     3. **Runs to a blank line.** Everything else — a GFM table, a link reference
        definition with a multiline title, an HTML block of type 6 or 7, a paragraph, a
-       block quote. Required: the line immediately above the first entry is blank, which
-       terminates any of them before the ledger begins.
+       block quote. Required: the line immediately above the first entry is blank, blank
+       meaning CommonMark's blank — empty, or ASCII spaces and tabs only. Python's
+       str.strip() also removes U+00A0, which is NOT a Markdown blank and left a link
+       reference title running straight through the ledger; that was a review finding.
+    4. **Survives a blank line.** Indented code is the one block that does, so mode 3
+       cannot reach it. Refused: any header line indented four spaces or a tab with
+       content after it. Named as its own case because calling modes 1 to 3 exhaustive
+       while this one existed was itself a review finding.
 
     The one exception to rule 2 is a line whose whole stripped content is a single closed
     HTML comment carrying no angle bracket of its own; both shipped changelogs use one, and
@@ -3672,14 +3678,19 @@ def _changelog_header_reaches_the_ledger(header_lines):
             continue
         if "```" in line or "~~~" in line:
             return True
+        # Rule 4. Indented code, which a blank line does not end. A line of whitespace
+        # alone is a blank line, not an indented block, so it is left to rule 3.
+        if line.strip(" \t") and (line.startswith("    ") or line.startswith("\t")):
+            return True
         for i, ch in enumerate(line):
             if ch != "<":
                 continue
             after = line[i + 1:i + 2]
             if after in ("!", "?", "/") or (after.isascii() and after.isalpha()):
                 return True
-    # Rule 3. An empty header cannot reach anything; otherwise the last line must be blank.
-    return bool(header_lines) and header_lines[-1].strip() != ""
+    # Rule 3, in CommonMark's sense of blank: empty, or ASCII spaces and tabs only. An
+    # empty header cannot reach anything.
+    return bool(header_lines) and header_lines[-1].strip(" \t") != ""
 
 
 def _changelog_appended_span(old_text, new_text):
@@ -4300,7 +4311,9 @@ def blast_radius_diff_findings(root, base):
     change wants its changelog line (WARN — a stateless validator cannot tell an
     agent auto-apply from the maintainer's own edit); the changelog itself is
     append-only from its first entry line on (ERROR); the header above that line is
-    editable, and must be prose that cannot reach the entries below it (ERROR, #32).
+    editable, and must be prose that cannot reach the entries below it — see
+    _changelog_header_reaches_the_ledger for what that means and what it does not
+    guarantee (ERROR, #32).
 
     What this cannot do: prove a human truthfully reviewed anything. That is the
     commit bit's job (#18) — see docs/known-limitations.md."""

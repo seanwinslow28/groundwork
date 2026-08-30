@@ -4240,6 +4240,10 @@ class TestChangelogAppendOnly(unittest.TestCase):
         ("08: a fence behind a block-quote marker", ["> ```", ""]),
         ("08: a fence behind nested container markers", ["> - 1. ```", ""]),
         ("08: a tilde fence behind a container marker", ["1. ~~~", ""]),
+        ("09: a U+00A0 line standing in for the required blank", ["text", "\u00a0"]),
+        ("09: an indented code block, which a blank line does not end",
+         ["    indented code", ""]),
+        ("09: a tab-indented code block", ["\tindented code", ""]),
     )
 
     def test_every_construction_a_review_round_found_is_refused(self):
@@ -4254,8 +4258,9 @@ class TestChangelogAppendOnly(unittest.TestCase):
                 ("a whole-line closed comment", ["<!-- entries below, newest last -->", ""]),
                 ("an overlapping short comment", ["<!-->", ""]),
                 ("an empty comment", ["<!---->", ""]),
-                ("a four-space-indented code block", ["    not a fence", ""]),
                 ("a less-than sign that opens nothing", ["a < b, and 3 < 4", ""]),
+                ("a whitespace-only line, which IS a blank line", ["text", "    "]),
+                ("up to three spaces of indent, which is not code", ["   still prose", ""]),
                 ("an entity where a tag would be refused", ["write &lt;script&gt; so", ""]),
                 ("an entry format with no angle bracket",
                  ["Format: `- date | skills/NAME/SKILL.md | gist | agent | sha`", ""]),
@@ -4278,6 +4283,18 @@ class TestChangelogAppendOnly(unittest.TestCase):
                 j = validate._changelog_first_entry(appended)
                 self.assertIsNotNone(j)
                 self.assertFalse(validate._changelog_header_reaches_the_ledger(appended[:j]))
+
+    def test_the_end_to_end_unicode_blank_errors(self):
+        # Round 09's Major, whole. Python's str.strip() removes U+00A0; CommonMark does
+        # not treat it as a blank line, so a link reference title runs through the ledger.
+        base = ("# CL\n\nheader\n\n"
+                "- 2026-07-26 | skills/a/SKILL.md | committed | scribe | a1b2c3d\n")
+        new = ('# CL\n\n[x]: /url "\n\u00a0\n'
+               "- 2026-07-26 | skills/a/SKILL.md | committed | scribe | a1b2c3d\n\"\n\n"
+               "- 2026-07-28 | skills/a/SKILL.md | replacement | scribe | c3d4e5f\n")
+        reason, appended = validate._changelog_appended_span(base, new)
+        self.assertEqual(reason, "hidden")
+        self.assertEqual(appended, [])
 
     def test_the_end_to_end_container_fence_errors(self):
         # Round 08's Major, whole: a three-space-indented entry is an entry, and a fence
