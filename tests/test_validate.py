@@ -4268,7 +4268,54 @@ class TestChangelogAppendOnly(unittest.TestCase):
     def test_an_unmatched_backtick_run_is_left_alone(self):
         # Stripping it would turn a real fence line into prose.
         self.assertEqual(validate._strip_inline_code("```"), "```")
-        self.assertEqual(validate._strip_inline_code("a `b` c"), "a  c")
+        # A matched span becomes a SPACE, so the text on either side cannot join into a
+        # marker nobody wrote.
+        self.assertEqual(validate._strip_inline_code("a `b` c"), "a   c")
+        self.assertEqual(validate._strip_inline_code("</scr`x`ipt>"), "</scr ipt>")
+        # CommonMark closes an N-backtick run with a run of exactly N.
+        self.assertEqual(validate._strip_inline_code("a `b `` c"), "a `b `` c")
+
+    # --- Codex round 05: the fence rule, and the blank-line-terminated types ---
+    def test_a_fence_is_closed_only_by_its_own_marker(self):
+        H = validate._changelog_header_leaves_a_block_open
+        self.assertTrue(H(["```", "~~~"]))              # a tilde run closes no backtick fence
+        self.assertTrue(H(["````", "```"]))             # a closer must be at least as long
+        self.assertTrue(H(["```", "``` trailing"]))     # a closer carries no info string
+        self.assertTrue(H(["```", "    ```"]))          # inside a fence this line is content
+        self.assertFalse(H(["````", "````"]))
+        self.assertFalse(H(["```python", "```"]))
+        self.assertFalse(H(["~~~", "~~~~"]))            # a longer closer is allowed
+
+    def test_a_four_space_indented_marker_is_not_a_fence(self):
+        self.assertFalse(validate._changelog_header_leaves_a_block_open(["    ```"]))
+        self.assertTrue(validate._changelog_header_leaves_a_block_open(["   ```"]))
+
+    def test_a_fence_line_inside_a_comment_does_not_pair_with_a_real_one(self):
+        # Line parity would cancel these two against each other.
+        self.assertTrue(validate._changelog_header_leaves_a_block_open(
+            ["<!--", "```", "-->", "```"]))
+
+    def test_an_unclosed_declaration_is_an_open_block(self):
+        H = validate._changelog_header_leaves_a_block_open
+        self.assertTrue(H(["<!DOCTYPE html"]))          # CommonMark HTML block type 4
+        self.assertFalse(H(["<!DOCTYPE html>", ""]))
+
+    def test_a_raw_html_line_with_no_blank_before_the_entries_is_refused(self):
+        # Types 6 and 7 end at a blank line, and there is none before the entries.
+        H = validate._changelog_header_leaves_a_block_open
+        self.assertTrue(H(["header", "", "<div hidden>"]))
+        self.assertTrue(H(["header", "", "</div>"]))
+        self.assertFalse(H(["header", "", "<div hidden>", ""]))
+        self.assertFalse(H(["header", "", "<!-- a closed comment -->"]))
+
+    def test_a_tag_opener_needs_a_tag_boundary(self):
+        # Without one, "<presentation>" reads as a "<pre" that never closes.
+        self.assertFalse(validate._next_header_opener("<presentation> is a word", 0))
+        self.assertTrue(validate._next_header_opener("<pre>", 0))
+
+    def test_fabricating_a_closer_out_of_inline_code_is_refused(self):
+        self.assertTrue(validate._changelog_header_leaves_a_block_open(
+            ["<script>", "</scr`x`ipt>"]))
 
     def test_overlapping_comment_closers_are_complete_comments(self):
         # CommonMark: <!--> and <!---> are complete comments.

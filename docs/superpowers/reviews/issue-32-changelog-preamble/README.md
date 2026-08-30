@@ -29,7 +29,7 @@ and [`round-01.md`](round-01.md) records them with their counter-arguments.
 
 | Site | Change |
 |---|---|
-| `scripts/validate.py` | `_changelog_append_only` narrowed; `_changelog_lines`, `_changelog_first_entry`, `_changelog_appended_span`, `_changelog_header_leaves_a_block_open`, `_strip_inline_code` added; `CHANGELOG_REASONS` keys the ERROR text so an unknown reason cannot fall through the caller; the ERROR messages corrected and split |
+| `scripts/validate.py` | `_changelog_append_only` narrowed; `_changelog_lines`, `_changelog_first_entry`, `_changelog_appended_span`, `_changelog_header_leaves_a_block_open`, `_strip_inline_code`, `_find_backtick_run`, `_fence_marker`, `_next_header_opener` added; `CHANGELOG_REASONS` keys the ERROR text so an unknown reason cannot fall through the caller; the ERROR messages corrected and split |
 | `tests/test_validate.py` | new tests for the narrowing, the appended span, and the header rule; `_repo` gains a `changelog=` knob; `test_changelog_rewrite_errors` re-based on an entry-bearing fixture |
 | `governance/changelog.md` | "This file is never edited or reordered" was falsified by this change — corrected |
 | `demo/governance/changelog.md` | the defect itself: the roster added to the enumeration, and the "Append-only." claim narrowed |
@@ -54,7 +54,8 @@ this guard on it.
 | 01 | — | maintainer decisions, not a review round | — | — |
 | 02 | `c3af4d2` | **does not approve** — Standards 0, Spec 4, worst **Major** | 4 | `a5e07da` |
 | 03 | `a5e07da` | **crashed — no verdict returned** (task `task-mtfxtd9w-ypa8lx`) | — | `206a78a` |
-| 04 | `206a78a` | **does not approve** — Standards 4 worst **Moderate**, Spec 5 worst **Major** | 9 (8 distinct) | `PENDING-04` |
+| 04 | `206a78a` | **does not approve** — Standards 4 worst **Moderate**, Spec 5 worst **Major** | 9 (8 distinct) | `4452679` |
+| 05 | `4452679` | **does not approve** — Standards 4 worst **Major**, Spec 3 worst **Major** | 7 (5 distinct) | `PENDING-05` |
 
 ## Open findings
 
@@ -72,14 +73,14 @@ reading under which the finding is fair.
 
 ## Baselines
 
-The test count **moves**: 846 → 876. The three validator commands are unchanged.
+The test count **moves**: 846 → 883. The three validator commands are unchanged.
 
 | Command | Before | On this branch |
 |---|---|---|
 | `python3 scripts/validate.py .` | 0 errors, 7 warnings, exit 0 | unchanged |
 | `python3 scripts/validate.py demo` | 0 errors, 2 warnings | unchanged |
 | `python3 scripts/validate.py . --diff main` | exit 0 | exit 0 |
-| `python3 -m unittest discover -s tests -q` | OK, 846 tests, skipped=1 | OK, **876** tests, skipped=1 |
+| `python3 -m unittest discover -s tests -q` | OK, 846 tests, skipped=1 | OK, **883** tests, skipped=1 |
 
 There is no pytest; the suite is unittest.
 
@@ -98,11 +99,20 @@ alone, the suite run, and the file restored. Run with `PYTHONDONTWRITEBYTECODE=1
 | `rfind` to `find` in the open-comment check (round 2) | 1 failure |
 | Caller branches on the two known reasons only (round 3) | 1 failure |
 | Fence parity check removed (round 4) | 1 failure |
-| Raw-HTML pair list reduced to the comment (round 4) | 1 failure |
+| CDATA pair removed (round 4 — its own entry mislabels this row as the whole list reduced to the comment pair, which gives 7; `round-05.md` carries the correction) | 1 failure |
 | Comment closer searched from four characters in, not two (round 4) | 1 failure |
 | Inline-code stripping removed (round 4) | 2 failures |
 | Unmatched backtick run dropped rather than kept (round 4) | 2 failures |
-| None (restored) | OK, 876 |
+| Fence closer no longer required to match the opener's character (round 5) | 1 failure |
+| Fence closer no longer required to be as long as the opener (round 5) | 1 failure |
+| Fence closer allowed to carry an info string (round 5) | 1 failure |
+| Fence indent limit raised from three spaces to 99 (round 5) | 2 failures |
+| Type-4 declaration match disabled (round 5) | 1 failure |
+| Trailing raw-HTML rule replaced by `return False` (round 5) | 1 failure |
+| Tag-boundary check replaced by `if True` (round 5) | 1 failure |
+| Code span deleted rather than replaced by a space (round 5) | 1 failure |
+| Backtick run matched by length >= N rather than == N (round 5) | 1 failure |
+| None (restored) | OK, 883 |
 
 ## Status
 
@@ -113,11 +123,19 @@ not resumable, so each round is a new review.
 
 **The arc so far, since it is the useful part.** Round 2 found a laundering route this branch
 created — the pre-#32 whole-file guard had closed it by accident — and the repair for it
-special-cased HTML comments. Round 4 then found its worst two findings *inside that repair*: an
+special-cased HTML comments. Round 4 found its worst two findings *inside that repair*: an
 unclosed code fence and an unclosed raw-HTML block do the same job, so the repair had named a
-construct where the rule needed to name a category. That is the previous slice's measured
-pattern holding exactly — every round finding its worst defect in the last round's fix — and
-the fix this time is a general rule with a stated boundary rather than a third special case.
+construct where the rule needed to name a category. Round 5 then found its worst findings
+inside **that** repair: the general rule's fence half was line parity, which is not the rule, and
+five constructions left a fence open over the ledger; its claimed coverage omitted an HTML
+block type; and deleting an inline code span could synthesise a closing tag out of text that
+never held one.
+
+Three rounds, three times the worst finding sat in the last round's fix — the previous slice's
+measured pattern holding exactly. The recurring half is not the code: each round's repair also
+wrote a claim about itself that the next round disproved. "The one way", "types 1 to 5", "its
+mistakes are all in the refusing direction" — each written in the same commit as the code that
+made it false.
 
 **What round 2 changed about the slice, since it is the useful part.** Its Major was a
 laundering route this branch itself created and the pre-#32 guard had closed by accident: an

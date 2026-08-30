@@ -3624,31 +3624,78 @@ def _changelog_first_entry(lines):
     return None
 
 
+def _find_backtick_run(line, start, length):
+    """PURE. Index of the next run of EXACTLY `length` backticks at or after start, or
+    None. CommonMark closes a code span with a run of the same length, not with any run
+    that contains one."""
+    i, n = start, len(line)
+    while i < n:
+        if line[i] != "`":
+            i += 1
+            continue
+        j = i
+        while j < n and line[j] == "`":
+            j += 1
+        if j - i == length:
+            return i
+        i = j
+    return None
+
+
 def _strip_inline_code(line):
-    """PURE. Drop matched backtick-delimited spans from one line, so a construct marker
-    quoted as inline code is prose and not an opener. An UNMATCHED run is left in place,
+    """PURE. Replace matched backtick code spans in one line with a SPACE, so a construct
+    marker quoted as inline code is prose and not an opener — otherwise a header could not
+    document the syntax it is written in. A space rather than nothing, because deleting the
+    span would let the text on either side join into a marker nobody wrote: `</scr` + `ipt>`
+    is a closing script tag and `</scr x ipt>` is not. An UNCLOSED run is left in place,
     which is what keeps a bare fence line a fence."""
     out, i, n = [], 0, len(line)
     while i < n:
-        if line[i] == "`":
-            j = i
-            while j < n and line[j] == "`":
-                j += 1
-            run = line[i:j]
-            k = line.find(run, j)
-            if k != -1:
-                i = k + len(run)
-                continue
-            out.append(run)
+        if line[i] != "`":
+            out.append(line[i])
+            i += 1
+            continue
+        j = i
+        while j < n and line[j] == "`":
+            j += 1
+        k = _find_backtick_run(line, j, j - i)
+        if k is None:
+            out.append(line[i:j])
             i = j
             continue
-        out.append(line[i])
-        i += 1
+        out.append(" ")
+        i = k + (j - i)
     return "".join(out)
 
 
-# Constructs that run until their closer once opened: CommonMark's HTML blocks of types
-# 1 to 5. Fenced code is the sixth case and is line-oriented, so it is counted separately.
+def _fence_marker(line):
+    """PURE. (character, run length, info string) for a line that opens or closes a fenced
+    code block, else None. Up to three leading spaces are allowed; a fourth makes the line
+    indented content rather than a fence. A backtick fence's info string may not itself
+    contain a backtick."""
+    i = 0
+    while i < len(line) and line[i] == " ":
+        i += 1
+    if i > 3 or i >= len(line):
+        return None
+    ch = line[i]
+    if ch not in "`~":
+        return None
+    j = i
+    while j < len(line) and line[j] == ch:
+        j += 1
+    if j - i < 3:
+        return None
+    info = line[j:]
+    if ch == "`" and "`" in info:
+        return None
+    return ch, j - i, info
+
+
+# Constructs that run until an explicit closer once opened: CommonMark's HTML blocks of
+# types 1, 2, 3 and 5. Type 4 — a declaration, "<!" then a letter, closed by ">" — has no
+# fixed opener spelling and is matched in _next_header_opener. Types 6 and 7 end at a BLANK
+# LINE rather than at a closer, so they are handled by the trailing-block rule instead.
 _HEADER_BLOCK_PAIRS = (
     ("<!--", "-->"),
     ("<![cdata[", "]]>"),
@@ -3659,45 +3706,96 @@ _HEADER_BLOCK_PAIRS = (
     ("<textarea", "</textarea>"),
 )
 
+# The four above whose opener is a tag name, and so needs a tag boundary after it —
+# without one, "<presentation>" reads as a "<pre" that never closes.
+_HEADER_TAG_OPENERS = ("<script", "<style", "<pre", "<textarea")
+
+
+def _next_header_opener(text, pos):
+    """PURE. (index, opener length, closer) of the earliest block opener at or after pos in
+    `text`, which is already lowercased and newline-joined, or None."""
+    best = None
+    for opener, closer in _HEADER_BLOCK_PAIRS:
+        k = text.find(opener, pos)
+        while k != -1 and opener in _HEADER_TAG_OPENERS:
+            after = text[k + len(opener):k + len(opener) + 1]
+            if after in ("", " ", "\t", "\n", ">", "/"):
+                break
+            k = text.find(opener, k + 1)
+        if k == -1:
+            continue
+        if best is None or k < best[0] or (k == best[0] and len(opener) > best[1]):
+            best = (k, len(opener), closer)
+    k = pos
+    while True:
+        k = text.find("<!", k)
+        if k == -1:
+            break
+        after = text[k + 2:k + 3]
+        if after.isascii() and after.isalpha():
+            if best is None or k < best[0]:
+                best = (k, 2, ">")
+            break
+        k += 2
+    return best
+
 
 def _changelog_header_leaves_a_block_open(header_lines):
-    """PURE. True when the editable header opens a block construct it does not close.
-    Such a header reaches the ledger below it without owning it: every entry survives in
-    the file's bytes while the rendered file shows the reader something else — an
-    unclosed comment hides them, an unclosed fence or raw-HTML block re-renders them as
-    something other than the live list. #17's one-glance property is a property of
-    reading the file, so the guard has to hold there and not only in the bytes.
+    """PURE. True when the editable header opens a block construct it does not close over
+    the entries below. Such a header reaches the ledger without owning it: every entry
+    survives in the file's bytes while the rendered file shows the reader something else —
+    an unclosed comment hides them, an unclosed fence or raw-HTML block re-renders them as
+    something other than the live list. #17's one-glance property is a property of reading
+    the file, so the guard has to hold there and not only in the bytes.
 
-    Deliberately conservative, and its errors are all in the refusing direction: fence
-    lines are counted rather than parsed, so a fence marker inside a comment still counts,
-    and a construct closed under different block context than a renderer would give it is
-    still read as closed here only when the closer literally follows. A refused header can
-    be reworded; docs/known-limitations.md carries what this does and does not model."""
-    stripped = [_strip_inline_code(line) for line in header_lines]
-    fences = sum(1 for line in stripped
-                 if line.strip().startswith("```") or line.strip().startswith("~~~"))
-    if fences % 2:
+    Three rules, one per way CommonMark ends a block. A fenced block is closed by a run of
+    the SAME character at least as long as the opener, carrying no info string. Types 1 to
+    5 are closed by their own closer. Types 6 and 7 are closed by a BLANK LINE, so the
+    header's last non-blank block may not begin with a raw-HTML line — there is no blank
+    line between it and the entries.
+
+    What it does not model: a construct outside the list, and any renderer-specific
+    behaviour beyond these rules. Its known mistakes and their direction are in
+    docs/known-limitations.md; do not assume they all fall on the refusing side."""
+    fence = None
+    plain = []
+    for line in header_lines:
+        marker = _fence_marker(line)
+        if fence is None:
+            if marker is not None:
+                fence = (marker[0], marker[1])
+                continue
+            plain.append(_strip_inline_code(line))
+            continue
+        ch, length = fence
+        if (marker is not None and marker[0] == ch and marker[1] >= length
+                and not marker[2].strip()):
+            fence = None
+    if fence is not None:
         return True
-    text = "\n".join(stripped).lower()
+    text = "\n".join(plain).lower()
     pos = 0
     while True:
-        best = None
-        for opener, closer in _HEADER_BLOCK_PAIRS:
-            k = text.find(opener, pos)
-            if k == -1:
-                continue
-            if best is None or k < best[0] or (k == best[0] and len(opener) > len(best[1])):
-                best = (k, opener, closer)
-        if best is None:
-            return False
-        k, opener, closer = best
+        found = _next_header_opener(text, pos)
+        if found is None:
+            break
+        k, olen, closer = found
         # An HTML comment's closer may OVERLAP its opener: <!--> and <!---> are complete
-        # comments, so the search starts two characters in rather than four.
-        start = k + (2 if opener == "<!--" else len(opener))
-        c = text.find(closer, start)
+        # comments, so that search starts two characters in rather than four.
+        c = text.find(closer, k + (2 if closer == "-->" else olen))
         if c == -1:
             return True
         pos = c + len(closer)
+    tail = []
+    for line in plain:
+        tail = [] if not line.strip() else tail + [line]
+    if not tail:
+        return False
+    # Types 6 and 7 both begin "<" or "</" then an ASCII letter. A "<!" or "<?" start is
+    # one of the paired types above, already settled by the scan, so it does not fire here.
+    head = tail[0].lstrip()
+    head = head[2:3] if head.startswith("</") else head[1:2]
+    return tail[0].lstrip().startswith("<") and head.isascii() and head.isalpha()
 
 
 def _changelog_appended_span(old_text, new_text):
