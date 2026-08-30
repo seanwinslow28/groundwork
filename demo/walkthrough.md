@@ -153,9 +153,12 @@ You get an ERROR: an escalating change with no pending proposal. That is the #18
 tripwire, and it is live here because this directory carries a
 [groundwork.pin](groundwork.pin) — which is what tells the validator to treat it as a
 governed company instance rather than as example content. Undo the change and it goes
-quiet. Try the same edit on the one rule the pending proposal *does* target and the
-gate stays quiet: a matching pending proposal licenses escalating changes to its
-target. That silence is the consent gate's happy path, not a gap.
+quiet. Try the same edit on `governance/constitution/assessment-is-human-owned.md` —
+the rule [the refusal proposal](proposals/refusal-names-next-step.md) targets — and the
+gate stays quiet: a matching pending proposal licenses escalating changes to its own
+target and to nothing else. That silence is the consent gate's happy path, not a gap.
+The second pending proposal is the same mechanism on the other governed artifact: the
+roster's re-confirmation had to be proposed before it could land.
 
 ## What to read next
 

@@ -22,9 +22,14 @@ left empty — a name, no role asserted. That is what makes `owner: Ruth Okafor`
 offices those people hold are in [canon.md](../canon.md); no rule references one, so the
 roster asserts none.
 
-Its `review_by` has passed, and the gate says so. That is deliberate: the date is the
-90-day policy default, because nothing in the interview asked how often the org map should
-be re-confirmed, and a roster nobody has re-confirmed since May should not look fresh.
+Its `review_by` is derived rather than chosen, and the roster shows the derivation: the
+interview asked how often the org map should be re-confirmed, the answer was quarterly, and
+the date is that cadence applied to the snapshot the map was last confirmed at. Getting
+there took a turn of its own — [layer 6](../interview/06-org-map.md) re-confirmed all three
+holders — and, because who holds an owner is governance, a
+[pending proposal](../proposals/org-map-re-confirmed.md) the maintainer had to land. Until
+that turn ran, the date was a 90-day policy default nobody had answered, and the gate warned
+that it had passed. That warning working is why the turn happened.
 
 ## What is runnable here
 
