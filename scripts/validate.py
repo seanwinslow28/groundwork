@@ -3876,6 +3876,92 @@ def _unsupported_root_finding(g):
                    "carrying this pin as the base")
 
 
+def _markers_added_since_base(toplevel, base):
+    """Issue #40's third source of evidence: the marker paths — a
+    `groundwork.pin` or an interview `00-manifest.md` — that a commit reachable
+    from HEAD but not from <base> ADDED.
+
+    `diff_base_findings`, `_pin_dirs` and `interview_diff_findings` read two
+    trees. With the base predating a marker AND the working change deleting it,
+    the marker is in neither, so nothing is discovered and nothing is said —
+    and nothing there tells that apart from a repository that never carried a
+    marker, which the groundwork engine's own pin-less root is. The commits
+    between the two DO tell them apart, and that is all this reads.
+
+    Returns repo-relative paths (relative to `toplevel`). Returns an EMPTY set
+    when the question cannot be asked — an unborn or unresolvable HEAD, or a git
+    that would not run. Empty is "no evidence", never "no marker": the caller
+    emits nothing on it, which leaves the pre-#40 silence rather than inventing
+    a finding out of a failed subprocess.
+
+    `--no-renames` is deliberate and load-bearing. git's rename detection would
+    report a moved marker as R rather than A and this walk would miss it;
+    forcing every introduction to read as an addition is the fail-closed
+    direction.
+
+    `--diff-filter=A` narrows git's output; it is NOT what makes the caller
+    correct, and this docstring does not claim it is. Any path this returns that
+    the caller does not filter out is absent from the base tree and absent from
+    the working tree, so it can only have been created inside the range —
+    dropping the filter changes no verdict, and a mutation dropping it survives
+    the suite for that reason. It is kept because asking git for additions is
+    cheaper than asking for every touch on a long history.
+
+    The pathspecs match by suffix, so `*groundwork.pin` also matches a file
+    named `xgroundwork.pin`. The basename is re-checked here rather than trusted
+    to the pathspec."""
+    try:
+        head = subprocess.run(["git", "-C", toplevel, "rev-parse", "--verify", "--quiet",
+                               "HEAD^{commit}"], capture_output=True)
+        if head.returncode != 0:
+            return set()
+        log = subprocess.run(["git", "-C", toplevel, "log", "--diff-filter=A",
+                              "--no-renames", "--name-only", "--format=", "-z",
+                              "%s..HEAD" % base, "--",
+                              "*groundwork.pin", "*" + INTERVIEW_MANIFEST],
+                             capture_output=True)
+    except OSError:
+        return set()
+    if log.returncode != 0:
+        return set()
+    try:
+        names = log.stdout.decode("utf-8")
+    except UnicodeError:
+        return set()
+    out = set()
+    for name in names.split("\0"):
+        name = name.strip("\n")
+        if not name:
+            continue
+        if os.path.basename(name) in ("groundwork.pin", INTERVIEW_MANIFEST):
+            out.add(name)
+    return out
+
+
+def _deleted_marker_finding(rel):
+    """The ERROR for one marker that history shows existed and neither tree
+    holds. ERROR rather than the WARN a governed deletion gets, decided by the
+    maintainer 2026-08-30: a WARN exits 0, so the run stays green and the
+    escalating changes stay unreported — which is the escape itself. The pin and
+    the manifest take the same severity and the same mechanism; only the message
+    differs, because they cover different things."""
+    if os.path.basename(rel) == "groundwork.pin":
+        return Finding("ERROR", rel, None,
+                       "--diff base predates this groundwork.pin and the working tree no "
+                       "longer holds it, but a commit in this history added it — the "
+                       "governed root it marks is in neither tree, so the #18 consent gate "
+                       "runs against nothing and deleting the pin un-governs the change "
+                       "that deleted it. Name the commit carrying this pin as the base, or "
+                       "restore it")
+    return Finding("ERROR", rel, None,
+                   "--diff base predates this interview state's manifest and the working "
+                   "tree no longer holds it, but a commit in this history added it — the "
+                   "state is in neither tree, so the frozen-layer guard covers no layer "
+                   "here and a confirmed layer could be edited or deleted with nothing "
+                   "reported (#9). Name the commit carrying this manifest as the base, or "
+                   "restore it")
+
+
 def diff_base_findings(root, base):
     """The --diff BASE CONTRACT. Two of the stateful passes promise something
     the base has to be able to support, and until this check existed nothing
@@ -3956,6 +4042,22 @@ def diff_base_findings(root, base):
                                 "so the frozen-layer guard covers no layer in this directory "
                                 "— a confirmed layer here could be edited or deleted and this "
                                 "run would report nothing (#9)"))
+
+    # Issue #40. The two loops above read the base tree and the working tree; a
+    # marker in NEITHER is invisible to both. The commits between base and HEAD
+    # are a third source, and they are consulted ONLY for that case: a marker
+    # the base holds is already covered by `_pin_dirs` reading the base tree,
+    # and a marker the working tree holds is the loops above.
+    wt_rels = set()
+    for abspath in wt_files:
+        wt_rels.add(os.path.relpath(abspath, root).replace(os.sep, "/"))
+    for repo_path in sorted(_markers_added_since_base(toplevel, base)):
+        if scope != "." and not repo_path.startswith(scope + "/"):
+            continue
+        rel = repo_path if scope == "." else repo_path[len(scope) + 1:]
+        if _diff_in_workbench_skips(rel) or rel in base_rels or rel in wt_rels:
+            continue
+        findings.append(_deleted_marker_finding(rel))
     return findings
 
 

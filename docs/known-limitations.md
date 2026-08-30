@@ -60,20 +60,27 @@ Honest limits of the current build. This file grows as the product does (brief �
     and reports nothing. That half was left out of the slice that added this one.
   - **A divergent base still runs.** Ancestry is a WARN, so a run against another line of
     history prints its findings — including findings naming changes this line never made.
-  - **Deleting the marker escapes the contract when the base predates it.** The contract is
-    evidence-based: it finds a governed root or an interview state by its `groundwork.pin`
-    or `00-manifest.md`, in the base tree or the working tree. Name a base from before that
-    marker was committed *and* delete it in the same working change, and it is in neither —
-    so nothing is discovered, nothing is checked, and nothing is said. `_pin_dirs` reads the
-    base tree precisely so deleting a pin cannot un-govern the change that deleted it, and
-    that guarantee holds only where the base carries the pin. Measured 2026-08-30 against
-    the fixture in `test_deleting_the_marker_under_a_pre_marker_base_says_nothing`: every
-    stateful pass returns no finding — and every stateful pass returns none on the engine
-    before this check existed either, so the check neither creates nor widens it. **No check
-    reading only those two trees can close it:** with the marker in neither, nothing tells this apart from an
-    ungoverned repository, which the engine's own pin-less root is. That limit is the two
-    trees rather than the repository — walking the commits between base and HEAD could see a
-    marker added and later deleted, and nothing here does. Tracked as issue #40.
+  - **A deleted marker under a pre-marker base is reported, but the gating does not
+    resume.** Name a base from before `groundwork.pin` or `00-manifest.md` was committed
+    *and* delete that marker in the same working change, and it is in neither the base tree
+    nor the working tree. Until issue #40 that was total silence. `diff_base_findings` now
+    reads a third source — the commits between the base and HEAD — and ERRORs on a marker
+    those commits added that neither tree holds, so the run is red and names the marker.
+
+    **What that does not do.** It does not restore what the deleted marker was gating. The
+    tripwire and the frozen-layer guard still derive their scope from the two trees, so an
+    unproposed constitution change or an edited confirmed layer in that same working change
+    still draws no finding *from those passes*. The run is stopped by the base-contract
+    ERROR, not by a report of the change itself, and
+    `test_the_pre_marker_escape_is_reported_but_gating_does_not_resume` asserts both halves.
+    Supplying evidence without changing what any pass gates was the maintainer's decision of
+    2026-08-30; feeding the discovered root back into `_pin_dirs` was considered and not
+    taken.
+
+    **Where the evidence runs out.** The walk reads committed history. A shallow clone whose
+    graft point is newer than the commit that added the marker will not see it, and the run
+    is silent — the same silence as before #40, so not a regression, but not closed either.
+    A marker that was never committed at all leaves no evidence anywhere, by construction.
   - **A root spelled differently at base and in the working tree reads as missing.** The pin
     lookup is exact, because folding it is the fail-open direction: a base holding
     `a/groundwork.pin` would otherwise satisfy a separate `A/` root and the tripwire would
