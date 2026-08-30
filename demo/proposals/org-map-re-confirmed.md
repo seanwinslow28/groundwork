@@ -26,12 +26,12 @@ status: pending
 -The offices these people hold are recorded in the demo's canon file; no rule references one, so no Role row asserts one.
 +The offices they hold are recorded in the demo's canon file; no rule references one, so no Role row asserts one.
 @@ a new paragraph after it
-+No holder here is an agent. That was asked rather than assumed — nothing in the three rules terminates in a model, and the human-decision rule's appeal path is Ruth Okafor herself.
++No holder here is an agent; all three carry the roster's other type value, human. That was asked rather than assumed — nothing in the three rules terminates in a model, and the human-decision rule's appeal path is Ruth Okafor herself.
 @@ the dates paragraph, replaced by two
 -The valid_at date is a snapshot — the earliest date among the interview layers these entries came from, so no entry's staleness is hidden behind a newer one. The review_by date is the **policy default of 90 days**, not an elicited cadence: nothing in the interview asked how often the org map should be re-confirmed, so nothing here may claim an answer. That default has now passed, and the validator says so — which is the mechanism working, not a defect to date around.
 +The valid_at date is a snapshot — the earliest date among the layers these entries came from, where each entry is dated by its most recent confirming layer. All three were re-confirmed together on 2026-08-20, which is why that date is not May.
 +
-+The review_by date is derived, and here is the derivation: the cadence answered was **quarterly**, the base date was valid_at 2026-08-20, and the date that produces is 2026-11-18. Nobody named a date; the cadence was the answer and this file did the conversion. It is not the 90-day policy default a generator falls back to when the cadence question goes unanswered — the two spans happen to be the same length, which is exactly why a roster that does not say which one it used cannot be read.
++The review_by date is derived, and here is the derivation: the cadence answered was **quarterly**, taken as **90 days**, added to the base date valid_at 2026-08-20, giving 2026-11-18. The span is written down because the word is looser than the number — three calendar months from 2026-08-20 would be the 20th, not the 18th — and a date a reader cannot redo is a date they have to trust. Nobody named a date; the cadence was the answer and this file did the conversion. That the fallback default is also 90 days is a coincidence of length, not the same thing: this one was answered, and that is what the sentence above records.
 @@ the table
  Unchanged. No row is added, removed, or retyped.
 ```
@@ -40,9 +40,10 @@ status: pending
 
 Two separate problems, one turn.
 
-**The map was five months old.** The roster's entries were written from layers 01, 02 and
-03, confirmed in May and early June, and nothing had asked those three people since whether
-the answer still held. A roster is repo-internal consistency, not reality, and the only
+**The map had gone 101 days without a re-read.** The roster's entries were written from
+layers 01, 02 and 03, confirmed in May and early June, and nothing had asked those three
+people since whether the answer still held — three months and change, past the ninety-day
+mark the file itself had set. A roster is repo-internal consistency, not reality, and the only
 thing standing between it and a confident wrong answer is somebody re-reading it. The
 [org-map session](../interview/06-org-map.md) is that re-reading: all three owners present,
 each asked directly, all three re-confirmed on 2026-08-20.

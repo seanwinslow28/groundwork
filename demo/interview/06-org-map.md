@@ -6,8 +6,8 @@ source: Org-map session 2026-08-18, with each named owner present; confirmed at 
 ---
 # Layer 6 — The org map: who holds what, and how often that gets re-checked
 
-**Not a function layer.** The five before this one each mapped a function. This one is
-about the record itself: the owners those layers named, what kind of thing each one is,
+**Not a function layer.** Layers 02 to 05 each mapped a function; layer 01 set the
+analyst's role and the company's scope. This one is about the record itself: the owners those layers named, what kind of thing each one is,
 and when the answer should be looked at again. It was run because the roster generated
 from layers 01–03 had never been re-confirmed since May, and because the question skeleton
 now asks these three things directly rather than leaving them to be inferred.
@@ -18,11 +18,11 @@ Every owner the three constitution rules name is a **person**, not an office. As
 directly of each, and each said the same thing: the accountability is theirs, not the
 chair's. So the roster carries names with no role asserted.
 
-| Owner as written | Person or role | Holder | Person or agent |
+| Owner as written | Person or role | Holder | Human or agent |
 |---|---|---|---|
-| Priya Raman | person | Priya Raman | person |
-| Marcus Bell | person | Marcus Bell | person |
-| Ruth Okafor | person | Ruth Okafor | person |
+| Priya Raman | person | Priya Raman | human |
+| Marcus Bell | person | Marcus Bell | human |
+| Ruth Okafor | person | Ruth Okafor | human |
 
 The offices these three hold — CEO, VP Customer Success, Head of People — are real and
 recorded in the canon, and deliberately **not** asserted as roles here. No rule references

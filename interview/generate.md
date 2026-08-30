@@ -173,8 +173,13 @@ the confirmed answers you already have, by this rule and no wider:
     the holder's name in Holder, the type as answered;
   - an owner answered as a **role** becomes a **Role row**, with the holders the interview
     named and each one's answered type;
-  - a holder answered as an **agent** is typed `agent`. The interview says which; you do
-    not infer it from the field the owner came from.
+  - **the Type cell takes `human` or `agent` and nothing else** — the roster has exactly two
+    type values, and the question is asked in those words for that reason. An answer given
+    in any other word ("a person", "a bot", a name) is written as whichever of the two it
+    means, never transcribed literally: a Type cell the enum does not contain drops the
+    holder out of resolution, so every owner value that named them fails to resolve and
+    every rule they own goes red. The interview says which of the two; you do not infer it
+    from the field the owner came from.
 - **An owner the interview did not type is not entered at all.** A run has recorded an
   owner that disclaims one outright — "the function, no person named" — and a constitution
   rule's owners may be roles nobody was asked about. Writing an untyped value as a Role row
@@ -198,8 +203,13 @@ the confirmed answers you already have, by this rule and no wider:
   how often the org map should be re-confirmed and gets back a cadence — "every six
   months" — while the field is an ISO date. You do the conversion, at generation, from
   `valid_at`, and you **record the derivation in the file**: the cadence as answered, the
-  base date, and the date it produced. Nobody named a date; the cadence was the answer and
-  the file says the conversion happened here. Where
+  **span in days** you converted it to, the base date, and the date it produced. Convert by
+  day count, not by calendar month — a quarter is 90 days here, a half-year 182, a year 365
+  — so that the elicited answer and the fallback below use one arithmetic and a reader can
+  redo the addition. The span is recorded precisely because the word is looser than the
+  number: "quarterly" is three calendar months to most people, and this repo owes them the
+  difference in writing rather than in a date they cannot reproduce. Nobody named a date;
+  the cadence was the answer and the file says the conversion happened here. Where
   the cadence question went **unanswered**, the field is still required, so it falls back to
   the policy default of 90 days after `valid_at` — recorded in the file as
   default-not-answered, so a reader can tell a default from an answer, and named in the

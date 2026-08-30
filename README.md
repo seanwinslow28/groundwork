@@ -16,9 +16,10 @@ governance instead of rewriting itself.
 
 groundwork's lane is governance. These are the mechanisms, not the claims:
 
-- **The generator refuses to invent accountability.** Five fields it will never draft:
-  the owner, the backup owner, the forbidden actions, and the two death conditions. Those
-  come only from a human's interview answers. An invented owner is an accountability
+- **The generator refuses to invent accountability.** It transcribes answers rather than
+  supplying them — that rule binds every field it writes — and five carry the refusal as an
+  explicit mark: the owner, the backup owner, the forbidden actions, and the two death
+  conditions. Those come only from a human's interview answers. An invented owner is an accountability
   structure the named person discovers when something goes wrong.
 - **Every skill can die, and a human names the trigger.** Each skill's Owner's Card
   carries a pause condition and a retirement condition, both human-authored. "Some agents
@@ -97,9 +98,11 @@ generation until understanding is complete), a
 nine-section question skeleton in which every question names the field its answer fills,
 and the generation protocol with the manifest of what a company repo contains.
 
-Five fields the generator refuses to invent: the owner, the backup owner, the forbidden
-actions, and the two death conditions. An invented owner is an accountability structure
-the named person discovers when something goes wrong.
+The generator transcribes answers rather than supplying them, everywhere; five fields
+carry that refusal as an explicit mark, and are the ones it will not draft even from
+context: the owner, the backup owner, the forbidden actions, and the two death conditions.
+An invented owner is an accountability structure the named person discovers when something
+goes wrong.
 
 Your OS lands in a **separate private repository**. This clone stays a pull-only engine;
 nothing organizational is ever written into it, upstream improvements arrive by

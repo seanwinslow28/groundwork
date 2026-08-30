@@ -26,9 +26,10 @@ names together and that R2a proved cannot be separated:
   the org map, replacing R1's stated interim policy default.
 
 **Why one unit.** `interview/generate.md`'s holder-typing rule was built on the sentence at
-`questions.md:93` that the rewrite deletes: it typed a holder `human` for "the answers under
-the row [questions.md] marks 'A role is not an owner'". Deleting the sentence without landing
-the elicitation would leave the shipped contract citing a note that no longer exists.
+`interview/questions.md:93` **at `555f8d2`**, which the rewrite deletes: it typed a holder
+`human` for "the answers under the row [questions.md] marks 'A role is not an owner'".
+Deleting the sentence without landing the elicitation would leave the shipped contract citing
+a note that no longer exists.
 
 ## Rounds
 
@@ -46,8 +47,8 @@ None.
 
 ## Baselines
 
-**CHANGED by this slice**, and stated here, in the merge commit, and in the entries, because
-the next session inherits them:
+**CHANGED by this slice.** Stated here now; the merge commit and each round entry will
+carry them too, because the next session inherits them:
 
 | Command | Before (`555f8d2`) | After |
 |---|---|---|
