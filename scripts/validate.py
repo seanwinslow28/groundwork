@@ -3603,8 +3603,9 @@ CHANGELOG_REASONS = {
     "entries": "the governance changelog is append-only from its first entry on — an existing "
                "entry was edited, reordered, or removed (#17)",
     "hidden": "the governance changelog's header can reach the entries below it — a header "
-              "is prose, carries no code fence and no angle bracket that opens markup, and "
-              "ends with a blank line before the first entry (#17, #32)",
+              "is prose: no code fence, no angle bracket that opens markup, nothing indented "
+              "to column four, no list or block quote, and a blank line before the first "
+              "entry (#17, #32)",
 }
 
 
@@ -3644,14 +3645,29 @@ def _md_indent(line):
 
 def _opens_a_container(rest):
     """PURE. True when `rest` — a line with its leading whitespace removed — opens a list
-    item or a block quote. Both hold blocks across a blank line, so a header that opens one
-    can decide what the entry below it renders as."""
+    item or a block quote.
+
+    A LIST ITEM is the one that matters: it holds blocks across a blank line, and its
+    content column moves with the spaces after its marker, so a header opening one decides
+    whether the entry below is a nested list item or indented code. That was a review
+    finding.
+
+    A BLOCK QUOTE does not survive a blank line — CommonMark separates two quotes with one —
+    so rule 3 already covers it. It is refused anyway, deliberately: a container is a
+    container, and one concept with one test is worth more here than a second rule about
+    when quoting is safe. Say that rather than inventing a hazard for it.
+
+    Deliberately conservative in two known places, both refusing rather than accepting:
+    `* * *` is a thematic break and is refused as though it were a bullet, and an ordered
+    marker of ten or more digits is not a marker to CommonMark but the ASCII digits before
+    it may still trip the bullet or quote tests. Digits are ASCII-only, as CommonMark
+    requires, so an Arabic-Indic or superscript digit is prose."""
     if rest.startswith(">"):
         return True
     if rest[:1] in ("-", "*", "+") and (len(rest) == 1 or rest[1] in " \t"):
         return True
     i = 0
-    while i < len(rest) and i < 9 and rest[i].isdigit():
+    while i < len(rest) and i < 9 and rest[i] in "0123456789":
         i += 1
     return bool(i) and rest[i:i + 1] in (".", ")") and (len(rest) == i + 1 or rest[i + 1] in " \t")
 
@@ -3686,8 +3702,9 @@ def _changelog_header_reaches_the_ledger(header_lines):
        advancing to the next multiple of four, as CommonMark counts it.
     5. **Holds blocks across a blank line.** A list item does, and which block the entry
        below becomes depends on the item's content column — which moves when the marker's
-       trailing spaces change. Refused: any line opening a list item or a block quote, so
-       the header opens no container for the ledger to fall inside.
+       trailing spaces change. Refused: any line opening a list item. A block quote is
+       refused with it, though a blank line DOES separate block quotes and rule 3 would
+       cover one; that refusal is conservative, and _opens_a_container says so.
 
     The one exception is a line whose whole stripped content is a single closed HTML
     comment carrying no angle bracket of its own; both shipped changelogs use one, and it

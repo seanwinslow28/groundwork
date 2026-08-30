@@ -61,7 +61,8 @@ this guard on it.
 | 08 | `dde4a51` | **does not approve** — Spec 1 **Major**, Standards 1 Moderate + 1 Low | 3 | `e37197e` |
 | 09 | `e37197e` | **does not approve** — Spec 1 **Major** + 1 Moderate, Standards 1 Moderate + 1 Low | 4 | `17b8d7f` |
 | 10 | `17b8d7f` | **crashed — no verdict returned** (task `task-mtg24k42-6skvmf`) | — | `daf26a5` |
-| 11 | `daf26a5` | **does not approve** — Spec 1 **Major** + 1 Moderate, Standards 1 Moderate | 3 | `PENDING-11` |
+| 11 | `daf26a5` | **does not approve** — Spec 1 **Major** + 1 Moderate, Standards 1 Moderate | 3 | `074f752` |
+| 12 | `074f752` | **does not approve** — Standards 1 Moderate, Spec 1 Low + 1 Minor. **No accepting-direction gap found** | 3 | `PENDING-12` |
 
 ## Open findings
 
@@ -141,6 +142,10 @@ alone, the suite run, and the file restored. Run with `PYTHONDONTWRITEBYTECODE=1
 | The container check misses block quotes (round 11) | 1 failure |
 | The container check misses ordered markers (round 11) | 3 failures |
 | A bullet marker needs no space after it (round 11) | 3 failures, and **0** before round 11 added the prose cases it wrongly refuses |
+| Ordered-marker digits back to Unicode `isdigit()` (round 12) | 2 failures |
+| Ordered-marker digit limit raised past nine (round 12) | 1 failure |
+| Rule 4 **moved** after the comment exception (round 12 — the edit round 11's row described) | 1 failure |
+| Rule 4 **deleted** (round 12 — the edit round 11's row measured; read that row as this one) | 4 failures |
 | None (restored) | OK, 871 |
 
 Rounds 4 and 5 added mutations against the CommonMark model that round 6 deleted; their rows
@@ -178,12 +183,13 @@ reference definition whose title spans into the ledger, and a GFM table that abs
 pipe-delimited entries as rows. That is the finding the whole branch turns on: enumerating what
 a header may not contain was never going to close.
 
-The rule is now organised by the three ways CommonMark **ends** a block — runs to end of
-document (fenced code), runs to an explicit closer (HTML types 1 to 5, all beginning with `<`),
-runs to a blank line (everything else). Classifying by termination mode is what stops the rule
-being a list of constructs; **it is not a claim that each mode is implemented completely**, and
-round 8 proved the distinction by finding rule 1 blind to a fence opened inside a list item,
-where the container marker sits in front of the fence. Rule 1 now tests for a fence sequence
+The rule is now organised by how a block relates to a blank line: fenced code runs to the end
+of the document, HTML types 1 to 5 run to an explicit closer, indented code and list items
+survive a blank line, and the rest end at one. That organising idea is what stops the rule
+being a list of constructs; **it has never been a proof of coverage**, and it was found
+incomplete twice — for indented code in round 9 and for list containers in round 11. Round 8
+had already shown the distinction by finding rule 1 blind to a fence opened inside a list item,
+where the container marker sits in front of the fence; rule 1 now tests for a fence sequence
 anywhere on a line rather than at its start, which is what rule 2 had always done for `<`.
 
 Round 9 then found the three modes were not exhaustive: **indented code is a block a blank
@@ -196,10 +202,17 @@ change**, so editing a header's list marker re-renders the entry below it from a
 item into indented code, with the entry itself unchanged byte for byte. Containers are now
 refused outright.
 
-Eight consecutive rounds have found the previous round's self-description ahead of its code —
-one of them in a sentence written specifically to stop overclaiming, and one in a review brief
-that reverted to the wording an earlier round had already been killed by. The claim in the
-record now is only what the guard does. Round 7 also deleted the inline-code exception rather than
+Round 12 then found **no accepting-direction gap at all** — the first round on this branch that
+did not — and re-ran round 11's matrix to say so block type by block type. Its findings were all
+about accuracy: an ERROR message that named three of the five rules, a README paragraph the
+previous round's sweep had missed while claiming to have swept everything, a mutation row
+labelled as an edit other than the one run, and a justification for refusing block quotes that
+was simply untrue, block quotes being ended by a blank line like most things.
+
+Nine consecutive rounds found the previous round's self-description ahead of its code — one in a
+sentence written specifically to stop overclaiming, one in a review brief that reverted to
+wording an earlier round had been killed by, and one in the sentence claiming the sweep for
+these was complete. The claim in the record now is only what the guard does. Round 7 also deleted the inline-code exception rather than
 repairing it, after two findings showed it could hide a live tag; the two shipped changelog
 headers were rewritten so they no longer need it.
 

@@ -4254,6 +4254,7 @@ class TestChangelogAppendOnly(unittest.TestCase):
         ("11: a bare bullet with no content", ["*", ""]),
         ("11: a block quote", ["> quoted", ""]),
         ("11: an ordered marker with a paren delimiter", ["1) item", ""]),
+        ("11: nine digits, the longest marker CommonMark allows", ["123456789. x", ""]),
     )
 
     def test_every_construction_a_review_round_found_is_refused(self):
@@ -4279,6 +4280,11 @@ class TestChangelogAppendOnly(unittest.TestCase):
                 ("emphasis at the start of a line", ["*emphasis* leads here", ""]),
                 ("a dash-prefixed word", ["-dash-prefixed, not a bullet", ""]),
                 ("a plus sign in an expression", ["+1 on that", ""]),
+                # CommonMark's ordered markers are ASCII digits, one to nine of them.
+                # Without these the classifier's non-ASCII and length bounds go unpinned.
+                ("an Arabic-Indic digit, which is not a marker", ["\u0661. release notes", ""]),
+                ("a superscript digit, which is not a marker", ["\u00b2. note", ""]),
+                ("ten digits, which is past CommonMark's limit", ["1234567890. x", ""]),
                 ("an entity where a tag would be refused", ["write &lt;script&gt; so", ""]),
                 ("an entry format with no angle bracket",
                  ["Format: `- date | skills/NAME/SKILL.md | gist | agent | sha`", ""]),

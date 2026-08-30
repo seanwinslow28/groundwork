@@ -138,9 +138,14 @@ Honest limits of the current build. This file grows as the product does (brief �
   - A line whose leading whitespace reaches **column four** is refused, indented code
     surviving a blank line. A tab advances to the next multiple of four, as CommonMark counts
     it.
-  - A line opening a **list item or a block quote** is refused. Both hold blocks across a blank
-    line, and a list item's content column — which moves when the spaces after its marker
-    change — decides whether the entry below is a nested list item or indented code.
+  - A line opening a **list item** is refused. A list item holds blocks across a blank line,
+    and its content column — which moves when the spaces after its marker change — decides
+    whether the entry below is a nested list item or indented code. A **block quote** is
+    refused alongside it, though a blank line does separate block quotes and the rule above
+    would already cover one; that refusal is conservative rather than necessary, and is
+    recorded as such rather than given a hazard it does not have. Ordered markers are one to
+    nine ASCII digits, as CommonMark defines them, so a line opening `١.` or `².` is prose;
+    `* * *` is a thematic break and is refused as though it were a bullet.
 
   The one exception is a line whose whole content is a single closed HTML comment carrying no
   angle bracket of its own, and it does not apply at column four, where such a line is code
