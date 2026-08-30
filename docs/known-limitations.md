@@ -56,8 +56,10 @@ Honest limits of the current build. This file grows as the product does (brief �
   permissions convention, not a cryptographic proof.
 - **The tripwire only governs pinned content.** It fires on files under a directory carrying a
   `groundwork.pin` (#21) — today the hand-authored `demo/` instance, tomorrow generated
-  company content. The groundwork engine repo is pin-less by design, so its own `skills/` and
-  `governance/constitution/` exemplars are not governed by it. Whether groundwork governs its own maintenance with its own consent gate is
+  company content. The groundwork engine repo is pin-less by design, so its own `skills/`,
+  `governance/constitution/` **and `governance/roles.md`** — all three governed families the
+  routing knows — are not governed by it. The engine's own roster is an edit like any other
+  here; the demo's is an escalating change needing a proposal. Whether groundwork governs its own maintenance with its own consent gate is
   the same open question as the hook set above, not an oversight.
 - **A deleted rule, skill, or roster is a WARN, not an ERROR.** Retirement is legitimate
   (rules carry `sunset`, cards carry `retirement_condition`) and it is escalating — but a proposal's
@@ -80,6 +82,24 @@ Honest limits of the current build. This file grows as the product does (brief �
   someone edits it. A **stale roster** produces exactly the confident-error class the
   evidence floor documents, one level up: the gate goes green on an accountability structure
   nobody has confirmed. `valid_at` and `review_by` date the claim; nothing verifies it.
+- **No question asks a holder whether they accepted the role, and no check verifies it.**
+  `interview/protocol.md` lists "whoever holds it knows" under what good looks like, and that
+  is a goal rather than a mechanism: **no question in `interview/questions.md` asks it**, no
+  schema field carries the answer, and no check looks for one. The holders in a roster are
+  named by whoever sat the interview. A layer's prose may happen to record that the people
+  named were present and agreed — `demo/interview/06-org-map.md` does — but that is one
+  company's write-up, not a field a reader can rely on finding or a validator can read.
+  A roster row states that someone holds something; it does not state that they were told. This is **orthogonal to** the stale-roster limitation
+  above, not a narrower case of it — the two fail independently, and a roster confirmed this
+  morning by the person writing it can name a holder who has never heard of the role.
+- **The cadence-to-date conversion is unchecked.** The interview asks how often the org
+  map should be re-confirmed and gets back a cadence in words; `review_by` is an ISO date;
+  the generator converts one into the other and records the derivation in the file
+  ([interview/generate.md](../interview/generate.md)). Nothing validates that conversion.
+  The roster check reads `review_by` as a date and warns when it has passed — it does not
+  read the sentence beside it, cannot tell a quarterly answer from a 90-day fallback, and
+  would not notice a derivation that names one cadence and a date computed from another.
+  The recorded derivation is there so a **reader** can check it. It is not a check.
 - **Resolution is intent-blind.** Nothing marks an owner value as meant-as-a-role or
   meant-as-a-person: a value is whatever it matches. So a role title whose roster row was
   *forgotten*, and which happens to equal an existing Holder string, silently resolves as

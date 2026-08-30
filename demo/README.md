@@ -27,12 +27,14 @@ it is also the allowlist every identifier here is checked against.
   [one runnable rule](governance/reminders/meeting-challenger/) you can pipe
   JSON into today.
 - [`interview/`](interview/00-manifest.md) — the interview this OS was generated from:
-  five confirmed layers, each frozen at the checkpoint a named person approved, and one
+  six confirmed layers, each frozen at the checkpoint a named person approved, and one
   turn still in flight. It is the record of *why* the ontology, the work packages, and
   their boundaries say what they say — the org memory the company accreted on its own
   (standups, renewal risks) traces to its records, not to these layers.
-- [`proposals/`](proposals/refusal-names-next-step.md) — one pending proposal, waiting
-  on a human. It is what an agent produces when a rule tells it no.
+- [`proposals/`](proposals/refusal-names-next-step.md) — two pending proposals, each
+  waiting on a human: one is what an agent produces when a rule tells it no, the other is
+  what a change to [the roster](governance/roles.md) has to go through, because who holds
+  an owner is governance rather than bookkeeping.
 - `groundwork.pin` — what makes this directory a **governed** instance rather than
   example content: the validator's `--diff` mode holds changes to its skills, rules, and
   roster to the same consent gate a real company repo gets.

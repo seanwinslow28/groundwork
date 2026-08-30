@@ -16,6 +16,13 @@ An owner value resolves against this table by exact string (NFC-normalized), two
 resolves to that holder. The valid_at date is a snapshot — when this mapping was last confirmed,
 not when a fact became true.
 
+The review_by date is the maintainer's own re-confirmation cadence — quarterly, taken as
+90 days, added to valid_at 2026-08-29. The span is written down because the word is looser
+than the number: three calendar months from 2026-08-29 would be the 29th, not the 27th. Said
+out loud at all because groundwork has no interview to elicit a cadence from, and a bare date
+leaves a reader unable to tell an answer from a generator's fallback default, which happens
+to be the same length.
+
 | Role | Holder | Type |
 |---|---|---|
 | Head of IT | Sean Winslow | human |
