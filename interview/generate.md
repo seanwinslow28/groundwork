@@ -165,37 +165,49 @@ reassigned to a named person before the repeal ships.
 owner resolve, so a rule cannot carry a rung until its four owner values do. Write it from
 the confirmed answers you already have, by this rule and no wider:
 
-- **Enter a holder, typed `human`, only where the binding protocol guarantees a person:**
-  the acted-on activity's owner and the skill's owner — the answers under the row
-  [questions.md](questions.md) marks "A role is not an owner", and the person guarantee in
-  [protocol.md](protocol.md). Write each as a **holder-only row**: the Role cell empty.
-  Those questions yield a person's name, not a role, and a Role row would assert a role the
-  record never confirmed.
-- **The backup owner is not among them.** Its `(human-only)` marker denotes where the
-  answer came from, not the holder's humanity, and nothing forbids a role-shaped backup.
-- **Every other owner value is not entered at all.** A constitution rule's owners may be
-  roles, and a run has recorded one that disclaims an owner outright — "the function, no
-  person named". Writing such a value as a Role row would assert a role the record never
-  confirmed, a disclaimer least of all. Left out, the roster asserts nothing about it and
-  it simply fails to resolve, which is the true answer.
+- **Enter what the interview typed, and only that.** Section 7 of
+  [questions.md](questions.md) asks, of every owner it has just named, whether that owner
+  is a person or a role somebody holds; then who holds each of those roles, and whether
+  each holder is a person or an agent. Those three answers are the roster, transcribed:
+  - an owner answered as a **person** becomes a **holder-only row** — the Role cell empty,
+    the holder's name in Holder, the type as answered;
+  - an owner answered as a **role** becomes a **Role row**, with the holders the interview
+    named and each one's answered type;
+  - a holder answered as an **agent** is typed `agent`. The interview says which; you do
+    not infer it from the field the owner came from.
+- **An owner the interview did not type is not entered at all.** A run has recorded an
+  owner that disclaims one outright — "the function, no person named" — and a constitution
+  rule's owners may be roles nobody was asked about. Writing an untyped value as a Role row
+  would assert a role the record never confirmed, a disclaimer least of all. Left out, the
+  roster asserts nothing about it and it simply fails to resolve, which is the true answer.
+  The five `(human-only)` marks above govern what you may not **draft**; they never say
+  what a holder **is**, so they are not a typing source.
 - **`valid_at` is the earliest `confirmed_at` among the interview layers these entries
-  transcribe.** A conservative aggregate: layers freeze independently and a newer one
-  reconfirms nothing about older entries, so the earliest date masks no entry's staleness.
-  Never the generation date, which may fall later and confirms nothing.
+  transcribe** — where each entry's date is its **most recent confirming layer**, since a
+  later layer may re-confirm an entry an earlier one established. A conservative aggregate
+  in the direction that matters: layers freeze independently and a newer layer reconfirms
+  nothing it does not name, so taking the earliest across entries masks no entry's
+  staleness. Never the generation date, which may fall later and confirms nothing.
 - **Precondition.** Every source layer's `confirmed_at` must parse as a real, non-future
   ISO date. A malformed or future one **stops roster generation**, naming the offending
   layer. The legal recovery is a **new confirming turn**, never an edit — frozen layers are
   immutable, so the operator runs a correction layer re-confirming the affected entries
   with a parseable date, and the aggregate reads each entry's most recent confirming layer.
   Never invent a date.
-- **`review_by` is an interim policy default**: 90 days after `valid_at`, because no
-  question elicits a review cadence yet. Record it in the file as default-not-answered, so
-  a reader can tell a policy default from an answer.
+- **`review_by` is the elicited cadence, converted to a date here.** The interview asks
+  how often the org map should be re-confirmed and gets back a cadence — "every six
+  months" — while the field is an ISO date. You do the conversion, at generation, from
+  `valid_at`, and you **record the derivation in the file**: the cadence as answered, the
+  base date, and the date it produced. Nobody named a date, so the file says who did. Where
+  the cadence question went **unanswered**, the field is still required, so it falls back to
+  the policy default of 90 days after `valid_at` — recorded in the file as
+  default-not-answered, so a reader can tell a default from an answer, and named in the
+  generation report below.
 - **`source`** names where the org map came from — the interview layers, by name.
 
-Role rows and agent-typed holders arrive when the interview elicits them directly. A repo
-generated before then keeps its holder-only roster: that is valid content, and enriching it
-is the company's own edit.
+A repo generated before the interview asked these questions keeps its holder-only roster:
+that is valid content, and enriching it is the company's own edit — content is never
+re-copied by an engine pull.
 
 **A rule with a gap ships as a declared draft, or not at all.** A constitution rule
 carrying a gap in any of three classes — a required field that is **missing**, a field
@@ -314,9 +326,9 @@ here or not.
   obligation that pays for the declared-draft permission above.
 - Any rule that did not ship at all under that permission's one exception, and which
   rung-independent gate ERROR stopped it.
-- The roster's `review_by` where it carries the interim policy default rather than an
-  elicited cadence. The roster file records this itself; the report does not leave it
-  to be found there.
+- The roster's `review_by` where the cadence question went unanswered and the field fell
+  back to the policy default rather than an elicited cadence. The roster file records this
+  itself; the report does not leave it to be found there.
 - Every question still open, including the ones generation itself surfaced.
 
 Answering them is a **new interview turn** under the state format

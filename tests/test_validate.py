@@ -7351,7 +7351,16 @@ class TestQuestionSkeletonCoverage(unittest.TestCase):
         "card:last_reviewed": "date stamp written at generation",
         "card:next_review": "date stamp written at generation",
         "memory:provenance": "set by how the fact was learned, not by asking",
+        "roster:valid_at": "aggregated from the source layers' confirmed_at, not asked",
+        "roster:source": "names the layers the roster was written from, not asked",
     }
+
+    # The roster's two surfaces: the dated frontmatter (ROSTER_FIELDS) and the
+    # table's columns (ROSTER_HEADER). Wired to the validator's own constants so
+    # a schema change cannot leave the skeleton silently behind.
+    def _roster_fields(self):
+        return {"roster:" + f for f in validate.ROSTER_FIELDS} | {
+            "roster:" + c for c in validate.ROSTER_HEADER}
 
     # Mirrors check_memory's required spine. Update together — validate.py has
     # no constant for it (candidate for extraction next time memory changes).
@@ -7393,6 +7402,7 @@ class TestQuestionSkeletonCoverage(unittest.TestCase):
         for f in self.MEMORY_SPINE:
             known.add("memory:" + f)
         known |= {"exec:activity", "exec:direction"}
+        known |= self._roster_fields()
         unknown = self._fills() - known
         self.assertEqual(unknown, set(),
                          "questions.md names fields the schema does not have: %s" % sorted(unknown))
@@ -7416,6 +7426,10 @@ class TestQuestionSkeletonCoverage(unittest.TestCase):
         for f in self.MEMORY_SPINE:
             required.add("memory:" + f)
         required |= {"exec:activity", "exec:direction"}
+        # ROSTER_FIELDS only: the three frontmatter fields the roster check
+        # ERRORs on when missing. The table columns are per-row, not a global
+        # requirement, so they are known without being required.
+        required |= {"roster:" + f for f in validate.ROSTER_FIELDS}
         missing = required - fills - set(self.NOT_ASKED)
         self.assertEqual(missing, set(),
                          "the schema requires fields no question asks for: %s — either "

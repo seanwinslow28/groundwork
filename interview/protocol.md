@@ -245,7 +245,8 @@ what the company decided; the generation protocol says how the confirmed layers 
 
 ## What good looks like at the end
 
-- Every acted-on activity has an owner who is a **person**, not a role, and who knows it.
+- Every acted-on activity has an owner — a **person**, or a **role** the roster
+  resolves to a named holder — and whoever holds it knows.
 - Every automation-path activity answers all eight Gate questions. A truthful "none" is
   an answer; "N/A" is not, and there is no waiver.
 - At least one activity is recorded as **not** worth automating.
