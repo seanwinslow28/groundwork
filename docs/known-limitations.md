@@ -56,8 +56,10 @@ Honest limits of the current build. This file grows as the product does (brief �
   permissions convention, not a cryptographic proof.
 - **The tripwire only governs pinned content.** It fires on files under a directory carrying a
   `groundwork.pin` (#21) — today the hand-authored `demo/` instance, tomorrow generated
-  company content. The groundwork engine repo is pin-less by design, so its own `skills/` and
-  `governance/constitution/` exemplars are not governed by it. Whether groundwork governs its own maintenance with its own consent gate is
+  company content. The groundwork engine repo is pin-less by design, so its own `skills/`,
+  `governance/constitution/` **and `governance/roles.md`** — all three governed families the
+  routing knows — are not governed by it. The engine's own roster is an edit like any other
+  here; the demo's is an escalating change needing a proposal. Whether groundwork governs its own maintenance with its own consent gate is
   the same open question as the hook set above, not an oversight.
 - **A deleted rule, skill, or roster is a WARN, not an ERROR.** Retirement is legitimate
   (rules carry `sunset`, cards carry `retirement_condition`) and it is escalating — but a proposal's
