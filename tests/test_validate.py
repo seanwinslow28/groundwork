@@ -8910,13 +8910,15 @@ class TestDiffBaseContract(unittest.TestCase):
         """Round 02 finding 9, Minor, over-refusing. git spells a path NFC while
         a macOS filesystem may list it NFD, so a comparison against the
         working-tree scan alone could call a marker that is still there deleted.
-        What closes it is `lexists`, which asks the filesystem in its own terms.
+        What closes it is asking the filesystem in its own terms — `isfile`
+        today; this docstring said `lexists` until round 04 caught it still
+        crediting a call that round 03 had already replaced.
 
         An NFC fold was added here first and then removed: no mutation of it
-        could be made to fail, because `lexists` answers first on this platform,
-        and on a normalization-sensitive filesystem the fold would have
-        suppressed a true deletion. This test pins `lexists`, and the finding
-        number is kept so the round-02 disposition stays traceable."""
+        could be made to fail, because the filesystem check answers first on this
+        platform, and on a normalization-sensitive filesystem the fold would have
+        suppressed a true deletion. The finding number is kept so the round-02
+        disposition stays traceable."""
         with tempfile.TemporaryDirectory() as d:
             base = self._pre_marker(d, markers=False)
             nfc = "café"
@@ -9048,6 +9050,130 @@ class TestDiffBaseContract(unittest.TestCase):
                     "the root marker's absence does not depend on locked/")
             finally:
                 os.chmod(os.path.join(d, "locked"), 0o700)
+
+    # --- Codex round 04 regressions.
+
+    def test_a_marker_on_a_net_zero_merged_side_branch_is_seen(self):
+        """State coverage, NOT a regression. Round 04 reported this as a Major
+        defect — history simplification pruning a side branch whose marker was
+        added and removed before a net-zero merge — and the finding was
+        **rejected as factually wrong**: the reviewer's own harness, rerun
+        verbatim against the revision it was filed against, produced the ERROR
+        rather than the reported silence. `--diff-merges=separate` forces every
+        merge to be diffed against each parent, which is what defeats TREESAME
+        pruning.
+
+        This test passes before and after that round, so it pins nothing that
+        was broken. It is kept because the state is worth covering and because
+        it is the evidence for the rejection. `--full-history` was added for the
+        finding and then removed; see round-04.md."""
+        with tempfile.TemporaryDirectory() as d:
+            base = self._pre_marker(d, markers=False)
+            _git(d, "switch", "-q", "-c", "side")
+            _write(d, "groundwork.pin", PIN_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "marker")
+            os.remove(os.path.join(d, "groundwork.pin"))
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "remove")
+            _git(d, "switch", "-q", "main")
+            _git(d, "merge", "--no-ff", "-qm", "net-zero", "side")
+            self.assertEqual(
+                [f.path for f in
+                 self._messages(validate.diff_base_findings(d, base), "no longer holds")],
+                ["groundwork.pin"])
+
+    def test_a_configured_combined_merge_format_does_not_hide_the_marker(self):
+        """Round 04 finding 2, Major. Bare `-m` takes the format `log.diffMerges`
+        configures, and a COMBINED record ("::...") carries one source mode per
+        parent — so `parts[1]` is another source mode, not the destination, and
+        the parser misread it. `--diff-merges=separate` names the format instead
+        of inheriting it, and a combined record is skipped rather than guessed
+        at."""
+        with tempfile.TemporaryDirectory() as d:
+            base = self._pre_marker(d, markers=False)
+            _git(d, "switch", "-q", "-c", "side")
+            _write(d, "side.txt", "side\n")
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "side")
+            _git(d, "switch", "-q", "main")
+            _git(d, "merge", "--no-ff", "--no-commit", "side")
+            _write(d, "groundwork.pin", PIN_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "merge result adds the marker")
+            os.remove(os.path.join(d, "groundwork.pin"))
+            _git(d, "config", "log.diffMerges", "combined")
+            self.assertEqual(
+                [f.path for f in
+                 self._messages(validate.diff_base_findings(d, base), "no longer holds")],
+                ["groundwork.pin"])
+
+    def test_a_marker_that_becomes_a_regular_file_later_is_seen(self):
+        """Round 04 finding 3, Major, and found independently by the builder
+        while probing the same question. git reports a symlink becoming a
+        regular file as `T`, which `--diff-filter=A` removed before the mode was
+        ever inspected — so a path that ARRIVED as a symlink and later became a
+        genuine pin had no surviving record, and deleting it was silent.
+
+        This is what finally settled `--diff-filter=A`: the flag is gone. Any
+        record whose DESTINATION is a regular file is evidence the path existed
+        as one somewhere in the range, which is the question being asked."""
+        with tempfile.TemporaryDirectory() as d:
+            base = self._pre_marker(d, markers=False)
+            os.symlink("seed.md", os.path.join(d, "groundwork.pin"))
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "arrives as a symlink")
+            os.remove(os.path.join(d, "groundwork.pin"))
+            _write(d, "groundwork.pin", PIN_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "becomes a real marker")
+            os.remove(os.path.join(d, "groundwork.pin"))
+            self.assertEqual(
+                [f.path for f in
+                 self._messages(validate.diff_base_findings(d, base), "no longer holds")],
+                ["groundwork.pin"])
+
+    def test_a_base_holding_only_a_symlink_does_not_suppress_the_finding(self):
+        """Round 04 finding 4, Major. `base_rels` comes from `ls-tree
+        --name-only`, which carries no type, so a base holding a SYMLINK named
+        `groundwork.pin` answered "the base had this name" and suppressed the
+        finding for a real marker added and deleted after it. `_base_markers`
+        asks for the modes."""
+        with tempfile.TemporaryDirectory() as d:
+            self._pre_marker(d, markers=False)
+            os.symlink("seed.md", os.path.join(d, "groundwork.pin"))
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "base holds a symlink of that name")
+            base = _git_out(d, "rev-parse", "HEAD")
+            os.remove(os.path.join(d, "groundwork.pin"))
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "remove it")
+            _write(d, "groundwork.pin", PIN_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "add a real marker")
+            os.remove(os.path.join(d, "groundwork.pin"))
+            self.assertEqual(
+                [f.path for f in
+                 self._messages(validate.diff_base_findings(d, base), "no longer holds")],
+                ["groundwork.pin"])
+
+    def test_a_broken_symlink_does_not_stand_in_for_the_marker(self):
+        """Round 04 finding 5, Minor. The loop skipped any path the working-tree
+        scan listed by NAME, before the type proof ran, so a broken symlink left
+        where the marker had been counted as the marker still being present. The
+        name-membership check is gone; `isfile` is the only presence proof, and
+        it is the one that matches what a marker is."""
+        with tempfile.TemporaryDirectory() as d:
+            base = self._pre_marker(d, markers=False)
+            _write(d, "groundwork.pin", PIN_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "marker")
+            os.remove(os.path.join(d, "groundwork.pin"))
+            os.symlink("missing", os.path.join(d, "groundwork.pin"))
+            self.assertEqual(
+                [f.path for f in
+                 self._messages(validate.diff_base_findings(d, base), "no longer holds")],
+                ["groundwork.pin"])
 
     def test_the_changelog_pass_skips_an_unsupported_root(self):
         """The second place a governed finding is suppressed. The changelog

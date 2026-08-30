@@ -99,20 +99,27 @@ Honest limits of the current build. This file grows as the product does (brief �
     same round found four more that are FIXED rather than listed here — a marker added by a
     merge result, a single undecodable pathname erasing every marker in the same output, a
     `strip()` that both invented markers and hid them, and `log.showRoot=false` suppressing a
-    root commit's addition — and round 03 found two more, also fixed: the walk and the
-    presence check were both **type-blind**, so a marker replaced by a directory of the same
-    name read as still present, and a symlink-to-directory named like a marker read as
-    evidence a governed root had existed. Entries 02 and 03 of [this slice's review
-    record](superpowers/reviews/issue-40-marker-deletion-evidence/) carry each disposition.
+    root commit's addition. Round 03 found two more, also fixed: the walk and the presence
+    check were both **type-blind**. Round 04 found four more, also fixed: a repository
+    configuring `log.diffMerges=combined`, a marker that arrived as a symlink and only later
+    became a real file, a base holding a symlink of that name, and a broken symlink standing in
+    for a deleted marker. A fifth round-04 finding was **rejected as factually wrong** — its
+    reproduction, rerun verbatim, did not reproduce. The entries under [this slice's review
+    record](superpowers/reviews/issue-40-marker-deletion-evidence/) carry each disposition,
+    the rejection included.
 
-    **Absence is proven before it is reported, and only a regular file counts.** A
-    working-tree scan that could not read part of the tree cannot show anything under that
+    **A marker is a regular file, and all three sides of the comparison now say so.** In
+    history, a record counts only when its destination mode is a regular file, so a gitlink or
+    symlink named like a marker is not evidence one existed. In the base tree, the same
+    question is asked of the modes rather than of the pathname. In the working tree, presence
+    is `isfile` and nothing else — not `lexists`, which a directory of the same name satisfies,
+    and not membership in the scan by name, which a broken symlink satisfies. A symlink
+    pointing at a real pin file does count as present, consistently with how every other check
+    reads the tree.
+
+    A working-tree scan that could not read part of the tree cannot show anything under that
     subtree is missing, so a candidate under an unreadable directory draws nothing — the
-    blast-radius pass still raises the accurate unreadable ERROR. A path git reported is
-    confirmed absent with `isfile` rather than by the scan alone, because `os.walk` lists a
-    gitlink or a symlink-to-directory as a directory and not as a file. On the history side
-    only a regular-file mode is marker evidence, so a gitlink or symlink named like a marker
-    is not one.
+    blast-radius pass still raises the accurate unreadable ERROR.
   - **A root spelled differently at base and in the working tree reads as missing.** The pin
     lookup is exact, because folding it is the fail-open direction: a base holding
     `a/groundwork.pin` would otherwise satisfy a separate `A/` root and the tripwire would

@@ -3876,6 +3876,52 @@ def _unsupported_root_finding(g):
                    "carrying this pin as the base")
 
 
+# git's two regular-file blob modes. A marker is a FILE; a symlink (120000), a
+# gitlink (160000) and a tree are not one, on either side of the comparison.
+_REGULAR_MODES = (b"100644", b"100755")
+
+
+def _base_markers(toplevel, base, paths):
+    """Which of `paths` the BASE tree holds AS REGULAR FILES, repo-relative.
+
+    `_git_diff_context` lists the base with `ls-tree --name-only`, which carries
+    no type, so `base_rels` answers "the base had this NAME". That is the wrong
+    question for issue #40's loop: a base holding a SYMLINK called
+    `groundwork.pin` would suppress the finding for a real marker added and
+    deleted after it (round 04 finding 4). This asks for the modes.
+
+    An empty set on any failure, which makes the caller fall back to reporting —
+    the fail-closed direction here, since the alternative is silence."""
+    if not paths:
+        return set()
+    try:
+        # EXACT pathspecs, not globs: ls-tree matches by path prefix and would
+        # silently return nothing for "*groundwork.pin". The candidates are few,
+        # so asking for them by name is both correct and cheaper than listing
+        # the whole tree a second time.
+        out = subprocess.run(["git", "-C", toplevel, "ls-tree", "-z", base, "--"]
+                             + sorted(paths), capture_output=True)
+    except OSError:
+        return set()
+    if out.returncode != 0:
+        return set()
+    found = set()
+    for raw in out.stdout.split(b"\0"):
+        if not raw:
+            continue
+        # "<mode> <type> <sha>\t<path>"
+        head, tab, path = raw.partition(b"\t")
+        if not tab:
+            continue
+        mode = head.split(b" ")[0]
+        if mode not in _REGULAR_MODES:
+            continue
+        name = os.fsdecode(path)
+        if os.path.basename(name) in ("groundwork.pin", INTERVIEW_MANIFEST):
+            found.add(name)
+    return found
+
+
 def _markers_added_since_base(toplevel, base):
     """Issue #40's third source of evidence: the marker paths — a
     `groundwork.pin` or an interview `00-manifest.md` — that a commit reachable
@@ -3894,35 +3940,49 @@ def _markers_added_since_base(toplevel, base):
     emits nothing on it, which leaves the pre-#40 silence rather than inventing
     a finding out of a failed subprocess.
 
-    Every flag on the `git log` call earns its place, and the reason differs per
-    flag — three close a measured hole, one narrows the output and is NOT claimed
-    to do more:
+    The flag set, and what each is for. Four rounds have now been wrong about one
+    flag or another here, so each line says what was MEASURED rather than what
+    seems reasonable:
 
-    - `--no-renames`: rename detection reports a moved marker as R, not A.
-    - `-m`: `git log --name-only` emits NO diff for a merge commit by default,
-      so a marker introduced by a merge RESULT — in the merge's tree and in
-      neither parent — was invisible (Codex round 02, finding 1). `-m` diffs a
-      merge against each parent separately; a path reported that way is in that
-      merge's tree, so it did exist somewhere in the range. Duplicates collapse
-      into the set.
+    - `--no-renames`: rename detection reports a moved marker as R, not A, and
+      the walk would miss it.
+    - `--diff-merges=separate`: `git log --raw` emits NO diff for a merge by
+      default, so a marker introduced by a merge RESULT was invisible (round 02
+      finding 1). Bare `-m` fixed that but takes the format `log.diffMerges`
+      configures, and a COMBINED record ("::...") carries one source mode per
+      parent — `parts[1]` is then another source mode, not the destination, and
+      the parser misread it (round 04 finding 2). Naming the format removes the
+      repository's configuration from the answer.
     - `--root`: without it `log.showRoot=false` suppresses a root commit's diff,
-      and an orphan line's marker addition goes unseen (round 02, finding 6).
-    - `--diff-filter=A`: this one is a NARROWING, not a hole-closer, and neither
-      of the two claims made about it before was right. Entry 01 said dropping it
-      "changes no verdict" — round 02 disproved that on the merge fixture, where
-      the filter was exactly what hid the path. The sentence that replaced it
-      swept the filter into the same "dropping it loses a marker" clause as the
-      other three, and round 03 called that false too: dropping it today still
-      RECOVERS a marker in that fixture's shape, and the mutation still survives
-      the suite. It is kept because `-m` and `--root` now make the additions
-      visible on their own and asking git for additions is narrower than asking
-      for every touch — not because anything measured shows it is needed.
-    - `--raw` (with `-z`): `--name-only` gives a pathname and no type. A gitlink
-      or a symlink-to-directory named `groundwork.pin` was therefore read as a
-      marker, and a real marker replaced by a directory of the same name was
-      read as still present. The raw record carries the destination mode, and
-      only a regular file (`100644` or `100755`) is marker evidence. Round 03
-      finding 1, which was wrong in both directions at once.
+      and an orphan line's marker addition goes unseen (round 02 finding 6).
+    - `--raw` (with `-z`): `--name-only` gives a pathname and no type, so a
+      gitlink or symlink-to-directory named `groundwork.pin` read as a marker
+      (round 03 finding 1). The raw record carries the destination mode.
+
+    There is deliberately **no `--full-history`**. Round 04 reported that history
+    simplification prunes a side branch whose marker was added and removed before
+    a net-zero merge, and the flag was added for it — then the reviewer's own
+    harness, rerun verbatim against the revision it was filed against, produced
+    the finding rather than the reported silence, and a `merge -s ours` case
+    built independently gave byte-identical output with and without the flag.
+    `--diff-merges=separate` already forces every merge to be diffed against each
+    parent, which is what defeats TREESAME pruning here. The flag was removed
+    rather than kept on the strength of a defect that does not reproduce.
+
+    **There is no `--diff-filter=A`, and its removal is the fourth and last
+    correction to a sequence of wrong statements about it.** Entry 01 said
+    dropping it changed no verdict; round 02 disproved that. The replacement
+    said dropping it would lose a marker, like the other flags; round 03
+    disproved that too. The third version called it a harmless narrowing. Round
+    04 — and the builder independently — then measured that it was not harmless:
+    git reports a symlink becoming a regular file as `T`, which the filter
+    removed before the mode was ever inspected, so a path that arrived as a
+    symlink and later became a genuine pin had no surviving record at all.
+
+    What replaces it is a question that does not need the filter: **any record
+    whose DESTINATION mode is a regular file** proves the path existed as a
+    regular file somewhere in the range. Deletions carry a destination mode of
+    000000 and drop out on the same test.
 
     Paths are decoded per-path with `os.fsdecode`, as `_git_diff_context` does
     for the base tree. Decoding the whole stream as strict UTF-8 meant one
@@ -3942,9 +4002,9 @@ def _markers_added_since_base(toplevel, base):
                                "HEAD^{commit}"], capture_output=True)
         if head.returncode != 0:
             return set()
-        log = subprocess.run(["git", "-C", toplevel, "log", "--diff-filter=A",
-                              "--no-renames", "-m", "--root", "--raw", "-z",
-                              "--format=",
+        log = subprocess.run(["git", "-C", toplevel, "log", "--no-renames",
+                              "--diff-merges=separate", "--root",
+                              "--raw", "-z", "--format=",
                               "%s..HEAD" % base, "--",
                               "*groundwork.pin", "*" + INTERVIEW_MANIFEST],
                              capture_output=True)
@@ -3963,10 +4023,21 @@ def _markers_added_since_base(toplevel, base):
         if not meta.startswith(b":"):
             i += 1
             continue
+        # A COMBINED record ("::...") has one source mode per parent, so
+        # parts[1] is another SOURCE mode rather than the destination — and when
+        # that source mode happens to be a regular file, reading it as the
+        # destination would accept the record for the wrong reason.
+        # `--diff-merges=separate` makes this unreachable, so NO mutation of this
+        # branch fails the suite; it is kept anyway because the failure it
+        # prevents is a silent misread rather than an error (round 04 finding 2
+        # is what the explicit flag closes; this is the guard behind it).
+        if meta.startswith(b"::"):
+            i += 2
+            continue
         parts = meta.split(b" ")
         name = os.fsdecode(fields[i + 1])
         i += 2
-        if len(parts) < 2 or parts[1] not in (b"100644", b"100755"):
+        if len(parts) < 2 or parts[1] not in _REGULAR_MODES:
             continue
         if os.path.basename(name) in ("groundwork.pin", INTERVIEW_MANIFEST):
             out.add(name)
@@ -4095,13 +4166,17 @@ def diff_base_findings(root, base):
     #     deletion whenever any directory was unreadable, which blinded
     #     candidates whose absence was independently provable — round 03
     #     finding 2.
-    #   - `os.walk` lists a gitlink or a symlink-to-directory under `dirnames`,
-    #     not `filenames`, so a path git reported can be present on disk and
-    #     absent from `wt_files`. `os.path.isfile` settles that — and it must be
-    #     `isfile`, not `lexists`: a marker REPLACED by a directory of the same
-    #     name still "exists", and treating that as present hid a real deletion
-    #     (round 03 finding 1, the under-refusing half; the over-refusing half is
-    #     closed on the history side by `--raw`).
+    #   - Presence is proven by `os.path.isfile` ALONE, and by nothing that
+    #     matches on the pathname. `lexists` was tried and is wrong: a marker
+    #     replaced by a DIRECTORY of the same name still "exists" (round 03
+    #     finding 1). Membership in the working-tree scan was tried alongside it
+    #     and is wrong for the same reason one step earlier: it matched a broken
+    #     symlink left where the marker had been, before any type was checked
+    #     (round 04 finding 5). `isfile` is what a marker actually is.
+    #   - The BASE side is typed too, via `_base_markers`. `base_rels` comes from
+    #     `ls-tree --name-only` and answers only "the base had this name", which
+    #     let a base holding a SYMLINK of that name suppress the finding for a
+    #     real marker added and deleted after it (round 04 finding 4).
     #   - git spells a path NFC while a macOS filesystem lists it NFD, and a
     #     case-folding filesystem spells it differently again, so the scan can
     #     miss a marker that is still there. `lexists` asks the filesystem in
@@ -4115,14 +4190,13 @@ def diff_base_findings(root, base):
     # folding it is the fail-OPEN direction there, and that reasoning is
     # unchanged here.
     unreadable = tuple(sorted(f.path for f in wt_walk_findings))
-    wt_rels = {os.path.relpath(a, root).replace(os.sep, "/") for a in wt_files}
-    for repo_path in sorted(_markers_added_since_base(toplevel, base)):
+    candidates = sorted(_markers_added_since_base(toplevel, base))
+    base_markers = _base_markers(toplevel, base, candidates)
+    for repo_path in candidates:
         if scope != "." and not repo_path.startswith(scope + "/"):
             continue
         rel = repo_path if scope == "." else repo_path[len(scope) + 1:]
-        if _diff_in_workbench_skips(rel) or rel in base_rels:
-            continue
-        if rel in wt_rels:
+        if _diff_in_workbench_skips(rel) or repo_path in base_markers:
             continue
         if any(rel == u or rel.startswith(u + "/") for u in unreadable):
             continue
