@@ -66,8 +66,8 @@ this guard on it.
 | 13 | `8888fae` | **does not approve** — Spec 1 Low, Standards 3 Low. **No accepting-direction gap, re-derived independently** | 4 | `3c35799` |
 | 14 | `3c35799` | **does not approve** — 4 Low. **No accepting-direction gap** | 4 | `c82aa4c` |
 | 15 | `c82aa4c` | **does not approve** — 2 Low. **No accepting-direction defect** | 2 | `8202ab6` |
-| 16 | `8202ab6` | **does not approve** — 2 Low. **No accepting-direction defect** | 2 | `PENDING-17` |
-| 17 | — | maintainer decision, not a review round: Option A | — | `PENDING-17` |
+| 16 | `8202ab6` | **does not approve** — 2 Low. **No accepting-direction defect** | 2 | `263b10e` (finding 1); finding 2 superseded |
+| 17 | — | maintainer decision, not a review round: Option A | — | `263b10e` |
 
 ## Open findings
 
