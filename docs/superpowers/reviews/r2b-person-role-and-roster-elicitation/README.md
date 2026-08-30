@@ -39,6 +39,7 @@ a note that no longer exists.
 | 02 | `c00b2b7` | 6 findings, worst HIGH on both axes, no approve/does-not-approve word | 6 | `8868b9e` |
 | 03 | `b8976c0` | 4 findings, worst HIGH, no approve/does-not-approve word | 4 | `1c6b4b1` |
 | 04 | `74c86be` | 4 findings, worst HIGH, no approve/does-not-approve word | 4 | `063fb3e` |
+| 05 | `104709b` | 6 findings, worst HIGH, no approve/does-not-approve word | 6 | `28fe3cc` |
 
 ## Open findings
 
@@ -86,14 +87,21 @@ first typing rule infeasible, and one of its two grounds was that the marker tha
 ([spec-roles-accountable-unit.md](../spec-roles-accountable-unit.md), round 11, row 1). Ratifying the placement is the
 maintainer's at merge.
 
-**3. Follow-up owed, deliberately not done here.** `proposals/` is pending-only and an
+**3. A second decision taken mid-session, 2026-08-29.** Round 5 found that round 4's fix
+drifted from locked decision 5 by collapsing two gap states the spec keeps separate. Three
+routes were put with a recommendation and its counter-argument; the maintainer chose to state
+the case as an **activation condition** under decisions 2 and 3, amending no locked decision
+and leaving decision 6's three gap classes untouched. `round-05.md` carries the full record,
+including the counter-argument and the two rejected routes.
+
+**4. Follow-up owed, deliberately not done here.** `proposals/` is pending-only and an
 applied proposal's file is removed once the change lands. Removing
 `demo/proposals/org-map-re-confirmed.md` is legal only *after* the merge — a branch that
 carries the roster change without the proposal fails the very gate that demanded it, and
 `--diff main` run from `main` is an empty diff — so it is the maintainer's to do or to
 defer. Until it is removed, the demo roster's gate is pre-licensed for further edits.
 
-**4. C10 is implemented in shape, for the roster only, and stays open.** Run 1's
+**5. C10 is implemented in shape, for the roster only, and stays open.** Run 1's
 clarification C10 approved a direction for cadence answers against ISO-date fields: convert
 at generation and record the derivation on the record. Read this session at
 `persona-company/runs/2026-07-31/findings.md:263-267` — another repository, so no revision
@@ -106,7 +114,7 @@ properly. **C10 itself is scoped to `memory:review_by` and is not implemented** 
 is untouched, deliberately: doing half of a finding filed against another field would leave
 two cadence mechanisms in one document.
 
-**5. Issue #39 is fixed on this branch and stays open until the merge lands.** A peer
+**6. Issue #39 is fixed on this branch and stays open until the merge lands.** A peer
 session surfaced a stale
 enumeration in `docs/known-limitations.md`: the pin-less-engine bullet named `skills/` and
 `governance/constitution/` as the engine's ungoverned exemplars, when R1 made the roster a
@@ -120,6 +128,6 @@ alternative was shipping an enumeration this slice's own edits made staler. **Th
 here, and closing it before the merge would assert something the back-out flagged in the
 sentence above can still falsify. It closes when `a131fe2` reaches `main`.
 
-**6. One limitation added, not a check.** `docs/known-limitations.md` now records that
+**7. One limitation added, not a check.** `docs/known-limitations.md` now records that
 nothing validates the cadence-to-date conversion: the roster check reads the date and cannot
 read the sentence beside it. The recorded derivation is there so a reader can check it.
