@@ -84,10 +84,12 @@ Honest limits of the current build. This file grows as the product does (brief �
   nobody has confirmed. `valid_at` and `review_by` date the claim; nothing verifies it.
 - **Nothing asks a holder whether they accepted the role, and nothing verifies it.**
   `interview/protocol.md` lists "whoever holds it knows" under what good looks like, and that
-  is a goal rather than a mechanism: **no question in `interview/questions.md` asks it**, the
-  holders in a roster are named by whoever sat the interview, and no field, check or file
-  records the holder's own confirmation. A roster row states that someone holds something; it
-  does not state that they were told. This is **orthogonal to** the stale-roster limitation
+  is a goal rather than a mechanism: **no question in `interview/questions.md` asks it**, no
+  schema field carries the answer, and no check looks for one. The holders in a roster are
+  named by whoever sat the interview. A layer's prose may happen to record that the people
+  named were present and agreed — `demo/interview/06-org-map.md` does — but that is one
+  company's write-up, not a field a reader can rely on finding or a validator can read.
+  A roster row states that someone holds something; it does not state that they were told. This is **orthogonal to** the stale-roster limitation
   above, not a narrower case of it — the two fail independently, and a roster confirmed this
   morning by the person writing it can name a holder who has never heard of the role.
 - **The cadence-to-date conversion is unchecked.** The interview asks how often the org

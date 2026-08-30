@@ -167,15 +167,19 @@ the confirmed answers you already have, by this rule and no wider:
 
 - **Enter what the interview typed, and only that.** Section 7 of
   [questions.md](questions.md) asks three things in order: of every owner it has just
-  named, whether that owner is a role somebody holds or a named holder; then, of every role
-  that produced, who holds it today; then, of **every** holder either question produced,
-  whether it is a human or an agent. Those answers are the roster, transcribed:
+  named, whether that owner is a **role** or a **named holder**; then, of every role that
+  produced, who holds it today — **"nobody yet" is an answer**; then, of every holder either
+  question produced, whether it is a human or an agent. Those answers are the roster,
+  transcribed:
   - an owner answered as a **named holder** becomes a **holder-only row** — the Role cell
     empty, the holder's name in Holder, the type as answered. A named holder is not
     necessarily a person: an owner the interview names directly and types `agent` is a
     holder-only row like any other;
   - an owner answered as a **role** becomes a **Role row**, with the holders the interview
-    named and each one's answered type;
+    named and each one's answered type. A role answered as held by **nobody yet** is still
+    written — the Role cell filled, Holder and Type empty — which is a legal roster row and
+    the honest one: it says the office exists and no one holds it. It does not resolve, so
+    the rules naming it stay drafts under the gap rule below;
   - **the Type cell takes `human` or `agent` and nothing else** — the roster has exactly two
     type values, and the question is asked in those words for that reason. An answer given
     in any other word ("a person", "a bot", a name) is written as whichever of the two it
@@ -228,6 +232,14 @@ carrying a gap in any of three classes — a required field that is **missing**,
 populated but **unresolvable** against the roster, or a field populated but recorded as
 **disputed** — may ship only as a **draft** (no rung) that declares those gaps in its own
 body. An undeclared incomplete rule does not ship.
+
+**Unresolvable includes an appeal path that reaches no human.** A `human_appeal_owner` that
+matches the roster but resolves **only to agent-typed holders** has not resolved for the
+purpose of activation: an appeal that terminates in a model is not an appeal path, and the
+gate ERRORs it on **any** active rule, not only a high-risk one. So it is the second class,
+and the rule ships rungless with that gap declared. Reading it as resolved is the one way to
+generate a repo that fails its own gate on the first run: the field looks answered, no gap is
+listed, the rung stays on, and the validator refuses it.
 
 **One exception, and it outranks this permission:** a rule carrying a gate ERROR that fires
 regardless of rung does not ship at all, declared or not. That is a `high-risk` rule whose

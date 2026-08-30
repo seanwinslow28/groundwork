@@ -7427,12 +7427,16 @@ class TestQuestionSkeletonCoverage(unittest.TestCase):
             required.add("memory:" + f)
         required |= {"exec:activity", "exec:direction"}
         # The three frontmatter fields the roster check ERRORs on when missing,
-        # plus Holder and Type: a roster row with either cell empty is an ERROR
-        # (check_roles), so a skeleton that stops asking for them would ship a
-        # roster the gate rejects. Codex r2 caught these two missing — without
-        # them the holder-typing rows could be deleted without failing coverage.
-        # Role is deliberately NOT required: a holder-only row's Role cell is
-        # legitimately empty, and the demo's three rows are exactly that.
+        # plus Holder and Type. NOT because a row needs them —
+        # test_role_row_with_no_holder_is_legal_and_unheld proves `| CISO |  |  |`
+        # is legal, and an unheld role is a state the design keeps on purpose.
+        # The reason is ACTIVE-OWNER RESOLUTION: an active rule's owners must
+        # resolve to a holder, and a human_appeal_owner to a human one, so an
+        # interview that never asks who holds what can only generate draft rules.
+        # Codex r2 caught these two missing from `required`; Codex r4 caught this
+        # rationale asserting a row-level invariant the schema does not have.
+        # Role stays NOT required: a holder-only row's Role cell is legitimately
+        # empty, and the demo's three rows are exactly that.
         required |= {"roster:" + f for f in validate.ROSTER_FIELDS}
         required |= {"roster:holder", "roster:type"}
         missing = required - fills - set(self.NOT_ASKED)

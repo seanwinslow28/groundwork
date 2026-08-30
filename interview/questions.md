@@ -96,8 +96,8 @@ the work type (section 1), the accountable owner (section 7), plus the grounding
 | Who owns the rule itself? | rule:owner | Whoever answers for it existing. |
 | Who owns the principle, and who owns the check? | rule:value_owner, rule:runtime_check_owner | They are often different owners. |
 | When this rule blocks somebody, who can they appeal to? | rule:human_appeal, rule:human_appeal_owner | A high-risk rule must have one. There is no rung six. |
-| For each owner named above: is it a role somebody holds, or a named holder? | roster:role, roster:holder | Both resolve; the roster is where it is said which. A named holder need not be a person — the type question two rows down settles that. |
-| For each role just named: who holds it today? | roster:role, roster:holder | A role no one holds cannot carry a rule. Name every holder, not the first one. |
+| For each owner named above: is it a role, or a named holder? | roster:role, roster:holder | The locked pair, and the roster is where it is said which. A named holder need not be a person — the type question two rows down settles that. |
+| For each role just named: who holds it today? | roster:role, roster:holder | Nobody yet is an answer, and it is the one that keeps the rule a draft. Otherwise name every holder, not the first one. |
 | For every holder now named — a role's, or one standing alone — is each a human or an agent? | roster:holder, roster:type | The roster's only two type values, asked in its own words. An appeal path that ends at an agent is not an appeal path. |
 | How often should this map of who holds what be re-confirmed? | roster:review_by | Asked once for the company, not per activity. An org map nobody re-checks is the stalest thing in the repo. |
 
