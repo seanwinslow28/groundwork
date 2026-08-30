@@ -42,7 +42,7 @@ rule 11 requires.
 | [05](round-05.md) | Codex review round | `095ca91` | Not clean — 1 Major + 2 Minor. Entry 04's rejection independently confirmed. | `06184ce` |
 | [06](round-06.md) | Codex review round | `0d9fc74` | Not clean — 1 Major + 2 Minor. The round-05 repair audit came back clean. | `674a9df` |
 | [07](round-07.md) | Codex review round | `f5861f6` | Not clean — 2 Major + 1 Minor. One Major open by maintainer decision. | `f2dbfe3` |
-| [08](round-08.md) | Codex review round | `381c187` | **No classifier findings.** 2 Minor + 1 Nit, all about the record. Verdict: land after them. **Rule 11 fires.** | (this branch's round-08 fix commit) |
+| [08](round-08.md) | Codex review round | `381c187` | **No classifier findings.** 2 Minor + 1 Nit, all about the record. Verdict: land after them. **Rule 11 fires.** | `eca4724` |
 
 ## Open findings
 
