@@ -102,6 +102,16 @@ properly. **C10 itself is scoped to `memory:review_by` and is not implemented** 
 is untouched, deliberately: doing half of a finding filed against another field would leave
 two cadence mechanisms in one document.
 
-**5. One limitation added, not a check.** `docs/known-limitations.md` now records that
+**5. Issue #39 is closed by this branch, not left live.** A peer session surfaced a stale
+enumeration in `docs/known-limitations.md`: the pin-less-engine bullet named `skills/` and
+`governance/constitution/` as the engine's ungoverned exemplars, when R1 made the roster a
+third governed family — `_governed_class` returns `rule`, `roster`, `skill-md` and
+`skill-other`, verified here against `scripts/validate.py` rather than taken on report. It
+was folded in rather than deferred because this branch already edits both files the sentence
+was wrong about, and because it is `known-limitations.md`, which no gate governs. Whether
+that was the right call against rule 1's one-increment rule is the maintainer's at merge; the
+alternative was shipping an enumeration this slice's own edits made staler.
+
+**6. One limitation added, not a check.** `docs/known-limitations.md` now records that
 nothing validates the cadence-to-date conversion: the roster check reads the date and cannot
 read the sentence beside it. The recorded derivation is there so a reader can check it.
