@@ -60,15 +60,15 @@ fail loud.** It fails silent, and exits 0.
 - `scripts/validate.py` — `diff_base_findings`, plus `_base_is_ancestor` and
   `_roots_missing_from_base`. `blast_radius_diff_findings` subtracts the unsupported roots
   from `gov_roots`. `main()` runs the contract before the three passes that rest on it.
-- `tests/test_validate.py` — `TestDiffBaseContract`, 13 tests. Each half has a paired
-  control that breaks the thing it guards, and all four new behaviours were mutation-checked:
-  removing the suppression, the root ERROR, the manifest ERROR, or the ancestry report each
-  makes the suite fail.
+- `tests/test_validate.py` — `TestDiffBaseContract`. Each half has a paired control that
+  breaks the thing it guards, and every behaviour added or repaired here was
+  mutation-checked: the round entries carry those tables, and
+  `python3 -m unittest tests.test_validate.TestDiffBaseContract -v` lists what is there now.
 - `docs/rule-map.md` — one row for `diff_base_findings`, which
   `test_every_shipped_check_is_mapped` requires of any new `*_findings` function.
-- `docs/known-limitations.md` — four things the check does not do, including the two worth
-  knowing: it checks a **manifest's** presence, not a layer's, and `memory_diff_findings` has
-  the same base-derived shape with no check at all.
+- `docs/known-limitations.md` — what the check does not do, including the two worth knowing:
+  it checks a **manifest's** presence, not a layer's, and `memory_diff_findings` has the same
+  base-derived shape with no check at all.
 - `README.md`, `delivery/README.md`, `interview/generate.md` — three sites that described the
   old over-gating behaviour as what happens. This change falsified them, so this branch fixes
   them. That is not the documentation half of #31, which R2a landed at `d42e9ae`; it is prose
@@ -97,14 +97,15 @@ invocation. The reasoning is in `diff_base_findings`' docstring so it travels wi
 
 | Round | Reviewed | Verdict | Findings | Fix commit |
 |---|---|---|---|---|
-| 01 | `bf33166` | **does not approve** — Spec 3 (two Major, one Minor), Standards 0 | 3 | |
+| 01 | `bf33166` | **does not approve** — Spec 3 (two Major, one Minor), Standards 0 | 3 | `ed47901` |
+| 02 | `ed47901` | **does not approve** — Spec 1 (Major), Standards 1 (Minor) | 2 | |
 
 A round's fix commit is filled in with the next entry: an entry cannot name the commit that
 carries its own fixes.
 
 ## Open findings
 
-**None.** All three of round 1's findings are fixed.
+**None.** Every finding raised on this branch is fixed.
 
 ## Rejected findings
 
@@ -120,7 +121,7 @@ because the next session inherits it:
 | `python3 scripts/validate.py .` | 0 errors, 7 warnings, exit 0 | unchanged |
 | `python3 scripts/validate.py demo` | 0 errors, 2 warnings | unchanged |
 | `python3 scripts/validate.py . --diff main` | exit 0 | unchanged |
-| `python3 -m unittest discover -s tests -q` | OK, 824 tests, skipped=1 | OK, **841 tests**, skipped=1 |
+| `python3 -m unittest discover -s tests -q` | OK, 824 tests, skipped=1 | OK, **842 tests**, skipped=1 |
 
 The engine's own numbers do not move because `main` satisfies the contract it now states:
 it is an ancestor of any branch cut from it, and it holds both `demo/groundwork.pin` and

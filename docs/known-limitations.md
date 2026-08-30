@@ -49,7 +49,7 @@ Honest limits of the current build. This file grows as the product does (brief Â
 - **The `--diff` base contract is checked, but "can support the promise" is not "is the
   right base".** `diff_base_findings` ERRORs when the base tree holds no `groundwork.pin`
   for a governed root or no `00-manifest.md` for an interview state directory, and WARNs
-  when the base is not an ancestor of HEAD. Four things it does not do:
+  when the base is not an ancestor of HEAD. What it does not do:
   - **It cannot tell an old base from the right one.** A base holding every pin and every
     manifest may still not be the generation commit, and nothing checks that it is.
   - **It checks a manifest's presence, not a layer's.** A confirmed layer committed *after*

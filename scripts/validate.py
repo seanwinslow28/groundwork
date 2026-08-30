@@ -4196,23 +4196,33 @@ def blast_radius_diff_findings(root, base):
     findings += wt_findings
 
     gov_roots = _pin_dirs(root, base_files, scope, wt_files)
+    if not gov_roots:
+        return findings  # no company instance in scope: the tripwire is dormant
+
     # A root whose pin the base does not hold predates the thing it is being
     # asked to gate: every file it was created with is an addition, and every
-    # governed class escalates on an addition. Running the pass anyway would
-    # bury one accurate finding under the wall it explains, so the root is
-    # skipped — and the ERROR that says so is raised HERE as well as in
-    # diff_base_findings. Codex round 1 measured why: with the skip silent, the
-    # safety of this pass depended on main() scheduling the other one first,
-    # and dropping that schedule turned the pre-generation case from exit 1
-    # into exit 0 with every one of the new tests still passing. The two
-    # findings are equal, so main()'s dedupe prints one line.
+    # governed class escalates on an addition. Running the pass against it
+    # would bury one accurate finding under the wall it explains, so its
+    # findings are dropped — and the ERROR that says so is raised HERE as well
+    # as in diff_base_findings. Codex round 1 measured why the silent version
+    # was unsafe: it made this pass depend on main() scheduling the other one
+    # first, and dropping that schedule turned the pre-generation case from
+    # exit 1 into exit 0. The two findings are equal, so main()'s dedupe prints
+    # one line.
+    #
+    # `unsupported` is NOT subtracted from gov_roots, and that is the whole
+    # point (Codex r2): governed_classes resolves a path against EVERY root and
+    # lets an exact-case root win over a fold-equivalent one. Remove the
+    # unsupported root from the set and its files fall through to the folded
+    # fallback — measured, a file under `A/` came back demanding a proposal in
+    # `a/proposals/`, which cannot target outside `a`: an unsatisfiable gate,
+    # raised for the very root the ERROR above says is not being gated. The
+    # roots stay; only their findings are dropped, at the one place a finding
+    # is attributed to a root.
     unsupported = _roots_missing_from_base(gov_roots, base_rels)
     findings += [_unsupported_root_finding(g) for g in sorted(unsupported)]
-    gov_roots = gov_roots - unsupported
-    if not gov_roots:
-        # No company instance in scope, or none the base can support: either
-        # way there is nothing left for the tripwire to classify.
-        return findings
+    if unsupported == gov_roots:
+        return findings  # nothing left the base can support
 
     def _fold(s):
         # NFC first (git reports NFC while a mac filesystem lists NFD — the
@@ -4313,7 +4323,7 @@ def blast_radius_diff_findings(root, base):
 
     # --- Pass 1: the changelog per governed root (append-only + appended span).
     appended_targets = {}
-    for g in sorted(gov_roots):
+    for g in sorted(gov_roots - unsupported):
         gov_abs = os.path.join(root, *g.split("/")) if g else root
         cl_rel = (g + "/" if g else "") + "governance/changelog.md"
         appended_targets[g] = set()
@@ -4361,7 +4371,10 @@ def blast_radius_diff_findings(root, base):
     for rel in sorted(candidates):
         if _diff_in_workbench_skips(rel):
             continue
-        pairs = governed_classes(rel)
+        # Resolved against every root, then filtered: the resolution needs the
+        # unsupported roots present to keep exact-case authority, the findings
+        # must not carry them.
+        pairs = [(g, cls) for g, cls in governed_classes(rel) if g not in unsupported]
         if not pairs:
             continue
         # The roster is v2-only, so the findings raised BEFORE classification —

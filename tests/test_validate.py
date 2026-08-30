@@ -8158,6 +8158,55 @@ class TestDiffBaseContract(unittest.TestCase):
             self.assertEqual(rc, 1, out)
             self.assertEqual(out.count("covers no layer in this directory"), 1, out)
 
+    def _base_tree_holding(self, d, mapping):
+        """A commit whose tree holds `mapping` (repo path -> local file to read
+        the content from), built with git plumbing rather than checked out.
+        Needed because the filesystem this runs on may fold `a/` and `A/` into
+        one directory, so the two spellings cannot exist side by side on disk —
+        but git's object store holds both without difficulty."""
+        env = dict(os.environ, GIT_INDEX_FILE=os.path.join(d, ".git", "probe-index"))
+        for repo_path, local in mapping.items():
+            blob = _sp.run(["git", "-C", d, "hash-object", "-w", local],
+                           check=True, capture_output=True, text=True).stdout.strip()
+            _sp.run(["git", "-C", d, "update-index", "--add", "--cacheinfo",
+                     "100644,%s,%s" % (blob, repo_path)],
+                    check=True, capture_output=True, env=env)
+        tree = _sp.run(["git", "-C", d, "write-tree"], check=True,
+                       capture_output=True, text=True, env=env).stdout.strip()
+        return _sp.run(["git", "-C", d, "commit-tree", tree, "-m", "base"],
+                       check=True, capture_output=True, text=True, env=env).stdout.strip()
+
+    def test_an_unsupported_root_does_not_hand_its_files_to_a_fold_sibling(self):
+        """`governed_classes` resolves a path against EVERY governed root and
+        lets an exact-case root win over a fold-equivalent one. Drop the
+        unsupported root from that set and its files fall through to the folded
+        fallback: measured before the fix, a file under `A/` came back
+        demanding a proposal in `a/proposals/`, which cannot target anything
+        outside `a/` — an unsatisfiable gate, raised for the very root the
+        contract ERROR says is not being gated. So the roots stay in the set
+        and only their findings are dropped."""
+        with tempfile.TemporaryDirectory() as d:
+            _git(d, "init", "-q")
+            _git(d, "config", "user.email", "t@t.t")
+            _git(d, "config", "user.name", "t")
+            _write(d, "seed.md", "# Seed\n")
+            _git(d, "add", "seed.md")
+            _git(d, "commit", "-qm", "seed")
+            _write(d, "A/groundwork.pin", PIN_OK)
+            _write(d, "A/governance/constitution/access.md", RULE_OK)
+            base = self._base_tree_holding(d, {
+                "a/groundwork.pin": os.path.join(d, "A", "groundwork.pin"),
+                "a/governance/constitution/access.md":
+                    os.path.join(d, "A", "governance", "constitution", "access.md"),
+            })
+            errs = [f for f in validate.blast_radius_diff_findings(d, base)
+                    if f.level == "ERROR"]
+            self.assertTrue(any("predates this governed root" in f.message
+                                and f.path == "A/groundwork.pin" for f in errs), errs)
+            self.assertEqual([f for f in errs if "no pending proposal" in f.message], [],
+                             "the unsupported root's files were gated under its "
+                             "fold-sibling, which cannot hold a proposal for them")
+
     def test_a_case_sibling_root_is_not_satisfied_by_the_other(self):
         """Folding this lookup is the FAIL-OPEN direction, which is why it is
         exact. On a case-sensitive filesystem a/ and A/ are two roots; a base
