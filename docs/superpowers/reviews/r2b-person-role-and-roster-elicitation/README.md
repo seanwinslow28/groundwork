@@ -36,6 +36,7 @@ a note that no longer exists.
 | Round | Reviewed | Verdict | Findings | Fix commit |
 |---|---|---|---|---|
 | 01 | `038ddd2` | 7 findings, worst CRITICAL, no approve/does-not-approve word | 7 | `985d294` |
+| 02 | `c00b2b7` | 6 findings, worst HIGH on both axes, no approve/does-not-approve word | 6 | `8868b9e` |
 
 ## Open findings
 
