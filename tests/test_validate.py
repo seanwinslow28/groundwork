@@ -8932,9 +8932,13 @@ class TestDiffBaseContract(unittest.TestCase):
     def test_a_directory_named_like_a_marker_is_not_a_deletion(self):
         """Round 02 finding 5, Minor, over-refusing. `os.walk` lists a symlink to
         a directory under `dirnames`, not `filenames`, so a path git reported can
-        be present on disk and absent from the working-tree scan. `lexists`
-        settles presence directly. A gitlink named like a marker has the same
-        shape."""
+        be present on disk and absent from the working-tree scan.
+
+        Round 02 closed this with `lexists`. Round 03 showed that was the wrong
+        side of the problem — a symlink-to-directory is not marker evidence in
+        the first place — so what closes it now is `--raw` on the history side,
+        and the presence proof is `isfile` rather than `lexists`. The case is
+        kept because it still must draw nothing; what changed is why."""
         with tempfile.TemporaryDirectory() as d:
             base = self._pre_marker(d, markers=False)
             os.makedirs(os.path.join(d, "target"))
@@ -8946,13 +8950,18 @@ class TestDiffBaseContract(unittest.TestCase):
                 self._messages(validate.diff_base_findings(d, base), "no longer holds"), [],
                 "the path still exists; it is simply not a regular file")
 
-    def test_an_unreadable_tree_reports_no_deletion_at_all(self):
+    def test_a_marker_under_an_unreadable_directory_is_not_called_deleted(self):
         """Round 02 finding 8, Minor, over-refusing. A scan that could not read
-        part of the tree cannot show anything is missing. It used to report the
-        marker under the unreadable directory as deleted while the file was
-        still there. `blast_radius_diff_findings` keeps the accurate
-        unreadable-directory ERROR, so the run is still red for the true
-        reason."""
+        part of the tree cannot show anything UNDER THAT SUBTREE is missing. It
+        used to report the marker inside the unreadable directory as deleted
+        while the file was still there. `blast_radius_diff_findings` keeps the
+        accurate unreadable-directory ERROR, so the run is still red for the true
+        reason.
+
+        Renamed from `..._reports_no_deletion_at_all`, which described the first
+        repair rather than this case: that repair suppressed every deletion
+        anywhere, and round 03 finding 2 showed it blinded candidates whose
+        absence was independently provable."""
         if os.geteuid() == 0:
             self.skipTest("root ignores directory permissions")
         with tempfile.TemporaryDirectory() as d:
@@ -8972,6 +8981,71 @@ class TestDiffBaseContract(unittest.TestCase):
                     [f for f in validate.blast_radius_diff_findings(d, base)
                      if f.level == "ERROR"],
                     "the unreadable directory must still make the run red")
+            finally:
+                os.chmod(os.path.join(d, "locked"), 0o700)
+
+    # --- Codex round 03 regressions.
+
+    def test_a_marker_replaced_by_a_directory_is_still_a_deletion(self):
+        """Round 03 finding 1, Major, under-refusing half. The presence proof was
+        `lexists`, which is type-blind: a real marker deleted and replaced by a
+        DIRECTORY of the same name still "exists", so the deletion was hidden —
+        the exact escape #40 was filed for, reintroduced by its own repair.
+        `os.path.isfile` is the proof that matches what a marker is."""
+        with tempfile.TemporaryDirectory() as d:
+            base = self._pre_marker(d, markers=False)
+            _write(d, "groundwork.pin", PIN_OK)
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "add the marker")
+            os.remove(os.path.join(d, "groundwork.pin"))
+            os.makedirs(os.path.join(d, "groundwork.pin"))
+            self.assertEqual(
+                [f.path for f in
+                 self._messages(validate.diff_base_findings(d, base), "no longer holds")],
+                ["groundwork.pin"])
+
+    def test_a_directory_symlink_in_history_is_not_marker_evidence(self):
+        """Round 03 finding 1, over-refusing half. `--name-only` gives a pathname
+        and no type, so a symlink-to-directory named like a marker counted as
+        evidence a governed root existed. It never was one — no pin was ever
+        discoverable there — and removing it drew a false ERROR. `--raw` carries
+        the destination mode and only a regular file is evidence."""
+        with tempfile.TemporaryDirectory() as d:
+            base = self._pre_marker(d, markers=False)
+            os.makedirs(os.path.join(d, "target"))
+            _write(d, "target/seed.md", "# Seed\n")
+            os.symlink("target", os.path.join(d, "groundwork.pin"))
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "a directory symlink named like the marker")
+            self.assertEqual(validate._markers_added_since_base(d, base), set(),
+                             "a 120000 entry is not a marker")
+            os.remove(os.path.join(d, "groundwork.pin"))
+            self.assertEqual(
+                self._messages(validate.diff_base_findings(d, base), "no longer holds"), [])
+
+    def test_an_unreadable_directory_only_blinds_its_own_subtree(self):
+        """Round 03 finding 2, Minor. The first repair for round 02's finding 8
+        returned early whenever ANY directory was unreadable, which suppressed
+        deletions whose absence was independently provable. The suppression is
+        scoped to candidates under the unreadable prefix."""
+        if os.geteuid() == 0:
+            self.skipTest("root ignores directory permissions")
+        with tempfile.TemporaryDirectory() as d:
+            base = self._pre_marker(d, markers=False)
+            _write(d, "groundwork.pin", PIN_OK)
+            os.makedirs(os.path.join(d, "locked"))
+            _write(d, "locked/seed.md", "# Seed\n")
+            _git(d, "add", "-A")
+            _git(d, "commit", "-qm", "a marker and an unrelated directory")
+            os.remove(os.path.join(d, "groundwork.pin"))
+            os.chmod(os.path.join(d, "locked"), 0o000)
+            try:
+                self.assertEqual(
+                    [f.path for f in
+                     self._messages(validate.diff_base_findings(d, base),
+                                    "no longer holds")],
+                    ["groundwork.pin"],
+                    "the root marker's absence does not depend on locked/")
             finally:
                 os.chmod(os.path.join(d, "locked"), 0o700)
 

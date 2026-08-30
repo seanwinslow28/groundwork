@@ -37,6 +37,7 @@ rule 11 requires.
 |---|---|---|---|---|
 | [01](round-01.md) | Maintainer decision, not a review round | n/a — decided against `9e8d7f8` | n/a | n/a |
 | [02](round-02.md) | Codex review round | `ae654cf` | Not clean — 2 Major + 7 Minor on classifier correctness, plus 2 Major on prose | `d63196c` |
+| [03](round-03.md) | Codex review round | `cfb0c20` | Not clean — 1 Major + 1 Minor on classifier correctness, plus 3 Minor on prose | (this branch's round-03 fix commit) |
 
 ## Open findings
 
@@ -53,7 +54,11 @@ open rather than dressing it as something else.
   (`--no-replace-objects`) would make this read follow a different history from
   `_git_diff_context`'s base-tree read in the same run.
 
-Both are with the maintainer under rule 5, recommended for documenting rather than fixing.
+**Decided 2026-08-30: both are documented rather than fixed**, and each has an issue so the
+work is not lost — finding 4 is [issue #41](https://github.com/seanwinslow28/groundwork/issues/41),
+finding 7 is [issue #42](https://github.com/seanwinslow28/groundwork/issues/42). They remain
+**open** here rather than rejected: "the maintainer decided not to build it" is not one of rule
+9's three closed-list grounds, and entry 03 records the grounds in full.
 
 ## Rejected findings
 
@@ -61,10 +66,21 @@ None.
 
 ## Corrections carried forward
 
-Entry 02 corrects entry 01's account of mutation M8. Entry 01 argued the mutation survived
-"by construction"; entry 02's merge fixture disproves that argument. Entry 01 is immutable,
-so the correction lives in entry 02, and the docstring sentence that carried the claim was
-removed from the code.
+Entry 01 has been corrected twice, both times about a claim that was too strong, and both
+times by a later entry because entry 01 is immutable:
+
+- **Mutation M8.** Entry 01 argued the mutation survived "by construction". Entry 02's merge
+  fixture disproves the argument. The sentence that replaced it in the code was then found
+  false by entry 03 — the flag is a narrowing, and nothing measured shows it is needed. Three
+  statements about one flag, of which the first two were wrong; entry 03 records the sequence.
+- **"The walk reads committed history."** Entry 01's residual-limit paragraph says this
+  without qualification. It reads what this repository's configured `git log` will show it,
+  which is narrower in four separate ways. Corrected in entry 03;
+  `docs/known-limitations.md` carries the accurate statement.
+
+Entry 02's own account of finding 5 was superseded by entry 03: `lexists` was the wrong side
+of that problem, and the two tests whose docstrings credited it were corrected in the
+round-03 fix commit rather than left claiming the wrong cause.
 
 ## Maintainer items
 
