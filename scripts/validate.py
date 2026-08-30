@@ -3625,15 +3625,46 @@ def _changelog_first_entry(lines):
     return None
 
 
+def _md_indent(line):
+    """PURE. (column reached by the leading whitespace, the rest of the line). A tab
+    advances to the next multiple of four, as CommonMark counts indentation — which is why
+    " \tcode" is an indented code block and a test for four literal spaces misses it."""
+    col = 0
+    i = 0
+    while i < len(line):
+        if line[i] == " ":
+            col += 1
+        elif line[i] == "\t":
+            col += 4 - (col % 4)
+        else:
+            break
+        i += 1
+    return col, line[i:]
+
+
+def _opens_a_container(rest):
+    """PURE. True when `rest` — a line with its leading whitespace removed — opens a list
+    item or a block quote. Both hold blocks across a blank line, so a header that opens one
+    can decide what the entry below it renders as."""
+    if rest.startswith(">"):
+        return True
+    if rest[:1] in ("-", "*", "+") and (len(rest) == 1 or rest[1] in " \t"):
+        return True
+    i = 0
+    while i < len(rest) and i < 9 and rest[i].isdigit():
+        i += 1
+    return bool(i) and rest[i:i + 1] in (".", ")") and (len(rest) == i + 1 or rest[i + 1] in " \t")
+
+
 def _changelog_header_reaches_the_ledger(header_lines):
     """PURE. True when the editable header could reach the entries below it — when what a
     reader sees where the ledger should be is not the ledger.
 
-    Organised by the three ways CommonMark ENDS a block. Classifying by termination mode
-    is what stops this being a list of constructs somebody thought of — but the taxonomy
-    being closed says nothing about whether each mode is IMPLEMENTED completely, and six
-    review rounds found that it was not. Read the three rules below as what the guard
-    does, not as a proof of what it catches:
+    Organised by how a block relates to a blank line, because rule 3 turns on that. The
+    organising idea is what stops this being a list of constructs somebody thought of; it
+    has never yet been a proof of coverage. Rules 4 and 5 were each added when a review
+    round found the preceding set described as complete while that case was missing, so
+    read the rules below as what the guard does and nothing more:
 
     1. **Runs to the end of the document.** Only fenced code does. Refused: a run of three
        backticks or tildes ANYWHERE on a line. Not "at the start", because a fence opens
@@ -3644,20 +3675,24 @@ def _changelog_header_reaches_the_ledger(header_lines):
     2. **Runs to an explicit closer.** HTML blocks of types 1 to 5, every one of which
        begins with "<". Refused: a "<" followed by "!", "?", "/" or an ASCII letter. A "<"
        that opens nothing, as in "a < b", is prose and is allowed.
-    3. **Runs to a blank line.** Everything else — a GFM table, a link reference
-       definition with a multiline title, an HTML block of type 6 or 7, a paragraph, a
-       block quote. Required: the line immediately above the first entry is blank, blank
+    3. **Ends at a blank line.** A GFM table, a link reference definition with a multiline
+       title, an HTML block of type 6 or 7, a paragraph, a setext heading. Required: the
+       line immediately above the first entry is blank, blank
        meaning CommonMark's blank — empty, or ASCII spaces and tabs only. Python's
        str.strip() also removes U+00A0, which is NOT a Markdown blank and left a link
        reference title running straight through the ledger; that was a review finding.
-    4. **Survives a blank line.** Indented code is the one block that does, so mode 3
-       cannot reach it. Refused: any header line indented four spaces or a tab with
-       content after it. Named as its own case because calling modes 1 to 3 exhaustive
-       while this one existed was itself a review finding.
+    4. **Survives a blank line.** Indented code does, so mode 3 cannot reach it. Refused:
+       any line whose leading whitespace reaches column four or beyond, counting a tab as
+       advancing to the next multiple of four, as CommonMark counts it.
+    5. **Holds blocks across a blank line.** A list item does, and which block the entry
+       below becomes depends on the item's content column — which moves when the marker's
+       trailing spaces change. Refused: any line opening a list item or a block quote, so
+       the header opens no container for the ledger to fall inside.
 
-    The one exception to rule 2 is a line whose whole stripped content is a single closed
-    HTML comment carrying no angle bracket of its own; both shipped changelogs use one, and
-    it cannot reach past its own line.
+    The one exception is a line whose whole stripped content is a single closed HTML
+    comment carrying no angle bracket of its own; both shipped changelogs use one, and it
+    cannot reach past its own line. It is checked AFTER rule 4, because at column four such
+    a line is indented code and not a comment at all — that ordering was a review finding.
 
     There is no inline-code exception, deliberately. One existed, and a header could not
     then be trusted: a backslash-escaped backtick made a live tag look quoted, and a
@@ -3670,7 +3705,13 @@ def _changelog_header_reaches_the_ledger(header_lines):
     was taken by the builder on review evidence while the maintainer's answer was outstanding,
     and the review record's README carries it as an open maintainer item.
     docs/known-limitations.md carries the cost and the reason."""
-    for k, line in enumerate(header_lines):
+    for line in header_lines:
+        col, rest = _md_indent(line)
+        # Rule 4 FIRST: at column four a line is code, whatever it looks like. A comment
+        # written there is not a comment, so the exception below must not reach it. A line
+        # of whitespace alone is a blank line, not an indented block, so rule 3 has it.
+        if rest and col >= 4:
+            return True
         stripped = line.strip()
         if (stripped.startswith("<!--") and stripped.endswith("-->")
                 and len(stripped) >= 5 and "<" not in stripped[4:-3]
@@ -3678,9 +3719,7 @@ def _changelog_header_reaches_the_ledger(header_lines):
             continue
         if "```" in line or "~~~" in line:
             return True
-        # Rule 4. Indented code, which a blank line does not end. A line of whitespace
-        # alone is a blank line, not an indented block, so it is left to rule 3.
-        if line.strip(" \t") and (line.startswith("    ") or line.startswith("\t")):
+        if _opens_a_container(rest):
             return True
         for i, ch in enumerate(line):
             if ch != "<":

@@ -60,7 +60,8 @@ this guard on it.
 | 07 | `13bb323` | **does not approve** — Spec 3 **Major** + 1 Low, Standards 1 Moderate + 3 Low | 8 | `dde4a51` |
 | 08 | `dde4a51` | **does not approve** — Spec 1 **Major**, Standards 1 Moderate + 1 Low | 3 | `e37197e` |
 | 09 | `e37197e` | **does not approve** — Spec 1 **Major** + 1 Moderate, Standards 1 Moderate + 1 Low | 4 | `17b8d7f` |
-| 10 | `17b8d7f` | **crashed — no verdict returned** (task `task-mtg24k42-6skvmf`) | — | `PENDING-10` |
+| 10 | `17b8d7f` | **crashed — no verdict returned** (task `task-mtg24k42-6skvmf`) | — | `daf26a5` |
+| 11 | `daf26a5` | **does not approve** — Spec 1 **Major** + 1 Moderate, Standards 1 Moderate | 3 | `PENDING-11` |
 
 ## Open findings
 
@@ -78,7 +79,7 @@ reading under which the finding is fair.
 
 ## Baselines
 
-The test count **moves**: 846 → 869. It rose to 883 by round 05 and then **fell twice**, as
+The test count **moves**: 846 → 871. It rose to 883 by round 05 and then **fell twice**, as
 round 06 deleted the CommonMark model and round 07 deleted the inline-code stripper, each taking
 the tests that covered it. What replaced them is denser — every construction a round found is
 one parametrised test — but fewer test methods. Stated as a fall rather than only as a net. The three validator commands are unchanged.
@@ -88,7 +89,7 @@ one parametrised test — but fewer test methods. Stated as a fall rather than o
 | `python3 scripts/validate.py .` | 0 errors, 7 warnings, exit 0 | unchanged |
 | `python3 scripts/validate.py demo` | 0 errors, 2 warnings | unchanged |
 | `python3 scripts/validate.py . --diff main` | exit 0 | exit 0 |
-| `python3 -m unittest discover -s tests -q` | OK, 846 tests, skipped=1 | OK, **869** tests, skipped=1 |
+| `python3 -m unittest discover -s tests -q` | OK, 846 tests, skipped=1 | OK, **871** tests, skipped=1 |
 
 There is no pytest; the suite is unittest.
 
@@ -133,7 +134,14 @@ alone, the suite run, and the file restored. Run with `PYTHONDONTWRITEBYTECODE=1
 | Rule 4, the indented-code check, disabled (round 9) | 2 failures |
 | Rule 4 drops its whitespace-only guard (round 9) | 1 failure |
 | Rule 4 tests four spaces but not a tab (round 9) | 1 failure |
-| None (restored) | OK, 869 |
+| Rule 5, the container check, removed (round 11) | 7 failures |
+| Rule 4 back to a literal four-space test (round 11) | 1 failure |
+| A tab advances one column instead of to a multiple of four (round 11) | 3 failures |
+| Rule 4 moved back after the comment exception (round 11) | 4 failures |
+| The container check misses block quotes (round 11) | 1 failure |
+| The container check misses ordered markers (round 11) | 3 failures |
+| A bullet marker needs no space after it (round 11) | 3 failures, and **0** before round 11 added the prose cases it wrongly refuses |
+| None (restored) | OK, 871 |
 
 Rounds 4 and 5 added mutations against the CommonMark model that round 6 deleted; their rows
 are kept because they record what was measured, not what still exists. Round 5's
@@ -178,12 +186,20 @@ round 8 proved the distinction by finding rule 1 blind to a fence opened inside 
 where the container marker sits in front of the fence. Rule 1 now tests for a fence sequence
 anywhere on a line rather than at its start, which is what rule 2 had always done for `<`.
 
-Round 9 then found that the three modes were not exhaustive after all: **indented code is a
-block a blank line does not end**, so mode 3 could never have reached it. It is now a fourth
-rule. Round 9 also found rule 3's blankness test using Python's `str.strip()`, which removes
-U+00A0 where CommonMark's blank line does not — a header ending in a no-break space ended
-nothing. Seven consecutive rounds have now found the previous round's self-description ahead of
-its code, the last of them in a sentence written specifically to stop overclaiming. Round 7 also deleted the inline-code exception rather than
+Round 9 then found the three modes were not exhaustive: **indented code is a block a blank
+line does not end**, so mode 3 could never have reached it. Round 9 also found rule 3's
+blankness test using Python's `str.strip()`, which removes U+00A0 where CommonMark's blank line
+does not. Round 11, asked for a block-type-by-block-type coverage audit rather than for an
+attack, produced the matrix and disproved the exhaustiveness claim again: **a list item holds
+blocks across a blank line, and its content column moves when the spaces after its marker
+change**, so editing a header's list marker re-renders the entry below it from a nested list
+item into indented code, with the entry itself unchanged byte for byte. Containers are now
+refused outright.
+
+Eight consecutive rounds have found the previous round's self-description ahead of its code —
+one of them in a sentence written specifically to stop overclaiming, and one in a review brief
+that reverted to the wording an earlier round had already been killed by. The claim in the
+record now is only what the guard does. Round 7 also deleted the inline-code exception rather than
 repairing it, after two findings showed it could hide a live tag; the two shipped changelog
 headers were rewritten so they no longer need it.
 

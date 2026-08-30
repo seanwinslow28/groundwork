@@ -121,29 +121,43 @@ Honest limits of the current build. This file grows as the product does (brief �
 - **The editable header must be prose, and that is narrower than valid Markdown.** A header
   that opens something the entries fall inside reaches the ledger without owning it: every entry
   survives in the file's bytes while a reader sees something else where the ledger should be.
-  Rather than model when such a thing is closed, the guard is organised by the three ways
-  CommonMark **ends** a block. Classifying by termination mode is what stops this being a list
-  of constructs somebody thought of; it is not a claim that each mode is implemented
-  completely, and six review rounds found gaps in the implementations rather than in the
-  taxonomy. A block that runs to the end of the document is fenced code, so a run of three
-  backticks or tildes **anywhere on a line** is refused — not merely at the start, because a
-  fence opens inside a list item or a block quote too, with the container marker in front of
-  it. A block that runs to an explicit
-  closer is an HTML block of type 1 to 5, every one of which begins with `<`, so a `<` followed
-  by `!`, `?`, `/` or a letter is refused — a `<` that opens nothing, as in `a < b`, is prose.
-  Most of the rest ends at a blank line — a GFM table, a link reference definition, an HTML
-  block of type 6 or 7, a paragraph, a block quote — so the line immediately above the first
-  entry must be blank, in CommonMark's sense of blank: empty, or ASCII spaces and tabs only.
-  Python's `str.strip()` also removes U+00A0, which is not a Markdown blank; that difference
-  was a review finding. **Indented code is the one block a blank line does not end**, so it has
-  its own rule: no header line may be indented four spaces or a tab with content after it. The
-  one exception to all of this is a line whose whole content is a single closed HTML comment
-  carrying no angle bracket of its own; both shipped changelogs use one.
+  Rather than model when such a thing is closed, the guard is organised by how a block
+  relates to a blank line. That organising idea is what stops the rule being a list of
+  constructs somebody thought of; **it is not a proof of coverage, and has twice been found
+  incomplete** — once for indented code, once for list containers. What the guard does today:
+
+  - A run of three backticks or tildes **anywhere on a line** is refused, fenced code running
+    to the end of the document. Anywhere rather than at the start, because a fence opens
+    behind a list or block-quote marker too.
+  - A `<` followed by `!`, `?`, `/` or a letter is refused, HTML block types 1 to 5 running to
+    an explicit closer. A `<` that opens nothing, as in `a < b`, is prose.
+  - The line immediately above the first entry must be blank — empty, or ASCII spaces and tabs
+    only, which is CommonMark's blank line and not Python's `str.strip()`, a difference that
+    was a review finding. Most block types end there: a GFM table, a link reference
+    definition, an HTML block of type 6 or 7, a paragraph, a setext heading.
+  - A line whose leading whitespace reaches **column four** is refused, indented code
+    surviving a blank line. A tab advances to the next multiple of four, as CommonMark counts
+    it.
+  - A line opening a **list item or a block quote** is refused. Both hold blocks across a blank
+    line, and a list item's content column — which moves when the spaces after its marker
+    change — decides whether the entry below is a nested list item or indented code.
+
+  The one exception is a line whose whole content is a single closed HTML comment carrying no
+  angle bracket of its own, and it does not apply at column four, where such a line is code
+  rather than a comment.
+
+  **The entry grammar and a renderer disagree, and this guard does not reconcile them.** A line
+  counts as an entry when its `str.strip()` begins `- `, so a four-space-indented entry counts
+  though CommonMark renders it as code, and `- - -` counts though CommonMark renders it as a
+  thematic break. Tightening that test was considered and refused: a base holding only such a
+  line would then hold no entry at all, which leaves the whole file editable — the opposite of
+  what the guard is for, and a tightening inside a slice that only loosens. The three places
+  that share the test stay identical to each other instead.
 
   **What it costs.** Any line carrying three backticks or tildes is refused, so a fenced
   example cannot appear in a header and neither can prose that spells the sequence; a raw-HTML
-  line is refused; an indented code block is refused; and a header must be separated from its
-  entries by a blank line. There is **no inline-code exception**: a header
+  line is refused; an indented code block is refused; a list or block quote cannot appear in a
+  header at all; and a header must be separated from its entries by a blank line. There is **no inline-code exception**: a header
   that needs to show a `<` writes it as an HTML entity, and both shipped changelogs were
   rewritten to need none. That exception existed and was removed, because it could not be
   trusted — a backslash-escaped backtick made a live tag look quoted, and a backtick inside the

@@ -4193,7 +4193,7 @@ class TestChangelogAppendOnly(unittest.TestCase):
         self.assertIsNone(reason)
         self.assertEqual(appended, validate._changelog_lines(new))
 
-    # --- The header rule (#32), organised by the three ways CommonMark ends a block.
+    # --- The header rule (#32), organised by how a block relates to a blank line.
     def _hidden(self, opener, closer):
         """Open a construct in the header, close it after the ledger, append a
         replacement entry: every base entry survives verbatim and contiguous."""
@@ -4244,6 +4244,16 @@ class TestChangelogAppendOnly(unittest.TestCase):
         ("09: an indented code block, which a blank line does not end",
          ["    indented code", ""]),
         ("09: a tab-indented code block", ["\tindented code", ""]),
+        ("11: a space-then-tab indent, which reaches column four",
+         [" \tindented code", ""]),
+        ("11: a comment written at column four, which is code not a comment",
+         ["    <!-- closed -->", ""]),
+        ("11: an ordered-list marker, whose content column moves", ["1. item", ""]),
+        ("11: a star bullet", ["* item", ""]),
+        ("11: a plus bullet", ["+ item", ""]),
+        ("11: a bare bullet with no content", ["*", ""]),
+        ("11: a block quote", ["> quoted", ""]),
+        ("11: an ordered marker with a paren delimiter", ["1) item", ""]),
     )
 
     def test_every_construction_a_review_round_found_is_refused(self):
@@ -4261,6 +4271,14 @@ class TestChangelogAppendOnly(unittest.TestCase):
                 ("a less-than sign that opens nothing", ["a < b, and 3 < 4", ""]),
                 ("a whitespace-only line, which IS a blank line", ["text", "    "]),
                 ("up to three spaces of indent, which is not code", ["   still prose", ""]),
+                ("a hyphen inside a word, which opens no list", ["a well-known thing", ""]),
+                ("a digit that is not an ordered marker", ["1234 items shipped", ""]),
+                ("a greater-than sign that is not a quote", ["a > b", ""]),
+                # A marker character needs a space after it to open a list; without these
+                # a stricter test would refuse ordinary prose and no test would notice.
+                ("emphasis at the start of a line", ["*emphasis* leads here", ""]),
+                ("a dash-prefixed word", ["-dash-prefixed, not a bullet", ""]),
+                ("a plus sign in an expression", ["+1 on that", ""]),
                 ("an entity where a tag would be refused", ["write &lt;script&gt; so", ""]),
                 ("an entry format with no angle bracket",
                  ["Format: `- date | skills/NAME/SKILL.md | gist | agent | sha`", ""]),
@@ -4283,6 +4301,25 @@ class TestChangelogAppendOnly(unittest.TestCase):
                 j = validate._changelog_first_entry(appended)
                 self.assertIsNotNone(j)
                 self.assertFalse(validate._changelog_header_reaches_the_ledger(appended[:j]))
+
+    def test_the_end_to_end_container_column_shift_errors(self):
+        # Round 11's Major. The entry survives byte for byte; what changes is the list
+        # item's content column, set by the spaces after "1.". At column 4 the seven-space
+        # entry is a nested list item; at column 3 the same line is indented code.
+        base = "1.  header\n\n       - 2026-07-26 | skills/a/SKILL.md | c | scribe | a1b2c3d\n"
+        new = ("1. header\n\n       - 2026-07-26 | skills/a/SKILL.md | c | scribe | a1b2c3d\n"
+               "- 2026-07-28 | skills/a/SKILL.md | replacement | scribe | c3d4e5f\n")
+        reason, appended = validate._changelog_appended_span(base, new)
+        self.assertEqual(reason, "hidden")
+        self.assertEqual(appended, [])
+
+    def test_md_indent_counts_a_tab_the_way_commonmark_does(self):
+        self.assertEqual(validate._md_indent("    x"), (4, "x"))
+        self.assertEqual(validate._md_indent("\tx"), (4, "x"))
+        self.assertEqual(validate._md_indent(" \tx"), (4, "x"))
+        self.assertEqual(validate._md_indent("   \tx"), (4, "x"))
+        self.assertEqual(validate._md_indent("   x"), (3, "x"))
+        self.assertEqual(validate._md_indent("x"), (0, "x"))
 
     def test_the_end_to_end_unicode_blank_errors(self):
         # Round 09's Major, whole. Python's str.strip() removes U+00A0; CommonMark does
