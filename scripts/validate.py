@@ -3776,8 +3776,10 @@ def _roots_missing_from_base(gov_roots, base_rels):
 
     Matched EXACTLY, which is `_bootstrap_roots`' rule for the same lookup
     (`base_rels.get(pin_rel)`) and is the fail-closed direction here. This file
-    folds NFC+casefold wherever it matches a PATH, and there folding makes the
-    check stricter: `governed_classes` folds so a case-rename cannot walk a
+    folds path components elsewhere — `_governed_class` casefolds, and
+    `blast_radius_diff_findings` normalizes NFC and casefolds — and each of
+    those folds makes its check stricter: `governed_classes` folds so a
+    case-rename cannot walk a
     path out of its governed root, and its own comment records that an
     exact-case root stays authoritative so two genuinely distinct case-sibling
     roots on a case-sensitive filesystem do not cross-demand each other's
@@ -3835,10 +3837,11 @@ def diff_base_findings(root, base):
       already contributing nothing — the failure it fixes is not noise but
       SILENCE: a confirmed layer edited under such a base draws no finding at
       all and the run exits 0.
-    - **A base that is not an ancestor of HEAD** is a WARN. Every finding the
-      diff passes raise is then a difference between two lines of history rather
-      than a change made on this one, so they are unreliable in both directions
-      — the stateless checks are unaffected, since they never read the base. But
+    - **A base that is not an ancestor of HEAD** is a WARN. A finding the diff
+      passes raise BY COMPARING is then a difference between two lines of
+      history rather than a change made on this one, so those are unreliable in
+      both directions. The ones that read no base are not: the stateless checks,
+      and the tripwire's working-tree scan ERRORs. But
       `--diff <remote>/main` on a branch behind its remote is a real workflow
       where the base legitimately is not an ancestor, and refusing it would
       block work to sharpen a message. The WARN says what the run is comparing.

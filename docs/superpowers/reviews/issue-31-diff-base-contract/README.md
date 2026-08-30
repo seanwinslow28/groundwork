@@ -58,8 +58,8 @@ fail loud.** It fails silent, and exits 0.
 ## What is on the branch
 
 - `scripts/validate.py` — `diff_base_findings`, plus `_base_is_ancestor`,
-  `_roots_missing_from_base` and `_unsupported_root_finding`, the one constructor both
-  emitters use. `blast_radius_diff_findings` raises that ERROR for each unsupported root
+  `_roots_missing_from_base` and `_unsupported_root_finding`, the constructor both emitters
+  call. `blast_radius_diff_findings` raises that ERROR for each unsupported root
   and drops those roots' findings wherever the pass would otherwise attribute one to a root:
   the candidate-file pass filters them out of `pairs`, the changelog pass iterates
   `gov_roots - unsupported`, and an all-unsupported set returns before either runs. It does
@@ -109,7 +109,8 @@ invocation. The reasoning is in `diff_base_findings`' docstring so it travels wi
 | 03 | `55823e8` | **does not approve** — Standards 2 (worst Minor), Spec 0 | 2 | `a0fb017` |
 | 04 | `a0fb017` | **does not approve** — Spec 1 (Major), Standards 3 (worst Minor) | 4 | `6b2bd2e` |
 | 05 | `6b2bd2e` | **does not approve** — Standards 3, Spec 2, all Minor, no Major | 5 | `20280ba` |
-| 06 | `20280ba` | **does not approve** — 2 unique Minor, one on both axes; no validator-behaviour defect | 2 | |
+| 06 | `20280ba` | **does not approve** — 2 unique Minor, one on both axes; no validator-behaviour defect | 2 | `bce7347` |
+| 07 | `bce7347` | **does not approve** — Standards 1, Spec 2, all Minor; no validator-behaviour defect | 3 | |
 
 A round's fix commit is filled in with the next entry: an entry cannot name the commit that
 carries its own fixes.

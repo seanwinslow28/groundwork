@@ -66,10 +66,11 @@ Honest limits of the current build. This file grows as the product does (brief �
     marker was committed *and* delete it in the same working change, and it is in neither —
     so nothing is discovered, nothing is checked, and nothing is said. `_pin_dirs` reads the
     base tree precisely so deleting a pin cannot un-govern the change that deleted it, and
-    that guarantee holds only where the base carries the pin. Measured 2026-08-30 on that
-    exact setup: `0 error(s), 8 warning(s)` — and the same on the engine before this check
-    existed, so the check neither creates nor widens it. **No check reading only those two
-    trees can close it:** with the marker in neither, nothing tells this apart from an
+    that guarantee holds only where the base carries the pin. Measured 2026-08-30 against
+    the fixture in `test_deleting_the_marker_under_a_pre_marker_base_says_nothing`: every
+    stateful pass returns no finding — and every stateful pass returns none on the engine
+    before this check existed either, so the check neither creates nor widens it. **No check
+    reading only those two trees can close it:** with the marker in neither, nothing tells this apart from an
     ungoverned repository, which the engine's own pin-less root is. That limit is the two
     trees rather than the repository — walking the commits between base and HEAD could see a
     marker added and later deleted, and nothing here does. Tracked as issue #40.
