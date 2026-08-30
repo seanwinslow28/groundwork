@@ -8340,11 +8340,15 @@ class TestDiffBaseContract(unittest.TestCase):
         it, the marker is in neither tree: nothing is discovered, nothing is
         checked, nothing is said. Measured the same on the engine before this
         check existed, so it is a standing gap rather than one the check made,
-        and no check here can close it — with the marker in neither tree there
-        is nothing to tell this apart from an ungoverned repository, which the
-        engine's own pin-less root is. Asserted rather than left implicit so
-        the silence is visible in the suite and cannot deepen unnoticed.
-        Recorded in docs/known-limitations.md; Codex round 4 found it."""
+        and no check reading only those two trees can close it — with the
+        marker in neither, nothing tells this apart from an ungoverned
+        repository, which the engine's own pin-less root is. That limit is the
+        two trees rather than the repository: walking the commits between base
+        and HEAD could see a marker added and later deleted, and nothing here
+        does. Asserted rather than left implicit so the silence is visible in
+        the suite and cannot deepen unnoticed. Recorded in
+        docs/known-limitations.md and tracked as issue #40; Codex round 4 found
+        it and round 5 narrowed this paragraph."""
         with tempfile.TemporaryDirectory() as d:
             _git(d, "init", "-q")
             _git(d, "config", "user.email", "t@t.t")
@@ -8366,19 +8370,23 @@ class TestDiffBaseContract(unittest.TestCase):
             self.assertEqual(validate.blast_radius_diff_findings(d, pre), [])
             self.assertEqual(validate.interview_diff_findings(d, pre), [])
 
-    def test_marker_deletion_cannot_hide_simultaneous_governed_edits(self):
+    def test_marker_deletion_hides_nothing_when_the_base_holds_the_markers(self):
         """The control, and the reason the gap above is narrow rather than
         general: `_pin_dirs` reads the base tree so deleting a pin cannot
         un-govern the change that deleted it, and `interview_diff_findings`
         derives its state directories from the base for the same reason. Both
         guarantees hold wherever the base carries the marker.
 
-        Named for what it proves, after Codex round 5 measured what it does
-        not: deleting the two markers and NOTHING ELSE, under a base that holds
-        both, returns `[]` from all three passes. That is not a gap — a pin is
-        not a governed class and a manifest is excluded from the frozen set on
-        purpose — but it is why this test edits a rule and a layer as well. What
-        is caught is the edits the deletion would otherwise hide."""
+        Named twice for what it proves. Round 5 measured that deleting the two
+        markers and NOTHING ELSE, under a base that holds both, returns `[]`
+        from all three passes — not a gap (a pin is not a governed class and a
+        manifest is excluded from the frozen set on purpose), but the reason
+        this test edits a rule and a layer as well. Round 6 then measured that
+        the same deletions and edits against a PRE-MARKER base also return `[]`
+        from all three, so the guarantee is not about marker deletion in
+        general: it holds where the base holds the markers, which is the
+        condition now in the name. The pre-marker case is the open Major above.
+        """
         with tempfile.TemporaryDirectory() as d:
             base = self._root(d)
             os.remove(os.path.join(d, "groundwork.pin"))
