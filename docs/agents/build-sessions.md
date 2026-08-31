@@ -135,6 +135,113 @@
     Rule 11 is safe because rule 10 keeps the slice small; adopting it alone is the weak
     combination. Decided by the maintainer 2026-08-30.
 
+## Craft notes — measured failure modes
+
+**These are not numbered rules.** Rules 1–11 are decisions the maintainer took; these are
+practices the build sessions have paid for, each with the evidence that bought it. They are
+kept here because they were carried in a session kickoff, proved load-bearing across two
+slices, and would otherwise survive only in git history — which no session loads.
+
+Where a claim is attributed to a session, that session's review record is the source; where
+this document states a count, name the cases rather than trusting the number to stay true.
+
+### Scope
+
+- **Scope expansion is the expensive failure, not code quality.** #32 measured every
+  accepting-direction finding on its branch — rounds 02, 04, 05, 06, 07, 08, 09 and 11 — as
+  landing in 122 lines the issue never asked for, while the 66 lines it did ask for were never
+  breached. Rule 10 exists because of this. If you find yourself building a second mechanism,
+  stop and escalate.
+- **Take the thing out rather than describing it better.** #40 wrote four statements about one
+  `git log` flag and the first three were wrong, each correction written to fix the last one.
+  The sequence ended by deleting the flag. Two other constructs went the same way: an NFC fold
+  and a `--full-history` flag were both removed once no mutation of them could be made to
+  fail. **A guard nobody can show is needed should come out**, and saying so is cheaper than a
+  paragraph explaining why it stays.
+
+### Claims about your own work
+
+- **Write what the code does; never write what it guarantees.** Both slices found the previous
+  round's prose ahead of its code in nearly every round, *including sentences written
+  specifically to stop overclaiming*. Assume your correction is the next overclaim.
+- **Withdraw a count, do not correct it.** #32 corrected eight counts and every one was wrong
+  again or wrong in the direction of making the work sound larger. #40 repeated it three times
+  after being warned by this very list: a README said "the two tests" when a third surfaced, a
+  round entry said "four mutations, all caught" while naming three, and a limitations file said
+  "of those four" over five bullets. **Name the cases and let the reader count.** Positional
+  references — "the last seven" — go stale exactly as counts do.
+- **A correction removes the wrong statement; it does not merely add the right one.** #32 left
+  a wrong mutation row standing beside its correction for two rounds.
+- **A test's provenance is a factual claim.** #32 had a comment saying six cases survived a
+  recorded regression when five had. #40 left three docstrings crediting a call that had
+  already been replaced, and one test describing itself as a regression when it pinned nothing
+  that had ever been broken. When a fix changes *why* a test passes, its docstring is now
+  wrong.
+
+### Verification
+
+- **Measure the thing you are claiming.** #32 wrote a U+00A0 probe with an ordinary space and
+  read the result as a false alarm. #40 checked for a doubled word with a line-scoped pattern
+  against a duplication that spanned a line break, and nearly recorded a real defect as not
+  reproducing. **A probe that finds nothing is evidence about the probe** until the probe
+  itself is verified — which matters most when a finding is about to be rejected for failing
+  to reproduce.
+- **A check can pass for the wrong reason.** #32 had a case refused by a different rule than
+  the one its test named. #40 had two: a test whose base was also HEAD, so the walk it meant to
+  exercise saw no commits at all; and a test that patched out the helper it was meant to pin,
+  so it verified only the caller. Construct each case so **only** the thing under test can
+  produce the result — and where a precondition carries the test, assert the precondition.
+- **Run mutations at BOTH edges of every rule.** A stricter mutation surviving is as much a gap
+  as a looser one, and only the looser direction is intuitive to check. #32 found three gaps in
+  the OVER-refusing direction — a rule silently narrowing what an adopter may write. #40's
+  reviews found over-refusing defects repeatedly without mutation: a lookalike filename
+  promoted to a marker, a directory named like a marker drawing a false deletion, an unreadable
+  directory elsewhere in the tree blinding an absence that was independently provable. Its own
+  over-refusing mutations were all caught, which is the outcome that shows a rule is not
+  quietly stricter than it claims — so run them even when you expect them to be caught.
+
+  *An earlier draft of this bullet said #40 "found three more" over-refusing gaps. It did not:
+  its over-refusing mutations were caught, not survivors. The count was written from memory of
+  the shape rather than the record, in the paragraph telling you not to do that.*
+- **A mutation row must name the LITERAL edit run.** #32 mislabelled twice, both times
+  describing a bigger mutation than the one performed, and a later round measured the
+  difference.
+- **A killed mutation run leaves the tree mutated.** #40 had a harness die at a harness timeout
+  mid-mutation; three later results were measured against a file that still carried the
+  previous edit and had to be rerun. Check the tree between runs, not only at the end.
+
+### Review rounds
+
+- **Audit each round's repairs for over-correction, not only the original question.** This is
+  #40's most productive finding and it is not in #32's list. Three of #40's Majors were
+  *introduced by the previous round's repair*, and one of them reopened the escape the issue
+  existed to close. Asking "does this repair open a new state?" found a defect in three
+  consecutive rounds.
+- **Review briefs must not be worded adversarially.** #32 lost two rounds to a provider content
+  filter — "produce an input that hides the ledger" reads as an attack request. Every round
+  that completed asked the same question as **classifier correctness** ("which inputs does this
+  classify wrongly, in either direction") or as a **completeness audit** ("enumerate the cases;
+  for each say which rule governs it and whether that is correct"). Across both slices, the
+  completeness-audit and repair-audit framings produced the most valuable rounds, and no round
+  briefed that way was refused.
+- **Tell the reviewer a clean round is a real outcome**, and list what the record already
+  discloses so it is not re-raised. The disclosure list grows every round.
+- **The builder can be wrong about a finding, and the reviewer can be wrong about a defect.**
+  #40 rejected a Major whose reproduction did not reproduce against the revision it was filed
+  against, and a later round independently confirmed the rejection. The same round found a
+  defect the builder's own probe had missed. Neither side's report is evidence until it is run.
+
+### Mechanics
+
+- **Editing a large test file by slicing between anchors ate the module fixtures twice** in
+  #32. `tests/test_validate.py` has two `PIN_OK` definitions, so a naive "cut to the next
+  `class`" removes `CHANGELOG_OK` and its neighbours. Run `python3 -c "import
+  tests.test_validate"` after any block edit. #40 used anchored insertion with that check after
+  every edit and lost nothing.
+- **An anchor that fails to match is a silent no-op if the write is unconditional.** #40 had a
+  README edit assert-fail on text an earlier round had already replaced; the commit went out
+  without it. Assert the match count, and check the result rather than the exit status.
+
 ## Where the plan lives
 - Design: `docs/superpowers/specs/2026-07-22-groundwork-v1-build-sequence-design.md`
 - Plans: `docs/superpowers/plans/` (this file's siblings), one per phase-slice.
