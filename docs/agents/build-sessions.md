@@ -100,6 +100,41 @@
    backfilled. It predates the per-entry layout above, which binds work started after this
    rule lands.
 
+10. **A check the issue did not ask for is a rule 5 escalation before it is written.** A
+    slice implements the issue's scope; a new check outside it — however well motivated —
+    goes to the maintainer first, with what it defends against and what it would cost.
+
+    *Evidence:* issue #32. Measured on `8202ab6`, the fix the issue asked for — the
+    base-anchored changelog boundary — was 66 lines, landed in round 1, and drew no
+    accepting-direction finding in the fifteen rounds that followed. A second guard the
+    issue never raised, started silently in round 2, was 122 lines across 12 commits and
+    drew every accepting-direction finding on the branch. The maintainer deleted it.
+    `docs/superpowers/reviews/issue-32-changelog-preamble/round-17.md` carries the account.
+
+    *Counter-argument, recorded:* it adds a round-trip to work that is often genuinely
+    necessary, and a builder who spots a real hole mid-slice now has to stop. The answer is
+    that the escalation is a paragraph where the unescalated guard was twelve commits, and
+    that a builder who spots a real hole has an existing mechanism for it — file an issue.
+    Decided by the maintainer 2026-08-30.
+
+11. **When a review round produces no findings in the class the slice is about, the slice
+    goes to the maintainer for a merge decision** rather than continuing until a reviewer
+    says "approve". Rule 9 already says the record must exist, not that every finding must
+    close. **The slice's finding-class is named in its round 01 entry**, so the trigger is
+    checkable against something written before it fires rather than chosen at the moment
+    stopping is convenient.
+
+    *Evidence:* #32's rounds 13 to 16 ran after the safety question had been settled twice
+    and closed only accuracy defects in the builder's own prose.
+
+    *Counter-argument, recorded:* a reviewer may find a real defect on round N+1 that round
+    N missed, and stopping early trades that away — #32's rounds 08, 09 and 11 each found a
+    Major after an earlier round had looked clean in some respect. What blunts it, and the
+    reason this rule is adopted together with rule 10 rather than alone: all three of those
+    Majors were inside the out-of-scope guard, which under rule 10 would not have existed.
+    Rule 11 is safe because rule 10 keeps the slice small; adopting it alone is the weak
+    combination. Decided by the maintainer 2026-08-30.
+
 ## Where the plan lives
 - Design: `docs/superpowers/specs/2026-07-22-groundwork-v1-build-sequence-design.md`
 - Plans: `docs/superpowers/plans/` (this file's siblings), one per phase-slice.

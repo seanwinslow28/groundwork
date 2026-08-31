@@ -60,20 +60,87 @@ Honest limits of the current build. This file grows as the product does (brief �
     and reports nothing. That half was left out of the slice that added this one.
   - **A divergent base still runs.** Ancestry is a WARN, so a run against another line of
     history prints its findings — including findings naming changes this line never made.
-  - **Deleting the marker escapes the contract when the base predates it.** The contract is
-    evidence-based: it finds a governed root or an interview state by its `groundwork.pin`
-    or `00-manifest.md`, in the base tree or the working tree. Name a base from before that
-    marker was committed *and* delete it in the same working change, and it is in neither —
-    so nothing is discovered, nothing is checked, and nothing is said. `_pin_dirs` reads the
-    base tree precisely so deleting a pin cannot un-govern the change that deleted it, and
-    that guarantee holds only where the base carries the pin. Measured 2026-08-30 against
-    the fixture in `test_deleting_the_marker_under_a_pre_marker_base_says_nothing`: every
-    stateful pass returns no finding — and every stateful pass returns none on the engine
-    before this check existed either, so the check neither creates nor widens it. **No check
-    reading only those two trees can close it:** with the marker in neither, nothing tells this apart from an
-    ungoverned repository, which the engine's own pin-less root is. That limit is the two
-    trees rather than the repository — walking the commits between base and HEAD could see a
-    marker added and later deleted, and nothing here does. Tracked as issue #40.
+  - **A deleted marker under a pre-marker base is reported, but the gating does not
+    resume.** Name a base from before `groundwork.pin` or `00-manifest.md` was committed
+    *and* delete that marker in the same working change, and it is in neither the base tree
+    nor the working tree. Until issue #40 that was total silence. `diff_base_findings` now
+    reads a third source — the commits between the base and HEAD — and ERRORs on a marker
+    those commits added that neither tree holds, so the run is red and names the marker.
+
+    **What that does not do.** It does not restore what the deleted marker was gating. The
+    tripwire and the frozen-layer guard still derive their scope from the two trees, so an
+    unproposed constitution change or an edited confirmed layer in that same working change
+    still draws no finding *from those passes*. The run is stopped by the base-contract
+    ERROR, not by a report of the change itself, and
+    `test_the_pre_marker_escape_is_reported_but_gating_does_not_resume` asserts both halves.
+    Supplying evidence without changing what any pass gates was the maintainer's decision of
+    2026-08-30; feeding the discovered root back into `_pin_dirs` was considered and not
+    taken.
+
+    **Where the evidence runs out.** The walk reads what `git log` will show it, and that is
+    narrower than "committed history" — an earlier version of this entry said the latter and
+    was wrong. Each of these is silent, which is the same silence as before #40, so none is a
+    regression, but none is closed:
+
+      - A **shallow clone** whose graft point is newer than the commit that added the marker.
+      - A marker that was **never committed at all**, which leaves no evidence anywhere.
+      - A marker whose history lives inside an **initialized submodule**. The working-tree
+        scan descends submodules, so a marker still present in one is seen; the superproject's
+        history records only the gitlink, so the evidence of an intermediate state is not.
+        Reading each submodule's own history would be a second mechanism, and this slice did
+        not build one.
+      - History altered by **`git replace` or `.git/info/grafts`**, which can make HEAD appear
+        to parent the base directly and hide the addition between them. Unlike naming an old
+        base, that is not something done by accident, and it is local to the clone the gate
+        runs in — `refs/replace` is not fetched by default. Tracked as issue #42.
+      - A run whose **`GIT_DIR` or `GIT_WORK_TREE`** point somewhere other than the tree being
+        validated. Those let a caller supply one repository's working tree and another's
+        history; measured, the walk reports the marker normally and reports nothing with
+        `GIT_DIR` aimed at a decoy sharing the base commit. No git call in the validator
+        controls its inherited environment beyond the four pathspec variables, so this is not
+        specific to the marker walk — though a pre-#40 pass changing its verdict this way was
+        not demonstrated. Unlike the others here, this one is reachable by ACCIDENT: CI
+        harnesses, git hooks and wrapper scripts set `GIT_DIR` routinely. Tracked as issue
+        #43, and the reason it was not fixed here is that scrubbing it in two calls while the
+        base listing and ancestry check still inherit it would put two repositories behind one
+        verdict.
+
+    Of the first four, Codex round 02 found the submodule case and the replace/graft case; the
+    shallow-clone and never-committed cases were already disclosed before that round ran. The
+    same round found four more that are FIXED rather than listed here — a marker added by a
+    merge result, a single undecodable pathname erasing every marker in the same output, a
+    `strip()` that both invented markers and hid them, and `log.showRoot=false` suppressing a
+    root commit's addition. Round 03 found two more, also fixed: the walk and the presence
+    check were both **type-blind**. Round 04 found four more, also fixed: a repository
+    configuring `log.diffMerges=combined`, a marker that arrived as a symlink and only later
+    became a real file, a base holding a symlink of that name, and a broken symlink standing in
+    for a deleted marker. A fifth round-04 finding was **rejected as factually wrong** — its
+    reproduction, rerun verbatim, did not reproduce. The entries under [this slice's review
+    record](superpowers/reviews/issue-40-marker-deletion-evidence/) carry each disposition,
+    the rejection included.
+
+    **A git command that fails is not evidence.** Both reads fail closed: if the history walk
+    or the base listing cannot run, the check emits an ERROR naming what could not be read
+    rather than reporting silence or a wall of deletions. A failed command was previously read
+    as "no marker ever existed", which an injected `diff.orderFile` could cause without
+    touching the repository. The four pathspec environment variables are scrubbed for the same
+    reason: two of them turn the walk's wildcards literal so it matches nothing, and a third
+    stops `*` crossing `/` so a nested marker goes unseen.
+
+    **A marker is a regular file, and all three sides of the comparison now say so.** In
+    history, a record counts only when its destination mode is a regular file, so a gitlink or
+    symlink named like a marker is not evidence one existed. In the base tree, the same
+    question is asked of the modes rather than of the pathname. In the working tree, presence
+    must be a regular file the working-tree scan could actually have reached — not
+    `lexists`, which a directory of the same name satisfies; not membership in the scan by
+    name, which a broken symlink satisfies; and not `isfile` alone, which resolves through a
+    symlinked parent directory the scan never descends. A symlink pointing at a real pin file
+    counts as present, because `os.walk` lists it and the other passes read it like any file;
+    a marker underneath a symlinked DIRECTORY does not, because no pass can see it.
+
+    A working-tree scan that could not read part of the tree cannot show anything under that
+    subtree is missing, so a candidate under an unreadable directory draws nothing — the
+    blast-radius pass still raises the accurate unreadable ERROR.
   - **A root spelled differently at base and in the working tree reads as missing.** The pin
     lookup is exact, because folding it is the fail-open direction: a base holding
     `a/groundwork.pin` would otherwise satisfy a separate `A/` root and the tripwire would

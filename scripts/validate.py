@@ -3876,6 +3876,262 @@ def _unsupported_root_finding(g):
                    "carrying this pin as the base")
 
 
+# Pathspec behaviour is configurable through the ENVIRONMENT, and two of these
+# turn a wildcard pathspec into a literal one — which silently matched nothing
+# and returned the walk to the exact silence issue #40 exists to end (Codex
+# round 06). Any git call that passes a pathspec scrubs them, so the answer
+# depends on the repository rather than on the shell the gate is run from.
+# GLOB is scrubbed for the same reason as the other two, not as tidiness: with
+# it set, `*` stops crossing `/`, so `*groundwork.pin` no longer matches a
+# marker in a subdirectory and a nested governed root goes unseen. Round 06
+# recorded GLOB as harmless; round 07 measured that it is not, and round-07.md
+# carries the correction. ICASE is scrubbed as tidiness — it only widens git's
+# preliminary matching and the exact basename check settles the verdict — but
+# leaving it would make the result depend on the caller's shell for no reason.
+_PATHSPEC_ENV = ("GIT_LITERAL_PATHSPECS", "GIT_NOGLOB_PATHSPECS",
+                 "GIT_GLOB_PATHSPECS", "GIT_ICASE_PATHSPECS")
+
+
+def _git_env_without_pathspec_overrides():
+    env = dict(os.environ)
+    for name in _PATHSPEC_ENV:
+        env.pop(name, None)
+    return env
+
+
+# git's two regular-file blob modes. A marker is a FILE; a symlink (120000), a
+# gitlink (160000) and a tree are not one, on either side of the comparison.
+_REGULAR_MODES = (b"100644", b"100755")
+
+
+def _base_markers(toplevel, base):
+    """The marker paths the BASE tree holds AS REGULAR FILES, repo-relative.
+
+    `_git_diff_context` lists the base with `ls-tree --name-only`, which carries
+    no type, so `base_rels` answers "the base had this NAME". That is the wrong
+    question for issue #40's loop: a base holding a SYMLINK called
+    `groundwork.pin` would suppress the finding for a real marker added and
+    deleted after it (round 04 finding 4). This asks for the modes.
+
+    Returns None when the listing CANNOT BE READ, and a set otherwise. The two
+    are different answers and were conflated: an empty set means "the base holds
+    no marker", so returning it on failure made the caller report every
+    candidate as deleted — fabricated deletion evidence rather than an accurate
+    operational error (round 05 finding 2 named this; round 07 is where it is
+    fixed). The caller turns None into one ERROR that says what could not be
+    read."""
+    try:
+        # NO PATHSPEC. Passing the candidate paths as pathspecs was tried and is
+        # wrong twice over (round 05 finding 2): a real path beginning with a
+        # colon is read as pathspec MAGIC and makes git exit 128, and a large
+        # enough candidate list exceeds the argv limit. Either one made this
+        # return empty for EVERY candidate, and an empty answer here means "the
+        # base holds no marker", so the caller then ERRORed that the base lacks
+        # files it actually holds. One unfiltered listing has no pathspec to
+        # misread and no argv to overflow, and `_git_diff_context` already pays
+        # this cost once, so the order of the work is unchanged.
+        out = subprocess.run(["git", "-C", toplevel, "ls-tree", "-r", "-z", base],
+                             capture_output=True,
+                             env=_git_env_without_pathspec_overrides())
+    except OSError:
+        return None
+    if out.returncode != 0:
+        return None
+    found = set()
+    for raw in out.stdout.split(b"\0"):
+        if not raw:
+            continue
+        # "<mode> <type> <sha>\t<path>"
+        head, tab, path = raw.partition(b"\t")
+        if not tab:
+            continue
+        mode = head.split(b" ")[0]
+        if mode not in _REGULAR_MODES:
+            continue
+        name = os.fsdecode(path)
+        if os.path.basename(name) in ("groundwork.pin", INTERVIEW_MANIFEST):
+            found.add(name)
+    return found
+
+
+def _markers_added_since_base(toplevel, base):
+    """Issue #40's third source of evidence: the marker paths — a
+    `groundwork.pin` or an interview `00-manifest.md` — that a commit reachable
+    from HEAD but not from <base> ADDED.
+
+    `diff_base_findings`, `_pin_dirs` and `interview_diff_findings` read two
+    trees. With the base predating a marker AND the working change deleting it,
+    the marker is in neither, so nothing is discovered and nothing is said —
+    and nothing there tells that apart from a repository that never carried a
+    marker, which the groundwork engine's own pin-less root is. The commits
+    between the two DO tell them apart, and that is all this reads.
+
+    Returns repo-relative paths (relative to `toplevel`), or **None when the
+    history could not be read at all**. Those are different answers, and an
+    earlier version returned an empty set for both — so any `git log` failure
+    read as "no marker ever existed" and the run went silent. It is reachable
+    without touching the repository: `GIT_CONFIG_COUNT` can inject a
+    `diff.orderFile` pointing at a missing path, and `git log` exits 128 (round
+    07 finding 1). The caller turns None into an ERROR.
+
+    An EMPTY SET is still returned for an unborn or unresolvable HEAD. That is
+    not a failure: there is no `base..HEAD` range to ask about, the ancestry
+    check already WARNs, and reporting a deletion there would invent evidence.
+
+    The flag set, and what each is for. Four rounds have now been wrong about one
+    flag or another here, so each line says what was MEASURED rather than what
+    seems reasonable:
+
+    - `--no-renames`: rename detection reports a moved marker as R, not A, and
+      the walk would miss it.
+    - `--diff-merges=separate`: `git log --raw` emits NO diff for a merge by
+      default, so a marker introduced by a merge RESULT was invisible (round 02
+      finding 1). Bare `-m` fixed that but takes the format `log.diffMerges`
+      configures, and a COMBINED record ("::...") carries one source mode per
+      parent — `parts[1]` is then another source mode, not the destination, and
+      the parser misread it (round 04 finding 2). Naming the format removes the
+      repository's configuration from the answer.
+    - `--root`: without it `log.showRoot=false` suppresses a root commit's diff,
+      and an orphan line's marker addition goes unseen (round 02 finding 6).
+    - `--raw` (with `-z`): `--name-only` gives a pathname and no type, so a
+      gitlink or symlink-to-directory named `groundwork.pin` read as a marker
+      (round 03 finding 1). The raw record carries the destination mode.
+
+    There is deliberately **no `--full-history`**. Round 04 reported that history
+    simplification prunes a side branch whose marker was added and removed before
+    a net-zero merge, and the flag was added for it — then the reviewer's own
+    harness, rerun verbatim against the revision it was filed against, produced
+    the finding rather than the reported silence, and a `merge -s ours` case
+    built independently gave byte-identical output with and without the flag.
+    `--diff-merges=separate` already forces every merge to be diffed against each
+    parent, which is what defeats TREESAME pruning here. The flag was removed
+    rather than kept on the strength of a defect that does not reproduce.
+
+    **There is no `--diff-filter=A`, and its removal is the fourth and last
+    correction to a sequence of wrong statements about it.** Entry 01 said
+    dropping it changed no verdict; round 02 disproved that. The replacement
+    said dropping it would lose a marker, like the other flags; round 03
+    disproved that too. The third version called it a harmless narrowing. Round
+    04 — and the builder independently — then measured that it was not harmless:
+    git reports a symlink becoming a regular file as `T`, which the filter
+    removed before the mode was ever inspected, so a path that arrived as a
+    symlink and later became a genuine pin had no surviving record at all.
+
+    What replaces it is a question that does not need the filter: **any record
+    whose DESTINATION mode is a regular file** proves the path existed as a
+    regular file somewhere in the range. Deletions carry a destination mode of
+    000000 and drop out on the same test.
+
+    Paths are decoded per-path with `os.fsdecode`, as `_git_diff_context` does
+    for the base tree. Decoding the whole stream as strict UTF-8 meant one
+    undecodable pathname anywhere in the output erased EVERY marker in it —
+    round 02 finding 2, an amplifying failure rather than a local one.
+
+    Names are NOT stripped. `-z` frames them exactly, and stripping newlines
+    turned a file named "\ngroundwork.pin" into a marker while moving a real
+    marker out of a skipped directory — round 02 finding 3, wrong in both
+    directions at once.
+
+    The pathspecs match by suffix, so `*groundwork.pin` also matches a file
+    named `xgroundwork.pin`. The basename is re-checked here rather than trusted
+    to the pathspec."""
+    try:
+        head = subprocess.run(["git", "-C", toplevel, "rev-parse", "--verify", "--quiet",
+                               "HEAD^{commit}"], capture_output=True)
+        if head.returncode != 0:
+            return set()
+        log = subprocess.run(["git", "-C", toplevel, "log", "--no-renames",
+                              "--diff-merges=separate", "--root",
+                              "--raw", "-z", "--format=",
+                              "%s..HEAD" % base, "--",
+                              "*groundwork.pin", "*" + INTERVIEW_MANIFEST],
+                             capture_output=True,
+                             env=_git_env_without_pathspec_overrides())
+    except OSError:
+        return None
+    if log.returncode != 0:
+        return None
+    out = set()
+    fields = log.stdout.split(b"\0")
+    i = 0
+    while i + 1 < len(fields):
+        meta = fields[i]
+        # `--raw -z` frames each change as ":<src> <dst> <sha> <sha> <status>"
+        # then the pathname, both NUL-terminated. Anything else is skipped
+        # rather than guessed at.
+        if not meta.startswith(b":"):
+            i += 1
+            continue
+        # A COMBINED record ("::...") has one source mode per parent, so
+        # parts[1] is another SOURCE mode rather than the destination — and when
+        # that source mode happens to be a regular file, reading it as the
+        # destination would accept the record for the wrong reason.
+        # `--diff-merges=separate` makes this unreachable, so NO mutation of this
+        # branch fails the suite; it is kept anyway because the failure it
+        # prevents is a silent misread rather than an error (round 04 finding 2
+        # is what the explicit flag closes; this is the guard behind it).
+        if meta.startswith(b"::"):
+            i += 2
+            continue
+        parts = meta.split(b" ")
+        name = os.fsdecode(fields[i + 1])
+        i += 2
+        if len(parts) < 2 or parts[1] not in _REGULAR_MODES:
+            continue
+        if os.path.basename(name) in ("groundwork.pin", INTERVIEW_MANIFEST):
+            out.add(name)
+    return out
+
+
+def _reachable_regular_file(root, rel):
+    """Presence, judged the way the working-tree scan judges it.
+
+    `os.path.isfile` alone is not that judgement (round 05 finding 1).
+    `_walk_working_tree` runs `os.walk` with the default `followlinks=False`, so
+    it never descends a symlinked DIRECTORY — which means `_pin_dirs` never
+    discovers a marker underneath one, and the governed root that marker would
+    mark does not exist as far as every other pass is concerned. `isfile`
+    resolves the whole path, so it answered "present" for exactly the markers
+    the rest of the validator cannot see, and the deletion went unreported. That
+    is issue #40's own under-refusing direction, reopened by a repair.
+
+    So: no ancestor component may be a symlink. The FINAL component may be —
+    a symlink to a regular pin file is listed by `os.walk` in `filenames` and
+    read like any other file, so treating it as present matches what the tree
+    readers do with it."""
+    parts = rel.split("/")
+    cur = root
+    for part in parts[:-1]:
+        cur = os.path.join(cur, part)
+        if os.path.islink(cur) or not os.path.isdir(cur):
+            return False
+    return os.path.isfile(os.path.join(cur, parts[-1]))
+
+
+def _deleted_marker_finding(rel):
+    """The ERROR for one marker that history shows existed and neither tree
+    holds. ERROR rather than the WARN a governed deletion gets, decided by the
+    maintainer 2026-08-30: a WARN exits 0, so the run stays green and the
+    escalating changes stay unreported — which is the escape itself. The pin and
+    the manifest take the same severity and the same mechanism; only the message
+    differs, because they cover different things."""
+    if os.path.basename(rel) == "groundwork.pin":
+        return Finding("ERROR", rel, None,
+                       "--diff base predates this groundwork.pin and the working tree no "
+                       "longer holds it, but a commit in this history added it — the "
+                       "governed root it marks is in neither tree, so the #18 consent gate "
+                       "runs against nothing and deleting the pin un-governs the change "
+                       "that deleted it. Name the commit carrying this pin as the base, or "
+                       "restore it")
+    return Finding("ERROR", rel, None,
+                   "--diff base predates this interview state's manifest and the working "
+                   "tree no longer holds it, but a commit in this history added it — the "
+                   "state is in neither tree, so the frozen-layer guard covers no layer "
+                   "here and a confirmed layer could be edited or deleted with nothing "
+                   "reported (#9). Name the commit carrying this manifest as the base, or "
+                   "restore it")
+
+
 def diff_base_findings(root, base):
     """The --diff BASE CONTRACT. Two of the stateful passes promise something
     the base has to be able to support, and until this check existed nothing
@@ -3939,7 +4195,7 @@ def diff_base_findings(root, base):
     # The walk's OWN findings (an unreadable directory) belong to the tripwire,
     # which reports them whether or not it is dormant; taking them here too
     # would only duplicate them into main()'s dedupe.
-    wt_files, _wt_findings = _walk_working_tree(root)
+    wt_files, wt_walk_findings = _walk_working_tree(root)
 
     for g in sorted(_roots_missing_from_base(_pin_dirs(root, base_files, scope, wt_files),
                                              base_rels)):
@@ -3956,6 +4212,84 @@ def diff_base_findings(root, base):
                                 "so the frozen-layer guard covers no layer in this directory "
                                 "— a confirmed layer here could be edited or deleted and this "
                                 "run would report nothing (#9)"))
+
+    # Issue #40. The two loops above read the base tree and the working tree; a
+    # marker in NEITHER is invisible to both. The commits between base and HEAD
+    # are a third source, and they are consulted ONLY for that case: a marker
+    # the base holds is already covered by `_pin_dirs` reading the base tree,
+    # and a marker the working tree holds is the loops above.
+    #
+    # Absence has to be PROVEN before it is reported, and the working-tree scan
+    # alone does not prove it. Four ways it can be wrong, each measured by a
+    # Codex round, and each of the last three found in a REPAIR for the one
+    # before it — presence is the question this slice kept getting wrong:
+    #   - The scan could not read part of the tree (an unreadable directory).
+    #     It cannot show anything under THAT subtree is missing, so a candidate
+    #     under an unreadable prefix is skipped; `blast_radius_diff_findings`
+    #     still raises the accurate unreadable-directory ERROR, so the run is red
+    #     for the true reason. The first version suppressed EVERY deletion
+    #     whenever any directory was unreadable, which blinded candidates whose
+    #     absence was independently provable (round 02 finding 8, narrowed by
+    #     round 03 finding 2).
+    #   - Presence is `_reachable_regular_file` and nothing else. Three earlier
+    #     proofs were each wrong: `lexists`, which a DIRECTORY of the same name
+    #     satisfies (round 03 finding 1); membership in the working-tree scan by
+    #     NAME, which a broken symlink satisfies (round 04 finding 5); and
+    #     `os.path.isfile` alone, which resolves through a symlinked ANCESTOR
+    #     directory that `os.walk(followlinks=False)` never descends, so it
+    #     called present exactly the markers no other pass can see (round 05
+    #     finding 1).
+    #   - The BASE side is typed too, via `_base_markers`. `base_rels` comes from
+    #     `ls-tree --name-only` and answers only "the base had this name", which
+    #     let a base holding a SYMLINK of that name suppress the finding for a
+    #     real marker added and deleted after it (round 04 finding 4).
+    #   - git spells a path NFC while a macOS filesystem lists it NFD, and a
+    #     case-folding filesystem spells it differently again, so the scan can
+    #     miss a marker that is still there. Asking the filesystem in its own
+    #     terms covers it: on a normalization- or case-INSENSITIVE filesystem the
+    #     file is found under git's spelling, and on a sensitive one the two
+    #     spellings are genuinely different files and the deletion is real. An
+    #     NFC fold was tried here and REMOVED — no test could be made to bite it,
+    #     and on a sensitive filesystem it would have suppressed a true deletion.
+    # `base_rels` stays an EXACT match: `_roots_missing_from_base` documents why
+    # folding it is the fail-OPEN direction there, and that reasoning is
+    # unchanged here.
+    unreadable = tuple(sorted(f.path for f in wt_walk_findings))
+    # Both reads FAIL CLOSED. A git call that could not run is not evidence that
+    # nothing existed, and treating it as such is how this check went silent
+    # under an injected `diff.orderFile` (round 07 finding 1). One accurate ERROR
+    # replaces both a false silence and a wall of fabricated deletions.
+    seen = _markers_added_since_base(toplevel, base)
+    if seen is None:
+        findings.append(Finding("ERROR", root, None,
+                                "--diff could not read the commits between %s and HEAD, so "
+                                "whether a governed root's groundwork.pin or an interview "
+                                "state's 00-manifest.md was deleted cannot be answered — "
+                                "this is a failed git command, not evidence that none "
+                                "existed (#40)" % base))
+        return findings
+    candidates = sorted(seen)
+    # Only pay for the base listing when there is something to look up. Nearly
+    # every run has no candidates at all (round 06 finding 2).
+    base_markers = _base_markers(toplevel, base) if candidates else set()
+    if base_markers is None:
+        findings.append(Finding("ERROR", root, None,
+                                "--diff could not list the base tree %s with its file modes, "
+                                "so a marker the base holds cannot be told from one it never "
+                                "held — the deletion check is skipped rather than reporting "
+                                "markers the base may still carry (#40)" % base))
+        return findings
+    for repo_path in candidates:
+        if scope != "." and not repo_path.startswith(scope + "/"):
+            continue
+        rel = repo_path if scope == "." else repo_path[len(scope) + 1:]
+        if _diff_in_workbench_skips(rel) or repo_path in base_markers:
+            continue
+        if any(rel == u or rel.startswith(u + "/") for u in unreadable):
+            continue
+        if _reachable_regular_file(root, rel):
+            continue
+        findings.append(_deleted_marker_finding(rel))
     return findings
 
 
